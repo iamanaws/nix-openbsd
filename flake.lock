@@ -1,0 +1,83 @@
+{
+  "nodes": {
+    "flake-compat": {
+      "locked": {
+        "lastModified": 1733328505,
+        "narHash": "sha256-NeCCThCEP3eCl2l/+27kNNK7QrwZB1IJCrXfrbv5oqU=",
+        "rev": "ff81ac966bb2cae68946d5ed5fc4994f96d0ffec",
+        "revCount": 69,
+        "type": "tarball",
+        "url": "https://api.flakehub.com/f/pinned/edolstra/flake-compat/1.1.0/01948eb7-9cba-704f-bbf3-3fa956735b52/source.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz"
+      }
+    },
+    "mini-tmpfiles": {
+      "inputs": {
+        "nixpkgs": [
+          "nixbsd",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1732341037,
+        "narHash": "sha256-7XfLBNxPGe/LtydF9hkyJqgbmJH5nHP5oQsk/9UGgD0=",
+        "owner": "nixos-bsd",
+        "repo": "mini-tmpfiles",
+        "rev": "838bc561f8a921c4eb9a3e752fafb07ebf49336d",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos-bsd",
+        "repo": "mini-tmpfiles",
+        "type": "github"
+      }
+    },
+    "nixbsd": {
+      "inputs": {
+        "flake-compat": "flake-compat",
+        "mini-tmpfiles": "mini-tmpfiles",
+        "nixpkgs": "nixpkgs"
+      },
+      "locked": {
+        "lastModified": 1761324756,
+        "narHash": "sha256-RRZ+qZnmDRd94JHw3fNZNjn/1Ki2MpzixKnLrA9QrpU=",
+        "owner": "obsidiansystems",
+        "repo": "nixbsd",
+        "rev": "ae39833c82e1297ea8736b016238cd28a3f04328",
+        "type": "github"
+      },
+      "original": {
+        "owner": "obsidiansystems",
+        "ref": "openbsd-phase6",
+        "repo": "nixbsd",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1742073025,
+        "narHash": "sha256-Wwas3+i++d9sSJEU8f4py6R/OQbe79mqT1c/39gqqak=",
+        "owner": "obsidiansystems",
+        "repo": "bsd-nixpkgs",
+        "rev": "6af5d8f48e16d5fca6dfaa3d16f50d6e197b1f9c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "obsidiansystems",
+        "ref": "openbsd-phase6-v2",
+        "repo": "bsd-nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixbsd": "nixbsd"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
