@@ -7,16 +7,34 @@ OpenBSD `httpd(8)` and `relayd(8)` daemons. The request path is:
 host 127.0.0.1:8080 -> guest relayd :80 -> guest httpd 127.0.0.1:8080
 ```
 
-The OpenBSD programs are packaged locally with the same
-`pkgs.openbsd.mkDerivation` conventions as the pinned `bsd-nixpkgs` fork:
+The flake keeps the NixBSD `openbsd-phase6` module set while making its
+Nixpkgs input follow the lock-file revision that supplies OpenBSD 7.9. The
+OpenBSD programs use the upstream `pkgs.openbsd.mkDerivation` conventions:
 
-- `openbsd.httpd`
-- `openbsd.relayd`
-- `openbsd.relayctl`
-- `openbsd.libagentx`
+- Base utilities: `arp`, `cron`, `crontab`, `doas`, `netstat`, `ping`,
+  `traceroute`, and `w`
+- Libraries: `libagentx`, `libedit`, `libkeynote`, `libpcap`, and `libradius`
+- Networking: `dhcpd`, `httpd`, `ntpd`/`ntpctl`, `pflogd`, `rad`, `relayd`,
+  `relayctl`, `resolvd`, `tcpdump`, and `unwind`
+- Routing: `bgpd`/`bgpctl`, `ospfd`/`ospfctl`, and `ripd`/`ripctl`; the
+  upstream `pkgs.openbsd.pfctl` package is reused directly
+- Security and VPN: `acme-client`, `iked`, `ikectl`, `ipsecctl`, and `isakmpd`
+- Observability: patched `syslogd`, reused `newsyslog`, plus `syslogc`,
+  `snmpd`/`snmpd_metrics`/`snmp_mibs`/`snmp`, and `sensorsd`. OpenBSD 7.9
+  uses `snmp(1)` rather than the removed `snmpctl`.
 
-Local NixBSD modules provide `services.httpd` and `services.relayd`, including
-the standard OpenBSD users, chroots, configuration checks, and rc services.
+Local NixBSD modules provide `services.cron`, `services.dhcpd`,
+`services.httpd`, `services.ntpd`, `services.pflogd`, `services.rad`,
+`services.relayd`, `services.resolvd`, `services.unwind`, `services.iked`,
+`services.isakmpd`, `services.ipsec`, `services.pf`, `services.bgpd`,
+`services.ospfd`, `services.ripd`, `services.syslogd`, `services.newsyslog`,
+`services.snmpd`, and `services.sensorsd`. `security.acme-client` adds
+cron-backed certificate renewal without treating the client as a daemon. The
+modules declare the standard OpenBSD users, protected directories,
+configuration checks where the native program supports them, and rc services.
+The demo enables cron, newsyslog, syslogd, sensorsd, localhost-only snmpd,
+ntpd, resolvd, PF, httpd, and relayd; dynamic routing, forwarding, VPN, and
+public ACME operations remain disabled.
 
 ## Run the VM
 
@@ -52,7 +70,12 @@ Inside the guest, inspect relayd with:
 
 ```sh
 relayctl show summary
-ps axww | grep -E '[h]ttpd|[r]elayd'
+ntpctl -s status
+pfctl -nf /etc/pf.conf
+pfctl -sr
+newsyslog -n -v -f /etc/newsyslog.conf
+snmp walk -v 2c -c public 127.0.0.1 system
+ps axww | grep -E '[c]ron|[n]tpd|[r]esolvd|[h]ttpd|[r]elayd|[s]yslogd|[s]nmpd|[s]ensorsd'
 ```
 
 SSH is also forwarded to localhost port 2222:
@@ -79,6 +102,155 @@ nix build --accept-flake-config .#relayd
 nix build --accept-flake-config .#relayctl
 ```
 
+## Observability modules
+
+`services.newsyslog` is cron-backed rather than a daemon. It creates the log
+files syslogd needs, installs an hourly rotation job, and runs a dry-run
+`newsyslog -n` check at boot. `services.syslogd` starts early, removes a stale
+`/dev/log`, and uses the OpenBSD `_syslogd` account.
+
+```nix
+{
+  services.newsyslog = {
+    enable = true;
+    config = ''
+      /var/log/messages			644  5     300  *     Z
+      /var/log/daemon			640  5     300  *     Z
+    '';
+  };
+
+  services.syslogd = {
+    enable = true;
+    config = ''
+      *.notice;auth,authpriv,cron,ftp,kern,lpr,mail,user.none	/var/log/messages
+      daemon.info						/var/log/daemon
+    '';
+  };
+}
+```
+
+`services.snmpd` listens on localhost SNMPv2c in the demo and installs the
+OpenBSD `snmp(1)` client. Do not confuse it with the removed `snmpctl`
+utility. SNMP is not forwarded to the host.
+
+```nix
+{
+  services.snmpd = {
+    enable = true;
+    config = ''
+      listen on 127.0.0.1 snmpv2c
+      read-only community public
+    '';
+  };
+}
+```
+
+`services.sensorsd` runs as root with an optional `sensorsd.conf`. QEMU often
+exposes few or no hardware sensors, so a quiet process with an empty config is
+still a successful single-VM check.
+
+## Routing and firewall modules
+
+PF is kernel state loaded by `pfctl`, so `services.pf` is a one-shot service
+rather than a daemon. The demo uses a permissive ruleset that preserves its
+SSH and HTTP paths:
+
+```nix
+{
+  services.pf = {
+    enable = true;
+    config = ''
+      set skip on lo
+      block return
+      pass
+    '';
+  };
+}
+```
+
+The routing daemons are disabled by default. Each module installs its matching
+control tool and validates the configuration before startup. For example, a
+no-peer BGP parser/process test can start with:
+
+```nix
+{
+  services.bgpd = {
+    enable = true;
+    config = ''
+      AS 64512
+      router-id 192.0.2.1
+      fib-update no
+    '';
+  };
+}
+```
+
+`services.ospfd` provides IPv4 OSPFv2 and `services.ripd` provides RIP. None of
+the modules enables packet forwarding. A machine intentionally acting as an
+IPv4 router must opt in explicitly:
+
+```nix
+{
+  boot.kernel.sysctl."net.inet.ip.forwarding" = 1;
+}
+```
+
+Use explicit PF rules and routing protocol interface/neighbor policies before
+enabling forwarding. Real BGP, OSPF, or RIP adjacency and route exchange
+requires at least a second VM or peer; the single demo VM only supports safe
+parser, process, socket, and local FIB inspection. `services.pflogd` is the
+optional PF logging companion.
+
+## Security and VPN modules
+
+An IKEv2 host can enable `services.iked` and load a matching policy after the
+daemon starts:
+
+```nix
+{
+  services.iked = {
+    enable = true;
+    config = ''
+      set passive
+      # Add peer policies from iked.conf(5).
+    '';
+  };
+
+  services.ipsec = {
+    enable = true;
+    ikeService = "iked";
+    config = ''
+      # Add flows from ipsec.conf(5).
+    '';
+  };
+}
+```
+
+`services.isakmpd` provides the legacy IKEv1 alternative. Its `-n` flag means
+"do not alter kernel SAs", not config-test mode, so that module cannot perform
+the parser-only pre-start validation used by `iked` and `ipsecctl`.
+
+ACME renewal is configured with domain handles from `acme-client.conf`:
+
+```nix
+{
+  security.acme-client = {
+    enable = true;
+    domains = [ "example.com" ];
+    reloadHttpd = true;
+    config = ''
+      # Add an authority and a domain block; test with a staging authority first.
+    '';
+  };
+}
+```
+
+The module validates the file at boot and renews through
+`services.cron.systemCronJobs`. Real issuance needs public HTTP-01 reachability
+and should first use an ACME staging endpoint. End-to-end IPsec testing needs a
+second peer; the single VM is only suitable for parser, permission, process,
+and control-socket checks.
+
 Build the installable system image:
 
 ```sh
@@ -98,3 +270,8 @@ under `pkgs/os-specific/bsd/openbsd/pkgs/` in `bsd-nixpkgs`. The service
 modules follow NixBSD's `init.services` interface, which is converted to
 generated OpenBSD `rc.d` scripts. This keeps the package and module changes
 easy to split into separate upstream pull requests.
+
+The intended observability split is: patched `syslogd` plus reused
+`newsyslog`, `syslogc`, the SNMP stack (`snmp_mibs`, `snmpd_metrics`, `snmpd`,
+`snmp`), `sensorsd`, then the OpenBSD-native logging/SNMP/sensors service
+modules.
