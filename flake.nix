@@ -2,28 +2,28 @@
   description = "Basic NixBSD OpenBSD web server VM";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    ufsNixpkgs.url =
-      "github:obsidiansystems/bsd-nixpkgs/6af5d8f48e16d5fca6dfaa3d16f50d6e197b1f9c";
-    nixbsd = {
-      url = "github:obsidiansystems/nixbsd/openbsd-phase6";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    nixbsd.url = "path:/home/iamanaws/repos/nix-bsd/nixbsd";
   };
 
   outputs =
-    { self, nixbsd, ufsNixpkgs, ... }:
+    { self, nixbsd, ... }:
     let
       system = "x86_64-linux";
-      compatibleMakefs = (import ufsNixpkgs { inherit system; }).freebsd.makefs;
 
-      openbsdWebserver = nixbsd.nixosConfigurations.openbsd-base.extendModules {
+      openbsdBase = nixbsd.nixosConfigurations.openbsd-base.extendModules {
+        modules = [
+          {
+            nixpkgs.buildPlatform = system;
+          }
+        ];
+      };
+
+      openbsdWebserver = openbsdBase.extendModules {
         modules = [
           (
             { lib, pkgs, ... }:
             {
               imports = [
-                ./modules/compat/nixpkgs.nix
                 ./modules/security/acme-client.nix
                 ./modules/services/bgpd.nix
                 ./modules/services/cron.nix
@@ -47,19 +47,14 @@
                 ./modules/services/unwind.nix
               ];
 
-              nixpkgs.buildPlatform = system;
-              nixpkgs.overlays = [
-                (import ./overlays/openbsd.nix { inherit compatibleMakefs; })
-              ];
-              nixpkgs.overrideMiniTmpfiles = false;
-              # This is a runnable VM rather than an offline installer, so it
-              # does not need NixBSD's legacy cross-toolchain bundle.
-              system.includeInstallerDependencies = false;
-              # Current Nixpkgs' static OpenBSD clang bootstrap selects rcrt0
-              # for CMake probes and cannot build NixBSD's static init default.
-              system.init = pkgs.openbsd.init;
+              nixpkgs.overlays = [ (import ./overlays/openbsd.nix) ];
               environment.systemPackages = [ pkgs.openbsd.netstat ];
               fonts.fontconfig.enable = false;
+              systemd.tmpfiles.rules = [
+                "d /var/authpf 0700 root wheel - -"
+                "d /var/db 0755 root wheel - -"
+                "f /var/db/host.random 0600 root wheel - -"
+              ];
               networking.hostName = lib.mkForce "openbsd-webserver";
               system.stateVersion = "25.05";
 
@@ -233,6 +228,7 @@
           w
           ;
         default = openbsdWebserver.config.system.build.vm;
+        minimal-vm = openbsdBase.config.system.build.vm;
         vm = openbsdWebserver.config.system.build.vm;
         system-image = openbsdWebserver.config.system.build.systemImage;
         toplevel = openbsdWebserver.config.system.build.toplevel;

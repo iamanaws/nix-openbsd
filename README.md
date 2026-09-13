@@ -7,9 +7,9 @@ OpenBSD `httpd(8)` and `relayd(8)` daemons. The request path is:
 host 127.0.0.1:8080 -> guest relayd :80 -> guest httpd 127.0.0.1:8080
 ```
 
-The flake keeps the NixBSD `openbsd-phase6` module set while making its
-Nixpkgs input follow the lock-file revision that supplies OpenBSD 7.9. The
-OpenBSD programs use the upstream `pkgs.openbsd.mkDerivation` conventions:
+The flake extends NixBSD's `openbsd-base`, inheriting its nixpkgs pin and
+boot/runtime fixes. Extra packages and services remain here. The OpenBSD
+programs use the upstream `pkgs.openbsd.mkDerivation` conventions:
 
 - Base utilities: `arp`, `cron`, `crontab`, `doas`, `netstat`, `ping`,
   `traceroute`, and `w`
@@ -81,10 +81,10 @@ ps axww | grep -E '[c]ron|[n]tpd|[r]esolvd|[h]ttpd|[r]elayd|[s]yslogd|[s]nmpd|[s
 SSH is also forwarded to localhost port 2222:
 
 ```sh
-ssh -p 2222 demo@127.0.0.1
+ssh -p 2222 bestie@127.0.0.1
 ```
 
-The inherited demonstration accounts are `root` and `demo`; their
+The inherited demonstration accounts are `root` and `bestie`; their
 demonstration password is `toor`. Do not expose this VM or reuse those
 credentials for a real machine.
 
@@ -263,10 +263,27 @@ Build only the configured system closure:
 nix build --accept-flake-config .#toplevel
 ```
 
+## Deferred work
+
+- Live configuration switching: NixBSD's `switch-to-configuration.sh` still
+  invokes `@rcorder@`, but that path is substituted only for FreeBSD. Review
+  OpenBSD service ordering and `check` versus `status` handling before testing
+  `switch`/`test`, service restarts, and rollback in a disposable VM. Boot/login
+  smoke tests do not cover this.
+- Raw `disk.img` export: consider an optional output converting the existing
+  system image with build-host `qemu-img`, as in the
+  [Obsidian phase6 follow-up](https://github.com/nix-community/nixbsd/compare/openbsd-phase6...obsidiansystems:nixbsd:openbsd-phase6).
+  This is useful for writing images to disks, not required for the QEMU boot
+  path. Validate the exported partition layout and boot it before relying on it.
+
+Recent native Nix support is being investigated separately; do not duplicate
+that work here. The removed OpenBSD port used Nix 2.3.16
+([removal commit](https://github.com/openbsd/ports/commit/7f027d386301a6844d1f4e054b0833943e6a33bd)).
+
 ## Upstreaming
 
 The derivations under `pkgs/openbsd/` are intentionally shaped like files
-under `pkgs/os-specific/bsd/openbsd/pkgs/` in `bsd-nixpkgs`. The service
+under `pkgs/os-specific/bsd/openbsd/pkgs/` in nixpkgs. The service
 modules follow NixBSD's `init.services` interface, which is converted to
 generated OpenBSD `rc.d` scripts. This keeps the package and module changes
 easy to split into separate upstream pull requests.

@@ -71,7 +71,8 @@ in
       ]
       ++ cfg.extraFlags;
       preStart = ''
-        mkdir -p /var/empty /var/run
+        # relayd unveils the AgentX socket path even when AgentX is disabled.
+        mkdir -p /var/empty /var/run /var/agentx
         chown root:wheel /var/empty
         chmod 0555 /var/empty
         ${relayd} -n -f ${configPath}

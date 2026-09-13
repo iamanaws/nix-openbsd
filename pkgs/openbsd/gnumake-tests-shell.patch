@@ -1,0 +1,66 @@
+Adapt the regression suite to Nixpkgs' PATH-based default shell.
+Tests which replace PATH still need an absolute shell to run their recipes.
+
+--- a/tests/run_make_tests.pl
++++ b/tests/run_make_tests.pl
+@@ -470,7 +470,7 @@
+   unlink('file.out') or die "Failed to delete file.out: $!\n";
+ 
+-  $_ = `/bin/sh -c 'bad-command 2>&1'`;
++  $_ = `sh -c 'bad-command 2>&1'`;
+   if ($? == 0) {
+       print "Invoked invalid file!  Skipping related tests.\n";
+   } else {
+       s/\r?\n//g;
+@@ -603,6 +603,7 @@
+       my $o = `$sh_name -c ': do nothing' 2>&1`;
+       $is_posix_sh = $? == 0 && $o eq '';
+   }
++  $sh_path = File::Spec->catpath(find_prog($sh_name));
+ 
+   $string = `$make_path -v`;
+   $string =~ /^(GNU Make [^,\n]*)/ or die "$make_path is not GNU Make.  Version:\n$string";
+--- a/tests/scripts/variables/SHELL
++++ b/tests/scripts/variables/SHELL
+@@ -24,8 +24,8 @@
+ 
+ $ENV{SHELL} = $mshell;
+ 
+-my $altshell = "/./$mshell";
+-my $altshell2 = "/././$mshell";
++my $altshell = "/./$sh_path";
++my $altshell2 = "/././$sh_path";
+ 
+ if ($mshell =~ m,^([a-zA-Z]:)([\\/])(.*),) {
+     $altshell = "$1$2.$2$3";
+--- a/tests/scripts/features/targetvars
++++ b/tests/scripts/features/targetvars
+@@ -264,6 +264,7 @@
+ 
+ run_make_test(qq!
+ all: PATH := sd
++SHELL := $sh_path
+ all: ; $sname >/dev/null
+ !,
+               '', "$sname >/dev/null\n");
+--- a/tests/scripts/misc/general4
++++ b/tests/scripts/misc/general4
+@@ -88,6 +88,7 @@
+ 
+ run_make_test(qq!
+ PATH := sd
++SHELL := $sh_path
+ all: ; $sname >/dev/null
+ !,
+               '', "$sname >/dev/null\n");
+@@ -136,7 +137,9 @@
+ 
+ unlink($sname);
+ 
+-if ($port_type eq 'UNIX') {
++# This test needs echo on the system default PATH; NixBSD has no /bin/echo.
++# The other PATH tests above do not depend on base-system commands.
++if ($port_type eq 'UNIX' && -x '/bin/echo') {
+     # SV 57674: ensure we use a system default PATH if one is not set
+     delete $ENV{PATH};
+     run_make_test(q!

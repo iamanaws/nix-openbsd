@@ -56,11 +56,10 @@ in
       dependencies = [ "NETWORKING" ];
       before = [ "SERVERS" ];
       startType = "oneshot";
-      startCommand = [ pfctl ]
-        ++ lib.optional cfg.enableFilter "-e"
-        ++ commonArgs;
+      startCommand = [ pfctl ] ++ commonArgs;
       preStart = ''
         ${pfctl} -n ${lib.escapeShellArgs commonArgs}
+        ${lib.optionalString cfg.enableFilter "${pfctl} -e 2>/dev/null || true"}
       '';
     };
   };

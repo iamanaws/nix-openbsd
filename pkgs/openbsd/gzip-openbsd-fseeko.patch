@@ -1,0 +1,15 @@
+Backport the OpenBSD >= 7.8 branch from gnulib:
+https://github.com/coreutils/gnulib/blob/master/lib/fseeko.c
+
+--- a/lib/fseeko.c
++++ b/lib/fseeko.c
+@@ -101,6 +101,9 @@
+ #elif defined EPLAN9                /* Plan9 */
+   if (fp->rp == fp->buf
+       && fp->wp == fp->buf)
++#elif defined __OpenBSD__ && !defined __sferror /* OpenBSD >= 7.8 */
++  /* fseeko and fflush work as advertised.  */
++  if (0)
+ #elif FUNC_FFLUSH_STDIN < 0 && 200809 <= _POSIX_VERSION
+   /* Cross-compiling to some other system advertising conformance to
+      POSIX.1-2008 or later.  Assume fseeko and fflush work as advertised.
