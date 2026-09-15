@@ -105,8 +105,8 @@ import nixpkgs {
         '';
       });
       python3Minimal = prev.python3Minimal.overrideAttrs (old: {
-        # The Clang wrapper links against the seed's LLVM unwind runtime.
-        allowedReferences = old.allowedReferences ++ [ (final.lib.getLib bootstrap.libunwind) ];
+        # Account for the unwind runtime selected by this bootstrap stage.
+        allowedReferences = old.allowedReferences ++ [ (final.lib.getLib final.stdenv.cc.libunwind) ];
         meta = old.meta // {
           platforms = old.meta.platforms ++ [ "x86_64-openbsd" ];
         };
@@ -270,10 +270,7 @@ import nixpkgs {
             libc = prevStage.openbsd.libc;
             compiler-rt = prevStage.compilerRtNative;
           };
-        in
-        {
-          inherit config overlays;
-          stdenv =
+          libraryStdenv =
             (import ./native-stdenv.nix {
               inherit
                 nixpkgs
@@ -285,6 +282,27 @@ import nixpkgs {
             }).override
               {
                 name = "stdenv-openbsd-native-libraries";
+              };
+          runtimes = import ./native-cxx-runtimes.nix {
+            pkgs = prevStage;
+            stdenv = libraryStdenv;
+            inherit (libraries) compiler-rt;
+          };
+        in
+        {
+          inherit config overlays;
+          stdenv =
+            (import ./native-stdenv.nix {
+              inherit
+                nixpkgs
+                lib
+                localSystem
+                config
+                ;
+              bootstrap = tools // libraries // runtimes;
+            }).override
+              {
+                name = "stdenv-openbsd-native-runtimes";
                 overrides = final: _: {
                   inherit (tools) bashNonInteractive coreutils perl;
                   fetchurl = final.stdenv.fetchurlBoot;

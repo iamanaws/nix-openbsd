@@ -55,7 +55,7 @@ let
   bintools = lib.makeOverridable (import (nixpkgs + "/pkgs/build-support/bintools-wrapper")) (
     wrapperArgs // { bintools = bootstrap.bintools; }
   );
-  cc = lib.makeOverridable (import (nixpkgs + "/pkgs/build-support/cc-wrapper")) (
+  wrappedCC = lib.makeOverridable (import (nixpkgs + "/pkgs/build-support/cc-wrapper")) (
     wrapperArgs
     // {
       inherit bintools;
@@ -87,6 +87,11 @@ let
       '';
     }
   );
+  cc = wrappedCC.overrideAttrs (old: {
+    passthru = old.passthru // {
+      inherit (bootstrap) libunwind;
+    };
+  });
 in
 assert platform.isOpenBSD;
 genericStdenv (

@@ -8,8 +8,8 @@ which provides boot, login, SSH, basic networking and a patched Nix daemon.
 The goal is to configure, build and update OpenBSD through NixBSD as we do
 Linux through NixOS.
 
-The stdenv rebuilds tools and test packages inside OpenBSD, but still relies
-on a cross-built compiler, linker, libc and C++ runtime. Nix builds run under
+The stdenv rebuilds tools, libc, C++ runtimes and test packages inside OpenBSD,
+but still relies on a cross-built compiler and linker. Nix builds run under
 separate users without a build sandbox. This is a development environment,
 not a production-ready system.
 

@@ -34,7 +34,7 @@ nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A pkgs.netbsd.source.drvPath \
     --eval --strict > /dev/null
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A libraries > "$work/libraries.drv"
 libraries=$(nix-store --realise "$(cat "$work/libraries.drv")" --keep-failed --option substituters '')
-for binary in dynamic static builtins tls; do
+for binary in dynamic static builtins tls cxx-dynamic cxx-static; do
     "$libraries/bin/$binary"
 done
 nix-store --verify-path "$libraries"
