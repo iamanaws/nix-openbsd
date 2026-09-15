@@ -1,5 +1,5 @@
 {
-  description = "Basic NixBSD OpenBSD web server VM";
+  description = "OpenBSD packages, NixBSD modules and a work-in-progress native stdenv";
 
   inputs = {
     nixbsd.url = "path:/home/iamanaws/repos/nix-bsd/nixbsd";

@@ -1,0 +1,17 @@
+Link the xargs signal test against gnulib on systems without libc error().
+Update Makefile.in too so bootstrapping does not need autoreconf.
+
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -20 +20,3 @@
+-AM_CFLAGS = $(WARN_CFLAGS)
++AM_CFLAGS = $(WARN_CFLAGS)
++AM_CPPFLAGS = -I$(top_builddir)/gl/lib -I$(top_srcdir)/gl/lib
++LDADD = $(top_builddir)/gl/lib/libgnulib.a $(LIBINTL)
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -2611 +2611,3 @@
+-AM_CFLAGS = $(WARN_CFLAGS)
++AM_CFLAGS = $(WARN_CFLAGS)
++AM_CPPFLAGS = -I$(top_builddir)/gl/lib -I$(top_srcdir)/gl/lib
++LDADD = $(top_builddir)/gl/lib/libgnulib.a $(LIBINTL)

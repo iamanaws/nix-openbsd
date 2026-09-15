@@ -10,9 +10,80 @@ import nixpkgs {
   inherit localSystem;
   overlays = [
     (final: prev: {
+      # Avoid libfido2's Linux udev hook in the bootstrap CVS fetcher.
+      fetchcvs = prev.fetchcvs.override {
+        openssh = final.openssh.override { withFIDO = false; };
+      };
+      ncurses = prev.ncurses.overrideAttrs (old: {
+        # Match the versioned --host so configure recognizes a native build.
+        configurePlatforms = [ ];
+        configureFlags = old.configureFlags ++ [
+          "--build=${final.stdenv.buildPlatform.config}${final.stdenv.cc.libc.version}"
+        ];
+      });
+      krb5 = prev.krb5.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [
+          ./krb5-openbsd-shared.patch
+          # Reuse Nixpkgs' FreeBSD fix: OpenBSD also lacks ENODATA.
+          (final.fetchpatch {
+            name = "fix-missing-ENODATA.patch";
+            url = "https://cgit.freebsd.org/ports/plain/security/krb5-122/files/patch-lib_krad_packet.c?id=0501f716c4aff7880fde56e42d641ef504593b7d";
+            extraPrefix = "";
+            hash = "sha256-l8ev+WrDKbTqwgBRYhfJGELkCCE8mJTqVHFBvvCPvgE=";
+          })
+        ];
+      });
+      mandoc = prev.mandoc.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [ ./mandoc-pledge.patch ];
+      });
+      libxcrypt = prev.libxcrypt.overrideAttrs (old: {
+        # Its shared link uses -z defs; Libtool otherwise strips OpenBSD's -lc.
+        makeFlags = (old.makeFlags or [ ]) ++ [ "libcrypt_la_LIBADD=-Wl,-lc" ];
+      });
+      python3Minimal = prev.python3Minimal.overrideAttrs (old: {
+        # The Clang wrapper links against the seed's LLVM unwind runtime.
+        allowedReferences = old.allowedReferences ++ [ (final.lib.getLib bootstrap.libunwind) ];
+        meta = old.meta // {
+          platforms = old.meta.platforms ++ [ "x86_64-openbsd" ];
+        };
+      });
+      diffutils = prev.diffutils.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [ ./diffutils-openbsd-pipes.patch ];
+      });
+      findutils = prev.findutils.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [ ./findutils-test-gnulib.patch ];
+        prePatch = (old.prePatch or "") + ''
+          (cd gl; patch -p1 < ${./gnulib-openbsd-fseeko.patch})
+        '';
+      });
+      gnutar = prev.gnutar.overrideAttrs (old: {
+        prePatch = (old.prePatch or "") + ''
+          (cd gnu; patch -p2 < ${./gnulib-openbsd-fseeko.patch})
+        '';
+      });
+      autoconf = prev.autoconf.overrideAttrs (old: {
+        checkInputs = (old.checkInputs or [ ]) ++ [ final.zlib ];
+        # make -n check tries to run tests/testsuite before generating it.
+        checkTarget = "check";
+        preCheck = (old.preCheck or "") + ''
+          # Test configure scripts also need an explicit platform without arch.
+          export configure_options="--build=${final.stdenv.buildPlatform.config}"
+        '';
+      });
+      pkg-config-unwrapped = prev.pkg-config-unwrapped.overrideAttrs (old: {
+        postPatch = (old.postPatch or "") + ''
+          # Apply Nixpkgs' three Requires.private test exclusions to TESTS too.
+          if [ ! -e check/check-requires-private ]; then
+            substituteInPlace check/Makefile.in \
+              --replace-fail "check-requires-private " "" \
+              --replace-fail "check-gtk " "" \
+              --replace-fail "check-missing " ""
+          fi
+        '';
+      });
       gzip = prev.gzip.overrideAttrs (old: {
         # Gzip's bundled gnulib predates OpenBSD's opaque FILE type.
-        patches = (old.patches or [ ]) ++ [ ./gzip-openbsd-fseeko.patch ];
+        patches = (old.patches or [ ]) ++ [ ./gnulib-openbsd-fseeko.patch ];
       });
       gnumake = prev.gnumake.overrideAttrs (old: {
         # make check silently skips the regression suite without Perl.
@@ -51,7 +122,21 @@ import nixpkgs {
             {
               # Keep fetchers and setup hooks on seed tools until their dependencies can rebuild.
               overrides = final: prev: {
-                inherit (bootstrap) bashNonInteractive coreutils perl;
+                inherit (bootstrap) bashNonInteractive coreutils;
+                # Rebuild diff before XZ: xzdiff's tests compare anonymous pipes.
+                diffutils = prev.diffutils.override { xz = bootstrap.xz; };
+                xz = prev.xz.overrideAttrs (old: {
+                  nativeCheckInputs = (old.nativeCheckInputs or [ ]) ++ [ final.diffutils ];
+                });
+                # Bootstrap Perl before libxcrypt, which itself needs Perl.
+                perl =
+                  let
+                    perl = prev.perl5.override {
+                      enableCrypt = false;
+                      self = perl;
+                    };
+                  in
+                  perl;
                 bashNative = prev.bashNonInteractive;
                 coreutilsNative = prev.coreutils;
                 fetchurl = final.stdenv.fetchurlBoot;
@@ -64,12 +149,23 @@ import nixpkgs {
           tools = bootstrap // {
             bashNonInteractive = prevStage.bashNative;
             coreutils = prevStage.coreutilsNative;
+            curl = prevStage.curlMinimal;
             inherit (prevStage)
+              diffutils
+              findutils
+              gnugrep
               gnused
+              gawk
+              gnutar
               gzip
+              bzip2
               file
               gnumake
               xz
+              patch
+              patchelf
+              expand-response-params
+              perl
               ;
           };
         in

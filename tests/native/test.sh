@@ -3,7 +3,7 @@ set -euo pipefail
 if [[ ${1:-} != --client ]]; then
     test "$EUID" -eq 0
     sysctl hw.ncpuonline
-    test "$(sysctl -n hw.ncpuonline)" -eq 4
+    test "$(sysctl -n hw.ncpuonline)" -eq "$NATIVE_BUILD_CORES"
     cd /
     "$0" --client root
     su -m bestie -c "$0 --client user"
@@ -29,6 +29,9 @@ args=(
 )
 # Exercise the compiler and linker overrides used while bootstrapping libc.
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A noLibc > "$work/no-libc.drv"
+# Bootstrap source fetchers must evaluate without Linux-only dependencies.
+nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A pkgs.netbsd.source.drvPath \
+    --eval --strict > /dev/null
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A fetched > "$work/fetched.drv"
 fetched=$(nix-store --realise "$(cat "$work/fetched.drv")" --keep-failed --option substituters '')
 test "$(cat "$fetched")" = "native fetchurl $nonce"

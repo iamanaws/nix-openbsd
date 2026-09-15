@@ -15,7 +15,7 @@ def main():
     work = Path(tempfile.mkdtemp(prefix="nixopenbsd-native."))
     (work / "runtime").mkdir()
     success = False
-    timeout = int(os.environ.get("OPENBSD_VM_TIMEOUT", "3600"))
+    timeout = int(os.environ.get("OPENBSD_VM_TIMEOUT", "5400"))
     with (work / "console.log").open("wb", buffering=0) as log:
         process = subprocess.Popen(
             [sys.argv[1]], stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT,

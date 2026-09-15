@@ -1,0 +1,17 @@
+OpenBSD's anonymous pipes have st_dev == st_ino == 0. Those values cannot
+identify a file: diff and cmp must read the pipes to compare their contents.
+
+--- a/lib/same-inode.h
++++ b/lib/same-inode.h
+@@ -66,6 +66,11 @@
+   /* stat() and fstat() set st_ino to 0 always.  */
+ #  define PSAME_INODE(a, b) 0
+ # endif
++#elif defined __OpenBSD__
++  /* Anonymous pipes do not have inode numbers.  */
++# define PSAME_INODE(a, b) ((a)->st_ino != 0 \
++                          && ! (((a)->st_dev ^ (b)->st_dev) \
++                                | ((a)->st_ino ^ (b)->st_ino)))
+ #else
+   /* POSIX.  */
+ # define PSAME_INODE(a, b) (! (((a)->st_dev ^ (b)->st_dev) \

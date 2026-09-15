@@ -1,0 +1,52 @@
+Replace the removed tmppath promise while restricting writes to temporary
+and explicitly requested output files.
+https://www.openbsd.org/errata78.html
+
+--- a/main.c
++++ b/main.c
+@@ -167,7 +167,7 @@
+ 		return mandocdb(argc, argv);
+ 
+ #if HAVE_PLEDGE
+-	if (pledge("stdio rpath wpath cpath tmppath tty proc exec", NULL) == -1) {
++	if (pledge("stdio rpath wpath cpath tty proc exec unveil", NULL) == -1) {
+ 		mandoc_msg(MANDOCERR_PLEDGE, 0, 0, "%s", strerror(errno));
+ 		return mandoc_msg_getrc();
+ 	}
+@@ -391,13 +391,26 @@
+ 	}
+ 
+ #if HAVE_PLEDGE
++	if (outst.use_pager &&
++	    (unveil("/", "rx") == -1 ||
++	     unveil("/tmp", "rwc") == -1 ||
++	     (conf.output.outfilename != NULL &&
++	      unveil(conf.output.outfilename, "rwc") == -1) ||
++	     (conf.output.tagfilename != NULL &&
++	      unveil(conf.output.tagfilename, "rwc") == -1) ||
++	     unveil(NULL, NULL) == -1)) {
++		mandoc_msg(MANDOCERR_PLEDGE, 0, 0,
++		    "unveil: %s", strerror(errno));
++		return mandoc_msg_getrc();
++	}
++
+ 	if (outst.use_pager == 0)
+ 		c = pledge("stdio rpath", NULL);
+ 	else if (conf.output.outfilename != NULL ||
+ 	    conf.output.tagfilename != NULL)
+ 		c = pledge("stdio rpath wpath cpath", NULL);
+ 	else
+-		c = pledge("stdio rpath tmppath tty proc exec", NULL);
++		c = pledge("stdio rpath wpath cpath tty proc exec", NULL);
+ 	if (c == -1) {
+ 		mandoc_msg(MANDOCERR_PLEDGE, 0, 0, "%s", strerror(errno));
+ 		return mandoc_msg_getrc();
+@@ -1351,7 +1364,7 @@
+ 		(void)setpgid(pager_pid, 0);
+ 		(void)tcsetpgrp(STDOUT_FILENO, pager_pid);
+ #if HAVE_PLEDGE
+-		if (pledge("stdio rpath tmppath tty proc", NULL) == -1) {
++		if (pledge("stdio rpath cpath tty proc", NULL) == -1) {
+ 			mandoc_msg(MANDOCERR_PLEDGE, 0, 0,
+ 			    "%s", strerror(errno));
+ 			exit(mandoc_msg_getrc());

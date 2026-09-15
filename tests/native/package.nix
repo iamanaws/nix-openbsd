@@ -33,6 +33,14 @@ let
       case "$CC" in /*) test -x "$CC";; *) command -v "$CC";; esac
       case ":$PATH:" in *:/bin:*|*:/usr/bin:*|*:/usr/local/bin:*) exit 1;; esac
       test "$BASH" = "${toolsStage.bashNative}/bin/bash"
+      test "$(command -v diff)" = "${toolsStage.diffutils}/bin/diff"
+      test "$(command -v find)" = "${toolsStage.findutils}/bin/find"
+      test "$(command -v grep)" = "${toolsStage.gnugrep}/bin/grep"
+      test "$(command -v awk)" = "${toolsStage.gawk}/bin/awk"
+      test "$(command -v tar)" = "${toolsStage.gnutar}/bin/tar"
+      test "$(command -v bzip2)" = "${lib.getBin toolsStage.bzip2}/bin/bzip2"
+      test "$(command -v patch)" = "${toolsStage.patch}/bin/patch"
+      test "$(command -v patchelf)" = "${toolsStage.patchelf}/bin/patchelf"
       test "$(command -v sed)" = "${toolsStage.gnused}/bin/sed"
       test "$(command -v gzip)" = "${toolsStage.gzip}/bin/gzip"
       test "$(command -v file)" = "${toolsStage.file}/bin/file"
@@ -51,13 +59,58 @@ let
       name = "stdenv-smoke-${nonce}";
       dontUnpack = true;
       dontConfigure = true;
+      nativeBuildInputs = [
+        toolsStage.perl
+        toolsStage.python3Minimal
+      ];
       buildPhase = ''
         runHook preBuild
         test "$(command -v make)" = "${toolsStage.gnumake}/bin/make"
+        "${toolsStage.ncurses}/bin/tic" -V
+        "${toolsStage.ncurses}/bin/infocmp" -A "${toolsStage.ncurses}/share/terminfo" xterm > /dev/null
+        printf '#define _XOPEN_SOURCE 700\n#include <sys/types.h>\n#include <sys/stat.h>\n' \
+          | "$CC" -std=c23 -Werror -x c -fsyntax-only -
+        for compare in diff cmp; do
+          if printf A | (printf B | "$compare" /dev/fd/5 - > /dev/null) 5<&0; then
+            echo "$compare treated distinct pipes as the same file" >&2
+            exit 1
+          else
+            test "$?" -eq 1
+          fi
+        done
+        perl -MConfig -MTime::HiRes -Mthreads -MCompress::Raw::Zlib -e '
+          die "wrong Perl platform" unless $Config{osname} eq "openbsd";
+          die "wrong Perl compiler" unless $Config{cc} eq "cc";
+          die "no subsecond stat" unless Time::HiRes::d_hires_stat();
+          die "threads failed" unless threads->create(sub { 42 })->join == 42;
+          die "zlib XS failed" unless Compress::Raw::Zlib::zlib_version();
+          print "native Perl and XS modules passed\n";
+        '
+        test "$(command -v python3)" = "${toolsStage.python3Minimal}/bin/python3"
+        python3 - <<'PY'
+        import hashlib
+        import pathlib
+        import subprocess
+        import sys
+        import tempfile
+
+        assert sys.platform.startswith("openbsd")
+        assert hashlib.sha256(b"native OpenBSD").hexdigest() == "eb259cb13a89b0eec25e9db3e2e7b8958fc3986106a574ab57a496dc1e0cd6f3"
+        with tempfile.TemporaryDirectory() as work:
+            path = pathlib.Path(work) / "data"
+            path.write_text("native OpenBSD")
+            assert path.read_text() == "native OpenBSD"
+        assert subprocess.check_output(["sh", "-c", "printf native"]) == b"native"
+        print("native Python runtime checks passed")
+        PY
         "$CC" -Wall -Wextra -Werror ${builtins.toFile "hello.c" ''
           #include <stdio.h>
           #include <locale.h>
+          #include <time.h>
           int main(void) {
+            volatile time_t zero = 0, before_epoch = -432000;
+            if (difftime(zero, before_epoch) != 432000) return 1;
+            if (difftime(before_epoch, zero) != -432000) return 1;
             locale_t de = newlocale(LC_ALL_MASK, "de_DE", (locale_t)0);
             locale_t fr = newlocale(LC_ALL_MASK, "fr_FR", (locale_t)0);
             if (!de || !fr || de != fr) return 1;
@@ -73,6 +126,23 @@ let
         xz -c hello > hello.xz
         xz -dc hello.xz > hello-xz-roundtrip
         cmp hello hello-xz-roundtrip
+        bzip2 -c hello > hello.bz2
+        bzip2 -dc hello.bz2 > hello-bzip2-roundtrip
+        cmp hello hello-bzip2-roundtrip
+        mkdir archive
+        tar -cf hello.tar hello
+        tar -xf hello.tar -C archive
+        cmp hello archive/hello
+        test "$(find archive -type f -print0 | xargs -0 basename)" = hello
+        printf 'before\n' > edit.txt
+        printf '%s\n' '--- edit.txt' '+++ edit.txt' '@@ -1 +1 @@' '-before' '+after' \
+          | patch -p0
+        grep -Fx after edit.txt
+        awk -i inplace '{ print toupper($0) }' edit.txt
+        test "$(cat edit.txt)" = AFTER
+        printf '%s\n' '-x c -fsyntax-only -DNATIVE_RESPONSE=42 -' > compile.rsp
+        printf '_Static_assert(NATIVE_RESPONSE == 42, "response file");\n' \
+          | "$CC" @compile.rsp
         cp hello hello-copy
         test "$(stat -c %s hello)" = "$(stat -c %s hello-copy)"
         sha256sum hello > hello.sha256

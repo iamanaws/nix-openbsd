@@ -1,0 +1,11 @@
+Fix difftime() with negative timestamps.
+Remove after the OpenBSD source includes:
+https://github.com/openbsd/src/commit/b018fffbd6c97a22e7af2d20e7fa5ba61fdbfb36
+
+--- a/lib/libc/time/difftime.c
++++ b/lib/libc/time/difftime.c
+@@ -5,2 +5,2 @@
+-#define HI(t) ((double)(t & 0xffffffff00000000LL))
+-#define LO(t) ((double)(t & 0x00000000ffffffffLL))
++#define HI(t) ((double)(time_t)(t & 0xffffffff00000000LL))
++#define LO(t) ((double)(time_t)(t & 0x00000000ffffffffLL))

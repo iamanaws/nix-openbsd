@@ -1,5 +1,6 @@
 { nixbsd }:
 let
+  cores = 6;
   host = nixbsd.inputs.nixpkgs.legacyPackages.x86_64-linux;
   system = nixbsd.nixosConfigurations.openbsd-base.extendModules {
     modules = [
@@ -12,18 +13,30 @@ let
         environment.systemPackages = [ guestTest ];
         nix.settings = {
           max-jobs = 1;
-          cores = 2;
+          inherit cores;
         };
         virtualisation.vmVariant.virtualisation = {
           memorySize = 8192;
-          cores = 4;
-          rootSize = "16g";
+          inherit cores;
+          # Leave room for LLVM sources, native outputs and large-file tests.
+          rootSize = "64g";
           qemu.networkingOptions = lib.mkForce [ ];
         };
       })
     ];
   };
   pkgs = system.pkgs;
+  libc = pkgs.openbsd.libc.override {
+    libcMinimal = pkgs.openbsd.libcMinimal.overrideAttrs (old: {
+      patches = (old.patches or [ ]) ++ [ ../../pkgs/openbsd/libc-difftime.patch ];
+      postInstall = (old.postInstall or "") + ''
+        # Nixpkgs rewrites this private guard to "true", which becomes active in C23.
+        substituteInPlace "$dev/include/sys/time.h" \
+          --replace-fail 'defined(_STANDALONE) || true' \
+            'defined(_STANDALONE) || defined (_LIBC)'
+      '';
+    });
+  };
   # Preserve output selection and compiler metadata when passing seed packages to the guest.
   package =
     p:
@@ -79,6 +92,17 @@ let
         host.gzip
         host.file
         host.coreutils
+        host.diffutils
+        host.findutils
+        host.gnugrep
+        host.pcre2
+        host.gawk
+        host.gnutar
+        host.bzip2
+        host.patch
+        host.ed
+        host.lzip
+        host.patchelf
         host.gmp
         host.autoconf
         host.automake
@@ -89,8 +113,27 @@ let
         host.pkg-config-unwrapped
         host.gnumake
         host.xz
+        host.perl
+        host.python3Minimal
+        host.curlMinimal
+        host.openssl
+        host.nghttp2
+        host.libssh2
+        host.libkrb5
+        host.byacc
+        host.c-aresMinimal
+        host.libev
+        host.libedit
+        host.ncurses
       ];
-      sourcePatches = host.bashNonInteractive.patches;
+      sourcePatches =
+        host.bashNonInteractive.patches
+        ++ host.libssh2.patches
+        ++ host.libev.patches
+        # Includes the ENODATA fix also needed by OpenBSD's native Kerberos.
+        ++ host.pkgsCross.x86_64-freebsd.krb5.patches;
+      # Perl's postPatch replaces several bundled CPAN distributions.
+      perlSources = host.perl.postPatch;
       # gnu-config embeds its two fetched scripts in unpackPhase rather than src.
       configScripts = host.gnu-config.unpackPhase;
       bootstrap = pkgs.lib.mapAttrs (_: package) {
@@ -112,12 +155,11 @@ let
           file
           curl
           expand-response-params
-          perl
           ;
         inherit (pkgs.llvmPackages) libcxx compiler-rt libunwind;
         clang = pkgs.llvmPackages.clang-unwrapped;
         bintools = pkgs.llvmPackages.bintools-unwrapped;
-        libc = pkgs.llvmPackages.clang.libc;
+        inherit libc;
       };
       make = make.outPath;
       bsdTools = map (p: p.outPath) [
@@ -131,6 +173,7 @@ let
     }
   );
   guestTest = pkgs.writeShellScriptBin "test-openbsd-native" ''
+    export NATIVE_BUILD_CORES=${toString cores}
     export NATIVE_ENVIRONMENT=${environment}
     export NATIVE_RECIPE=${./package.nix}
     export NATIVE_PACKAGES=${../../pkgs/openbsd}/native-packages.nix

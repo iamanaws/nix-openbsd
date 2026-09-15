@@ -1,0 +1,18 @@
+Use the compiler driver to include OpenBSD's per-DSO stack guard.
+
+--- a/config/shlib.conf
++++ b/config/shlib.conf
+@@ -189,10 +189,10 @@
+ 	PICFLAGS=-fpic
+ 	SHLIBVEXT='.so.$(LIBMAJOR).$(LIBMINOR)'
+ 	SHLIBEXT=.so
+-	LDCOMBINE='ld -Bshareable -z nodelete'
+-	SHLIB_RPATH_FLAGS='-R$(SHLIB_RDIRS)'
++	LDCOMBINE='$(CC) -shared -Wl,-z,nodelete'
++	SHLIB_RPATH_FLAGS='-Wl,-rpath,$(SHLIB_RDIRS)'
+ 	SHLIB_EXPFLAGS='$(SHLIB_RPATH_FLAGS) $(SHLIB_DIRS) $(SHLIB_EXPLIBS)'
+-	RPATH_FLAG=-R
++	RPATH_FLAG='-Wl,-rpath,'
+ 	PROG_RPATH_FLAGS='$(RPATH_FLAG)$(PROG_RPATH)'
+ 	CC_LINK_SHARED='$(CC) $(PROG_LIBPATH) $(PROG_RPATH_FLAGS) $(CFLAGS) $(LDFLAGS)'
+ 	CC_LINK_STATIC='$(CC) $(PROG_LIBPATH) $(CFLAGS) $(LDFLAGS)'
