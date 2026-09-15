@@ -14,6 +14,27 @@ import nixpkgs {
       fetchcvs = prev.fetchcvs.override {
         openssh = final.openssh.override { withFIDO = false; };
       };
+      netbsd = prev.netbsd.overrideScope (
+        _: old: {
+          # OpenBSD already provides fts.h and the FTS functions in libc.
+          install = old.install.override { fts = null; };
+        }
+      );
+      openbsd = prev.openbsd.overrideScope (
+        _: old: {
+          include = old.include.overrideAttrs (attrs: {
+            nativeBuildInputs = (attrs.nativeBuildInputs or [ ]) ++ [ final.perl ];
+            postPatch = (attrs.postPatch or "") + ''
+              # Keep the header generator out of the install-directory rewrite.
+              substituteInPlace "$BSDSRCDIR/lib/libcrypto/Makefile" \
+                --replace-fail '/usr/bin/perl' '${final.perl}/bin/perl'
+            '';
+            postInstall = (attrs.postInstall or "") + ''
+              test -s "$out/include/openssl/obj_mac.h"
+            '';
+          });
+        }
+      );
       ncurses = prev.ncurses.overrideAttrs (old: {
         # Match the versioned --host so configure recognizes a native build.
         configurePlatforms = [ ];
@@ -40,12 +61,32 @@ import nixpkgs {
         # Its shared link uses -z defs; Libtool otherwise strips OpenBSD's -lc.
         makeFlags = (old.makeFlags or [ ]) ++ [ "libcrypt_la_LIBADD=-Wl,-lc" ];
       });
+      libuv = prev.libuv.overrideAttrs (old: {
+        # Allow missing kqueue filenames and OpenBSD's no-network error in tests.
+        patches = (old.patches or [ ]) ++ [ ./libuv-openbsd-tests.patch ];
+      });
+      libxml2 = prev.libxml2.overrideAttrs (old: {
+        # OpenBSD does not provide iconv in libc.
+        propagatedBuildInputs = old.propagatedBuildInputs ++ [ final.libiconv ];
+      });
+      libarchive = prev.libarchive.overrideAttrs (old: {
+        postPatch = (old.postPatch or "") + ''
+          # Bare Windows locale names select ASCII on OpenBSD, not CP1251/CP932.
+          substituteInPlace libarchive/test/*.c \
+            --replace-quiet 'setlocale(LC_ALL, "Russian_Russia")' 'setlocale(LC_ALL, "Russian_Russia.1251")' \
+            --replace-quiet 'setlocale(LC_ALL, "Japanese_Japan")' 'setlocale(LC_ALL, "Japanese_Japan.932")'
+        '';
+      });
       python3Minimal = prev.python3Minimal.overrideAttrs (old: {
         # The Clang wrapper links against the seed's LLVM unwind runtime.
         allowedReferences = old.allowedReferences ++ [ (final.lib.getLib bootstrap.libunwind) ];
         meta = old.meta // {
           platforms = old.meta.platforms ++ [ "x86_64-openbsd" ];
         };
+      });
+      gnugrep = prev.gnugrep.overrideAttrs (old: {
+        # Keep regex and DFA case mappings consistent: https://debbugs.gnu.org/71471
+        patches = (old.patches or [ ]) ++ [ ./gnulib-openbsd-case-mapping.patch ];
       });
       diffutils = prev.diffutils.overrideAttrs (old: {
         patches = (old.patches or [ ]) ++ [ ./diffutils-openbsd-pipes.patch ];

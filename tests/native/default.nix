@@ -11,6 +11,11 @@ let
         # GENERIC only uses one CPU, even when QEMU exposes more.
         boot.kernel.package = lib.mkForce (pkgs.openbsd.sys.override { baseConfig = "GENERIC.MP"; });
         environment.systemPackages = [ guestTest ];
+        # OpenBSD libc loads UTF-8 character data from this fixed path.
+        system.activationScripts.openbsdLocales = ''
+          mkdir -p /usr/share/locale
+          ln -sfnT ${locales}/share/locale/UTF-8 /usr/share/locale/UTF-8
+        '';
         nix.settings = {
           max-jobs = 1;
           inherit cores;
@@ -26,6 +31,9 @@ let
     ];
   };
   pkgs = system.pkgs;
+  locales = host.callPackage ../../pkgs/openbsd/locales.nix {
+    inherit (pkgs.openbsd) source version;
+  };
   libc = pkgs.openbsd.libc.override {
     libcMinimal = pkgs.openbsd.libcMinimal.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [ ../../pkgs/openbsd/libc-difftime.patch ];
@@ -183,7 +191,7 @@ let
   vm = system.config.system.build.vm;
 in
 {
-  inherit vm environment;
+  inherit vm environment locales;
   test = host.writeShellScriptBin "test-openbsd-native" ''
     exec ${host.python3}/bin/python3 ${./run.py} ${vm}/bin/run-native-packages-vm
   '';

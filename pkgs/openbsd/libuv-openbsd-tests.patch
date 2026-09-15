@@ -1,0 +1,66 @@
+--- a/test/test-fs-event.c
++++ b/test/test-fs-event.c
+@@ -156,7 +156,7 @@ static void fs_event_cb_del_dir(uv_fs_event_t* handle,
+-  /* There is a bug in the FreeBSD kernel where the filename is sometimes NULL.
++  /* Kqueue backends may not recover the name of a deleted directory.
+    * Refs: https://github.com/libuv/libuv/issues/4606
+    */
+-  #if defined(__FreeBSD__)
++  #if defined(__FreeBSD__) || defined(__OpenBSD__)
+   ASSERT(filename == NULL || strcmp(filename, "watch_del_dir") == 0);
+   #else
+   ASSERT_OK(strcmp(filename, "watch_del_dir"));
+--- a/test/test-tcp-close-while-connecting.c
++++ b/test/test-tcp-close-while-connecting.c
+@@ -40,12 +40,13 @@ static void close_cb(uv_handle_t* handle) {
+ static void connect_cb(uv_connect_t* req, int status) {
+   /* The expected error is UV_ECANCELED but the test tries to connect to what
+    * is basically an arbitrary address in the expectation that no network path
+-   * exists, so UV_ENETUNREACH is an equally plausible outcome.
++   * exists, so UV_ENETUNREACH or UV_EADDRNOTAVAIL is equally plausible.
+    */
+-  ASSERT(status == UV_ECANCELED || status == UV_ENETUNREACH);
++  ASSERT(status == UV_ECANCELED || status == UV_ENETUNREACH ||
++         status == UV_EADDRNOTAVAIL);
+   uv_timer_stop(&timer2_handle);
+   connect_cb_called++;
+-  if (status == UV_ENETUNREACH)
++  if (status == UV_ENETUNREACH || status == UV_EADDRNOTAVAIL)
+     netunreach_errors++;
+ }
+ 
+@@ -75,8 +76,8 @@ TEST_IMPL(tcp_close_while_connecting) {
+                      &tcp_handle,
+                      (const struct sockaddr*) &addr,
+                      connect_cb);
+-  if (r == UV_ENETUNREACH)
+-    RETURN_SKIP("Network unreachable.");
++  if (r == UV_ENETUNREACH || r == UV_EADDRNOTAVAIL)
++    RETURN_SKIP("Network unavailable.");
+   ASSERT_OK(r);
+   ASSERT_OK(uv_timer_init(loop, &timer1_handle));
+   ASSERT_OK(uv_timer_start(&timer1_handle, timer1_cb, 1, 0));
+--- a/test/test-udp-multicast-interface.c
++++ b/test/test-udp-multicast-interface.c
+@@ -44,7 +44,8 @@ static void close_cb(uv_handle_t* handle) {
+ 
+ static void sv_send_cb(uv_udp_send_t* req, int status) {
+   ASSERT_NOT_NULL(req);
+-  ASSERT(status == 0 || status == UV_ENETUNREACH || status == UV_EPERM);
++  ASSERT(status == 0 || status == UV_ENETUNREACH ||
++         status == UV_EADDRNOTAVAIL || status == UV_EPERM);
+   CHECK_HANDLE(req->handle);
+ 
+   sv_send_cb_called++;
+--- a/test/test-udp-multicast-ttl.c
++++ b/test/test-udp-multicast-ttl.c
+@@ -44,7 +44,8 @@ static void close_cb(uv_handle_t* handle) {
+ 
+ static void sv_send_cb(uv_udp_send_t* req, int status) {
+   ASSERT_NOT_NULL(req);
+-  ASSERT(status == 0 || status == UV_ENETUNREACH || status == UV_EPERM);
++  ASSERT(status == 0 || status == UV_ENETUNREACH ||
++         status == UV_EADDRNOTAVAIL || status == UV_EPERM);
+   CHECK_HANDLE(req->handle);
+ 
+   sv_send_cb_called++;

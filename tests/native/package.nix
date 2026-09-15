@@ -89,12 +89,15 @@ let
         test "$(command -v python3)" = "${toolsStage.python3Minimal}/bin/python3"
         python3 - <<'PY'
         import hashlib
+        import locale
         import pathlib
         import subprocess
         import sys
         import tempfile
 
         assert sys.platform.startswith("openbsd")
+        assert locale.setlocale(locale.LC_CTYPE, "C.UTF-8") == "C.UTF-8"
+        assert locale.setlocale(locale.LC_CTYPE, "en_US.UTF-8") == "en_US.UTF-8"
         assert hashlib.sha256(b"native OpenBSD").hexdigest() == "eb259cb13a89b0eec25e9db3e2e7b8958fc3986106a574ab57a496dc1e0cd6f3"
         with tempfile.TemporaryDirectory() as work:
             path = pathlib.Path(work) / "data"
@@ -107,6 +110,8 @@ let
           #include <stdio.h>
           #include <locale.h>
           #include <time.h>
+          #include <wchar.h>
+          #include <wctype.h>
           int main(void) {
             volatile time_t zero = 0, before_epoch = -432000;
             if (difftime(zero, before_epoch) != 432000) return 1;
@@ -116,6 +121,9 @@ let
             if (!de || !fr || de != fr) return 1;
             freelocale(de);
             freelocale(fr);
+            if (!setlocale(LC_CTYPE, "C.UTF-8")) return 1;
+            if (towupper(0x00e9) != 0x00c9) return 1;
+            if (wcwidth(0x754c) != 2 || wcwidth(0x0301) != 0) return 1;
             return puts("native stdenv passed") < 0;
           }
         ''} -Wl,-rpath,"$out/unused" -o hello

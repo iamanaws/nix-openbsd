@@ -30,6 +30,7 @@ Root and `bestie` request builds through the daemon. The test checks:
 - Archive extraction, patching and awk's in-place editing extension.
 - Native Perl threads, subsecond timestamps and zlib extensions.
 - Native Python hashing, file I/O and subprocesses.
+- UTF-8 locales, character case conversion and display widths.
 - Native ncurses tools and the generated terminfo database.
 - Libagentx shared-library and static-archive consumers, including store
   references and RPATH.
@@ -40,8 +41,7 @@ Root and `bestie` request builds through the daemon. The test checks:
 The compiler, linker, libc and C++ runtime still come from the seed.
 Bootstrap Perl has crypt disabled to break its dependency cycle with libxcrypt.
 Texinfo loads native helper extensions but uses its Perl parser.
-The image lacks UTF-8 locale data. The test does not cover HTTP/TLS fetching
-or AgentX exchanges with an SNMP daemon.
+The test does not cover HTTP/TLS fetching or AgentX exchanges with an SNMP daemon.
 
 Nixpkgs disables coreutils' full check phase on BSD. GNU make skips one test
 that requires `/bin/echo`. The remaining package fixes live in

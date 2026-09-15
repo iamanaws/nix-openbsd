@@ -1,0 +1,15 @@
+--- a/lib/c32to-impl.h
++++ b/lib/c32to-impl.h
+@@ -56,9 +56,10 @@ FUNC (wint_t wc)
+ #elif HAVE_WORKING_MBRTOC32 && HAVE_WORKING_C32RTOMB /* glibc, Android */
+   /* mbrtoc32() is essentially defined by the system libc.  */
+ 
+-# if _GL_WCHAR_T_IS_UCS4
++# if _GL_WCHAR_T_IS_UCS4 || defined __OpenBSD__
+   /* The char32_t encoding of a multibyte character is known to be the same as
+-     the wchar_t encoding.  */
++     the wchar_t encoding.  OpenBSD's mbrtoc32 delegates to mbrtowc, but its
++     headers do not define __STDC_ISO_10646__.  */
+   return WCHAR_FUNC (wc);
+ # else
+   /* The char32_t encoding of a multibyte character is known to be UCS-4,

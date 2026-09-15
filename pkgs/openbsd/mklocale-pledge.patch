@@ -1,0 +1,15 @@
+--- a/yacc.y
++++ b/yacc.y
+@@ -253,10 +253,12 @@ main(int ac, char *av[])
+     extern char *optarg;
+     extern int optind;
+ 
++#ifdef __OpenBSD__
+     if (pledge("stdio rpath wpath cpath", NULL) == -1) {
+ 	perror("pledge");
+ 	exit(1);
+     }
++#endif
+ 
+     while ((x = getopt(ac, av, "do:")) != -1) {
+ 	switch(x) {
