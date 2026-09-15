@@ -133,11 +133,38 @@ let
         host.libev
         host.libedit
         host.ncurses
+        host.cmakeMinimal
+        host.ninja
+        host.re2c
+        host.libuv
+        host.libarchive
+        host.libxml2
+        host.expat
+        host.zstd
+        host.rsync
+        host.rhash
+        host.lz4
+        host.lzo
+        host.xxhash
+        host.popt
+        host.groff
+        host.pax
+        host.mandoc
+        host.lndir
+        host.which
       ];
+      # compiler-rt's src is filtered with a native runCommand, not a fetcher.
+      llvmSource = (host.llvmPackages.callPackage ({ monorepoSrc }: monorepoSrc) { }).outPath;
+      bsdSources = [ host.netbsd.source.outPath pkgs.openbsd.source.outPath ];
       sourcePatches =
         host.bashNonInteractive.patches
         ++ host.libssh2.patches
         ++ host.libev.patches
+        ++ host.lz4.patches
+        ++ host.rsync.patches
+        ++ host.openbsd.libcMinimal.patches
+        ++ host.openbsd.make-rules.patches
+        ++ host.openbsd.csu.patches
         # Includes the ENODATA fix also needed by OpenBSD's native Kerberos.
         ++ host.pkgsCross.x86_64-freebsd.krb5.patches;
       # Perl's postPatch replaces several bundled CPAN distributions.
@@ -183,7 +210,7 @@ let
   guestTest = pkgs.writeShellScriptBin "test-openbsd-native" ''
     export NATIVE_BUILD_CORES=${toString cores}
     export NATIVE_ENVIRONMENT=${environment}
-    export NATIVE_RECIPE=${./package.nix}
+    export NATIVE_RECIPE=${./.}/package.nix
     export NATIVE_PACKAGES=${../../pkgs/openbsd}/native-packages.nix
     export NATIVE_CONSUMER=${./consumer.c}
     ${builtins.readFile ./test.sh}

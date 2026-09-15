@@ -24,7 +24,8 @@ let
   ) seed;
   pkgs = import packageSetSource { inherit nixpkgs bootstrap; };
   inherit (pkgs) stdenv;
-  toolsStage = stdenv.__bootPackages;
+  # Tools are rebuilt first, then used to rebuild libc and compiler builtins.
+  toolsStage = stdenv.__bootPackages.stdenv.__bootPackages;
   fetchText = "native fetchurl ${nonce}\n";
   common = {
     strictDeps = true;
@@ -227,6 +228,10 @@ in
     sha256 = builtins.hashString "sha256" fetchText;
   };
   noLibc = pkgs.mkStdenvNoLibs stdenv;
+  libraries = import ./libraries.nix {
+    inherit stdenv lib nonce;
+    compiler-rt = stdenv.__bootPackages.compilerRtNative;
+  };
   consumer = stdenv.mkDerivation (
     common
     // {

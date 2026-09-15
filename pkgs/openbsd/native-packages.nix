@@ -6,6 +6,33 @@
   config ? { },
   overlays ? [ ],
 }:
+let
+  toolsFor =
+    stage:
+    bootstrap
+    // {
+      bashNonInteractive = stage.bashNative;
+      coreutils = stage.coreutilsNative;
+      curl = stage.curlMinimal;
+      inherit (stage)
+        diffutils
+        findutils
+        gnugrep
+        gnused
+        gawk
+        gnutar
+        gzip
+        bzip2
+        file
+        gnumake
+        xz
+        patch
+        patchelf
+        expand-response-params
+        perl
+        ;
+    };
+in
 import nixpkgs {
   inherit localSystem;
   overlays = [
@@ -24,8 +51,8 @@ import nixpkgs {
         _: old: {
           include = old.include.overrideAttrs (attrs: {
             nativeBuildInputs = (attrs.nativeBuildInputs or [ ]) ++ [ final.perl ];
+            # Keep the header generator out of the install-directory rewrite.
             postPatch = (attrs.postPatch or "") + ''
-              # Keep the header generator out of the install-directory rewrite.
               substituteInPlace "$BSDSRCDIR/lib/libcrypto/Makefile" \
                 --replace-fail '/usr/bin/perl' '${final.perl}/bin/perl'
             '';
@@ -187,28 +214,7 @@ import nixpkgs {
       (
         prevStage:
         let
-          tools = bootstrap // {
-            bashNonInteractive = prevStage.bashNative;
-            coreutils = prevStage.coreutilsNative;
-            curl = prevStage.curlMinimal;
-            inherit (prevStage)
-              diffutils
-              findutils
-              gnugrep
-              gnused
-              gawk
-              gnutar
-              gzip
-              bzip2
-              file
-              gnumake
-              xz
-              patch
-              patchelf
-              expand-response-params
-              perl
-              ;
-          };
+          tools = toolsFor prevStage;
         in
         {
           inherit config overlays;
@@ -224,6 +230,61 @@ import nixpkgs {
             }).override
               {
                 name = "stdenv-openbsd-native-tools";
+                overrides = final: prev: {
+                  inherit (tools) bashNonInteractive coreutils perl;
+                  fetchurl = final.stdenv.fetchurlBoot;
+                  compilerRtBootstrap = import ./native-compiler-rt.nix { pkgs = final; };
+                  compilerRtNative = import ./native-compiler-rt.nix {
+                    pkgs = final;
+                    libc = final.openbsd.libc;
+                  };
+                  rsync = prev.rsync.override { python3 = final.python3Minimal; };
+                  stdenvNoLibc = prev.stdenvNoLibc.override {
+                    cc = prev.stdenvNoLibc.cc.override {
+                      # libc and libexecinfo both link against the compiler builtins.
+                      extraPackages = [ final.compilerRtBootstrap ];
+                    };
+                  };
+                  openbsd = prev.openbsd.overrideScope (
+                    _: old: {
+                      libcMinimal = old.libcMinimal.overrideAttrs (attrs: {
+                        patches = (attrs.patches or [ ]) ++ [ ./libc-difftime.patch ];
+                        # Nixpkgs rewrites this private guard to "true", which is active in C23.
+                        postInstall = (attrs.postInstall or "") + ''
+                          substituteInPlace "$dev/include/sys/time.h" \
+                            --replace-fail 'defined(_STANDALONE) || true' \
+                              'defined(_STANDALONE) || defined (_LIBC)'
+                        '';
+                      });
+                    }
+                  );
+                };
+              };
+        }
+      )
+      (
+        prevStage:
+        let
+          tools = toolsFor prevStage.stdenv.__bootPackages;
+          libraries = {
+            libc = prevStage.openbsd.libc;
+            compiler-rt = prevStage.compilerRtNative;
+          };
+        in
+        {
+          inherit config overlays;
+          stdenv =
+            (import ./native-stdenv.nix {
+              inherit
+                nixpkgs
+                lib
+                localSystem
+                config
+                ;
+              bootstrap = tools // libraries;
+            }).override
+              {
+                name = "stdenv-openbsd-native-libraries";
                 overrides = final: _: {
                   inherit (tools) bashNonInteractive coreutils perl;
                   fetchurl = final.stdenv.fetchurlBoot;

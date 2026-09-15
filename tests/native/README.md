@@ -9,8 +9,8 @@ nix build --impure --max-jobs 1 --cores 6 --out-link result-native-test --expr \
 ```
 
 The host supplies cross-built seed tools and sources to an OpenBSD 7.9 VM.
-The VM rebuilds the build tools, curl, Perl and minimal Python from Nixpkgs, then uses
-them to build test packages without substitutes.
+The VM rebuilds the build tools, curl, Perl, minimal Python, libc and compiler
+builtins from Nixpkgs, then uses them to build test packages without substitutes.
 The first run may need to cross-build LLVM and Clang.
 
 The VM has six vCPUs, 8 GiB of RAM and a 64 GiB root filesystem. Host and
@@ -27,6 +27,7 @@ Root and `bestie` request builds through the daemon. The test checks:
 
 - Non-root `nixbld` builders and use of the rebuilt tools.
 - C/C++ compilation, response files, compression and coreutils operations.
+- Dynamic and static PIE libc consumers, compiler builtins and C++ thread-local storage.
 - Archive extraction, patching and awk's in-place editing extension.
 - Native Perl threads, subsecond timestamps and zlib extensions.
 - Native Python hashing, file I/O and subprocesses.
@@ -38,7 +39,9 @@ Root and `bestie` request builds through the daemon. The test checks:
 
 ## Limitations
 
-The compiler, linker, libc and C++ runtime still come from the seed.
+The compiler, linker, libc++ and libunwind still come from the seed.
+Only compiler builtins are rebuilt; sanitizers and the other compiler-rt libraries
+are not covered. Non-PIE linking still needs a Clang/LLD flag compatibility fix.
 Bootstrap Perl has crypt disabled to break its dependency cycle with libxcrypt.
 Texinfo loads native helper extensions but uses its Perl parser.
 The test does not cover HTTP/TLS fetching or AgentX exchanges with an SNMP daemon.

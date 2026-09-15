@@ -32,6 +32,12 @@ nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A noLibc > "$work/no-libc.drv"
 # Bootstrap source fetchers must evaluate without Linux-only dependencies.
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A pkgs.netbsd.source.drvPath \
     --eval --strict > /dev/null
+nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A libraries > "$work/libraries.drv"
+libraries=$(nix-store --realise "$(cat "$work/libraries.drv")" --keep-failed --option substituters '')
+for binary in dynamic static builtins tls; do
+    "$libraries/bin/$binary"
+done
+nix-store --verify-path "$libraries"
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A fetched > "$work/fetched.drv"
 fetched=$(nix-store --realise "$(cat "$work/fetched.drv")" --keep-failed --option substituters '')
 test "$(cat "$fetched")" = "native fetchurl $nonce"
@@ -44,7 +50,7 @@ drv=$(cat "$work/consumer.drv")
 consumer=$(nix-store --realise "$drv" --keep-failed --option substituters '')
 library=$(nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A library.outPath --eval --strict --json \
     | tr -d '"')
-for output in "$smoke" "$library" "$consumer"; do
+for output in "$smoke" "$library" "$consumer" "$libraries"; do
     uid=$(cat "$output/build-uid")
     test "$uid" -ne 0
     test "$(id -gn "$uid")" = nixbld
