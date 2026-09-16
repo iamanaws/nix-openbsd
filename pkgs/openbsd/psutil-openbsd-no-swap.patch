@@ -1,0 +1,20 @@
+SWAP_NSWAP returns zero when no swap devices are configured, not on error.
+https://man.openbsd.org/swapctl.2
+
+--- a/psutil/arch/openbsd/mem.c
++++ b/psutil/arch/openbsd/mem.c
+@@ -68,10 +68,13 @@
+     struct swapent *swdev;
+     int nswap, i;
+ 
+-    if ((nswap = swapctl(SWAP_NSWAP, 0, 0)) == 0) {
++    if ((nswap = swapctl(SWAP_NSWAP, 0, 0)) == -1) {
+         psutil_oserror();
+         return NULL;
+     }
++    if (nswap == 0) {
++        return Py_BuildValue("(LLLII)", 0LL, 0LL, 0LL, 0U, 0U);
++    }
+ 
+     if ((swdev = calloc(nswap, sizeof(*swdev))) == NULL) {
+         PyErr_NoMemory();

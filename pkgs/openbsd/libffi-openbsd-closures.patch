@@ -1,0 +1,21 @@
+OpenBSD forbids RWX mappings by default. Use separate writable and executable
+mappings, as in https://github.com/openbsd/ports/blob/master/devel/libffi/patches/patch-src_closures_c.
+
+--- a/src/closures.c
++++ b/src/closures.c
+@@ -906,6 +906,7 @@
+       return ptr;
+     }
+ 
++#ifndef __OpenBSD__
+   /* -1 != execfd hints that we already decided to use dlmmap_locked
+      last time.  */
+   if (execfd == -1 && is_mprotect_enabled ())
+@@ -936,6 +937,7 @@
+ 	 MREMAP_DUP and prot at this point.  */
+     }
+ 
++#endif
+   pthread_mutex_lock (&open_temp_exec_file_mutex);
+   ptr = dlmmap_locked (start, length, prot, flags, offset);
+   pthread_mutex_unlock (&open_temp_exec_file_mutex);

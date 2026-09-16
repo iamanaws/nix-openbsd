@@ -49,6 +49,9 @@ import nixpkgs {
       );
       openbsd = prev.openbsd.overrideScope (
         _: old: {
+          librthread = old.librthread.overrideAttrs (attrs: {
+            patches = (attrs.patches or [ ]) ++ [ ./librthread-private-semaphores.patch ];
+          });
           include = old.include.overrideAttrs (attrs: {
             nativeBuildInputs = (attrs.nativeBuildInputs or [ ]) ++ [ final.perl ];
             # Keep the header generator out of the install-directory rewrite.
@@ -102,6 +105,39 @@ import nixpkgs {
           substituteInPlace libarchive/test/*.c \
             --replace-quiet 'setlocale(LC_ALL, "Russian_Russia")' 'setlocale(LC_ALL, "Russian_Russia.1251")' \
             --replace-quiet 'setlocale(LC_ALL, "Japanese_Japan")' 'setlocale(LC_ALL, "Japanese_Japan.932")'
+        '';
+      });
+      libffi = prev.libffi.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [ ./libffi-openbsd-closures.patch ];
+      });
+      tcl = prev.tcl.override {
+        extraPatch = ''
+          # LLD needs unversioned shared-library names; keep Tcl's stub names consistent.
+          substituteInPlace unix/configure \
+            --replace-fail "SHARED_LIB_SUFFIX='\''${TCL_TRIM_DOTS}.so\''${SHLIB_VERSION}'" \
+              "SHARED_LIB_SUFFIX='\''${VERSION}.so'" \
+            --replace-fail 'TCL_LIB_VERSIONS_OK=nodots' 'TCL_LIB_VERSIONS_OK=ok' \
+            --replace-fail "UNSHARED_LIB_SUFFIX='\''${TCL_TRIM_DOTS}.a'" \
+              "UNSHARED_LIB_SUFFIX='\''${VERSION}.a'"
+        '';
+      };
+      expect = prev.expect.overrideAttrs (old: {
+        postPatch = (old.postPatch or "") + ''
+          # OpenBSD declares ioctl in sys/ioctl.h and openpty in util.h.
+          substituteInPlace exp_win.c \
+            --replace-fail 'defined(__APPLE__) ||' 'defined(__APPLE__) || defined(__OpenBSD__) ||'
+          substituteInPlace pty_termios.c \
+            --replace-fail '#if defined(__APPLE__)' '#if defined(__APPLE__) || defined(__OpenBSD__)'
+          # As with Tcl, LLD needs an unversioned name for -lexpect.
+          substituteInPlace tclconfig/tcl.m4 \
+            --replace-fail '.so.''${SHLIB_VERSION}' '.so'
+        '';
+      });
+      dejagnu = prev.dejagnu.overrideAttrs (old: {
+        postConfigure = (old.postConfigure or "") + ''
+          # The native environment has uname, but no base-system arch command.
+          substituteInPlace ../config.guess \
+            --replace-fail "arch | sed 's/OpenBSD.//'" 'uname -m'
         '';
       });
       python3Minimal = prev.python3Minimal.overrideAttrs (old: {

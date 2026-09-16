@@ -12,6 +12,7 @@ The host supplies cross-built seed tools and sources to an OpenBSD 7.9 VM.
 The VM rebuilds the build tools, curl, Perl, minimal Python, libc, compiler
 builtins, libunwind and libc++ from Nixpkgs, then builds test packages without substitutes.
 The first run may need to cross-build LLVM and Clang.
+See the [stdenv notes](../../notes/native-stdenv.md) for current results and remaining work.
 
 The VM has six vCPUs, 8 GiB of RAM and a 64 GiB root filesystem. Host and
 guest builds run one package at a time, with six cores per build.
@@ -28,11 +29,12 @@ Root and `bestie` request builds through the daemon. The test checks:
 - Non-root `nixbld` builders and use of the rebuilt tools.
 - C/C++ compilation, response files, compression and coreutils operations.
 - Dynamic and static PIE libc consumers, compiler builtins and C++ thread-local storage.
+- Private and shared semaphores, timed waits and thread cancellation.
 - Libunwind's upstream tests and C++ exception cleanup across a shared library.
 - Dynamic and static PIE C++ consumers using the rebuilt runtimes.
 - Archive extraction, patching and awk's in-place editing extension.
 - Native Perl threads, subsecond timestamps and zlib extensions.
-- Native Python hashing, file I/O and subprocesses.
+- Native Python hashing, file I/O, subprocesses, compression, ctypes callbacks and psutil.
 - UTF-8 locales, character case conversion and display widths.
 - Native ncurses tools and the generated terminfo database.
 - Libagentx shared-library and static-archive consumers, including store
@@ -42,7 +44,8 @@ Root and `bestie` request builds through the daemon. The test checks:
 ## Limitations
 
 The compiler and linker still come from the seed.
-Libc++ has consumer tests here, not its full upstream test suite.
+The normal run checks C++ consumers. Inside the VM, `test-openbsd-native --cxx`
+runs the full libc++/libc++abi suites; some OpenBSD failures remain under investigation.
 Only compiler builtins are rebuilt; sanitizers and the other compiler-rt libraries
 are not covered. Non-PIE linking still needs a Clang/LLD flag compatibility fix.
 Bootstrap Perl has crypt disabled to break its dependency cycle with libxcrypt.

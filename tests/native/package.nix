@@ -129,6 +129,10 @@ let
           }
         ''} -Wl,-rpath,"$out/unused" -o hello
         ./hello
+        # Binary-wrapper builds do not get library paths from dependency hooks.
+        printf 'int main(void) { return 0; }\n' \
+          | env -i PATH="$PATH" "$CC" -x c - -o standalone-cc
+        ./standalone-cc
         gzip -c hello > hello.gz
         gzip -dc hello.gz > hello-roundtrip
         cmp hello hello-roundtrip
@@ -215,9 +219,13 @@ let
       '';
     }
   );
+  testPython = import (builtins.dirOf packageSetSource + "/native-test-python.nix") {
+    pkgs = stdenv.__bootPackages;
+  };
 in
 {
   inherit
+    testPython
     stdenv
     smoke
     library
@@ -228,6 +236,11 @@ in
     sha256 = builtins.hashString "sha256" fetchText;
   };
   noLibc = pkgs.mkStdenvNoLibs stdenv;
+  cxxChecks = import ./cxx-checks.nix {
+    libcxx = stdenv.cc.libcxx;
+    llvmSrc = pkgs.llvmPackages.llvm.monorepoSrc;
+    python3 = testPython;
+  };
   libraries = import ./libraries.nix {
     inherit stdenv lib nonce;
     compiler-rt = stdenv.__bootPackages.compilerRtNative;

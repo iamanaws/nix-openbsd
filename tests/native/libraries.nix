@@ -19,6 +19,8 @@ stdenv.mkDerivation {
       if test "$mode" = static; then flags=(-static -pie); fi
       "$CC" -Wall -Wextra -Werror "''${flags[@]}" ${./libc.c} -o "$mode" -pthread -lm
       ./"$mode"
+      "$CC" -Wall -Wextra -Werror "''${flags[@]}" ${./semaphore.c} -o "semaphore-$mode" -pthread
+      ./"semaphore-$mode"
     done
     LD_TRACE_LOADED_OBJECTS=1 ./dynamic > loaded-libraries
     cat loaded-libraries
@@ -68,7 +70,7 @@ stdenv.mkDerivation {
   installPhase = ''
     runHook preInstall
     mkdir -p "$out/bin"
-    cp dynamic static builtins tls cxx-dynamic cxx-static "$out/bin/"
+    cp dynamic static semaphore-dynamic semaphore-static builtins tls cxx-dynamic cxx-static "$out/bin/"
     cp loaded-libraries cxx-loaded-libraries link.map tls.map "$out/"
     echo "$EUID" > "$out/build-uid"
     runHook postInstall

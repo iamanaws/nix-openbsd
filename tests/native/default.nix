@@ -35,6 +35,9 @@ let
     inherit (pkgs.openbsd) source version;
   };
   libc = pkgs.openbsd.libc.override {
+    librthread = pkgs.openbsd.librthread.overrideAttrs (old: {
+      patches = (old.patches or [ ]) ++ [ ../../pkgs/openbsd/librthread-private-semaphores.patch ];
+    });
     libcMinimal = pkgs.openbsd.libcMinimal.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [ ../../pkgs/openbsd/libc-difftime.patch ];
       postInstall = (old.postInstall or "") + ''
@@ -123,6 +126,30 @@ let
         host.xz
         host.perl
         host.python3Minimal
+        host.libffi
+        host.tcl
+        host.expect
+        host.dejagnu
+        host.python3Packages.build
+        host.python3Packages.calver
+        host.python3Packages.editables
+        host.python3Packages.flit-core
+        host.python3Packages.hatchling
+        host.python3Packages.iniconfig
+        host.python3Packages.installer
+        host.python3Packages.packaging
+        host.python3Packages.pathspec
+        host.python3Packages.pluggy
+        host.python3Packages.psutil
+        host.python3Packages.pygments
+        host.python3Packages.pyproject-hooks
+        host.python3Packages.pytest
+        host.python3Packages.setuptools
+        host.python3Packages.setuptools-scm
+        host.python3Packages.tomli
+        host.python3Packages.trove-classifiers
+        host.python3Packages.vcs-versioning
+        host.python3Packages.wheel
         host.curlMinimal
         host.openssl
         host.nghttp2
@@ -152,7 +179,7 @@ let
         host.mandoc
         host.lndir
         host.which
-      ];
+      ] ++ map (src: src.outPath) host.tzdata.srcs;
       # compiler-rt's src is filtered with a native runCommand, not a fetcher.
       llvmSource = (host.llvmPackages.callPackage ({ monorepoSrc }: monorepoSrc) { }).outPath;
       bsdSources = [ host.netbsd.source.outPath pkgs.openbsd.source.outPath ];
@@ -162,6 +189,7 @@ let
         ++ host.libev.patches
         ++ host.lz4.patches
         ++ host.rsync.patches
+        ++ host.expect.patches
         ++ host.openbsd.libcMinimal.patches
         ++ host.openbsd.make-rules.patches
         ++ host.openbsd.csu.patches

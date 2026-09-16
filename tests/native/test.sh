@@ -1,5 +1,16 @@
 set -euo pipefail
 
+if [[ ${1:-} == --cxx ]]; then
+    export NIX_REMOTE=daemon
+    exec nix-build "$NATIVE_RECIPE" -A cxxChecks \
+        --argstr environment "$NATIVE_ENVIRONMENT" \
+        --argstr packageSetSource "$NATIVE_PACKAGES" \
+        --argstr consumerSource "$NATIVE_CONSUMER" \
+        --argstr nonce upstream-cxx \
+        --no-out-link --keep-failed --max-jobs 1 --cores "$NATIVE_BUILD_CORES" \
+        --option substituters ''
+fi
+
 if [[ ${1:-} != --client ]]; then
     test "$EUID" -eq 0
     sysctl hw.ncpuonline
@@ -41,6 +52,23 @@ nix-store --verify-path "$libraries"
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A fetched > "$work/fetched.drv"
 fetched=$(nix-store --realise "$(cat "$work/fetched.drv")" --keep-failed --option substituters '')
 test "$(cat "$fetched")" = "native fetchurl $nonce"
+nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A testPython > "$work/python.drv"
+test_python=$(nix-store --realise "$(cat "$work/python.drv")" --keep-failed --option substituters '')
+"$test_python/bin/python3" -B <<'PY'
+import ctypes
+import os
+import psutil
+import zlib
+
+callback = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int)(lambda value: value + 1)
+assert callback(41) == 42
+assert zlib.decompress(zlib.compress(b"native Python")) == b"native Python"
+assert psutil.Process().pid == os.getpid()
+swap = psutil.swap_memory()
+assert 0 <= swap.used <= swap.total
+print("native test Python checks passed")
+PY
+
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A smoke > "$work/smoke.drv"
 smoke=$(nix-store --realise "$(cat "$work/smoke.drv")" --keep-failed --option substituters '')
 "$smoke/bin/hello"

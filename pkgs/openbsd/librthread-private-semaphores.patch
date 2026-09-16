@@ -1,0 +1,90 @@
+Unnamed semaphores must not wake waiters in another process at the same
+virtual address after fork. Keep shared futexes for named semaphores.
+
+--- a/lib/librthread/synch.h
++++ b/lib/librthread/synch.h
+@@ -21,13 +21,13 @@
+ #include <sys/futex.h>
+ 
+ static inline int
+-_wake(volatile uint32_t *p, int n)
++_wake(volatile uint32_t *p, int n, int flags)
+ {
+-	return futex(p, FUTEX_WAKE, n, NULL, NULL);
++	return futex(p, FUTEX_WAKE | flags, n, NULL, NULL);
+ }
+ 
+ static inline int
+-_twait(volatile uint32_t *p, int val, clockid_t clockid, const struct timespec *abs)
++_twait(volatile uint32_t *p, int val, clockid_t clockid, const struct timespec *abs, int flags)
+ {
+ 	struct timespec now, rel;
+ 	int saved_errno = errno;
+@@ -35,7 +35,7 @@
+ 	int error;
+ 
+ 	if (abs == NULL) {
+-		error = futex(p, FUTEX_WAIT, val, NULL, NULL);
++		error = futex(p, FUTEX_WAIT | flags, val, NULL, NULL);
+ 		if (error == -1) {
+ 			error = errno;
+ 			errno = saved_errno;
+@@ -51,7 +51,7 @@
+ 		return ETIMEDOUT;
+ 	timespecsub(abs, &now, &rel);
+ 
+-	error = futex(p, FUTEX_WAIT, val, &rel, NULL);
++	error = futex(p, FUTEX_WAIT | flags, val, &rel, NULL);
+ 	if (error == -1) {
+ 		error = errno;
+ 		errno = saved_errno;
+--- a/lib/librthread/rthread_sem.c
++++ b/lib/librthread/rthread_sem.c
+@@ -73,7 +73,8 @@
+ 		if (error)
+ 			break;
+ 
+-		error = _twait(&sem->value, 0, CLOCK_REALTIME, abstime);
++		error = _twait(&sem->value, 0, CLOCK_REALTIME, abstime,
++		    sem->shared ? 0 : FUTEX_PRIVATE_FLAG);
+ 		/* ignore interruptions other than cancelation */
+ 		if ((error == ECANCELED && *delayed_cancel == 0) ||
+ 		    (error == EINTR && !can_eintr) || error == EAGAIN)
+@@ -90,7 +91,7 @@
+ {
+ 	membar_exit_before_atomic();
+ 	atomic_inc_int(&sem->value);
+-	_wake(&sem->value, 1);
++	_wake(&sem->value, 1, sem->shared ? 0 : FUTEX_PRIVATE_FLAG);
+ 	return 0;
+ }
+ 
+--- a/lib/librthread/rthread_rwlock.c
++++ b/lib/librthread/rthread_rwlock.c
+@@ -148,7 +148,7 @@
+ 		new = val | WAITING;
+ 		if (atomic_cas_uint(&rwlock->value, val, new) == val) {
+ 			error = _twait(&rwlock->value, new, CLOCK_REALTIME,
+-			    abs);
++			    abs, 0);
+ 		}
+ 		if (error == ETIMEDOUT)
+ 			break;
+@@ -225,7 +225,7 @@
+ 		new = val | WAITING;
+ 		if (atomic_cas_uint(&rwlock->value, val, new) == val) {
+ 			error = _twait(&rwlock->value, new, CLOCK_REALTIME,
+-			    abs);
++			    abs, 0);
+ 		}
+ 		if (error == ETIMEDOUT)
+ 			break;
+@@ -273,7 +273,7 @@
+ 	} while (atomic_cas_uint(&rwlock->value, val, new) != val);
+ 
+ 	if (new == UNLOCKED && (val & WAITING))
+-		_wake(&rwlock->value, INT_MAX);
++		_wake(&rwlock->value, INT_MAX, 0);
+ 
+ 	return (0);
+ }

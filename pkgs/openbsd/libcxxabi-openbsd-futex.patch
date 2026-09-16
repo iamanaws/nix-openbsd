@@ -1,0 +1,19 @@
+--- a/libcxxabi/src/cxa_guard_impl.h
++++ b/libcxxabi/src/cxa_guard_impl.h
+@@ -416,14 +416,12 @@
+ 
+ #if defined(__OpenBSD__)
+ void PlatformFutexWait(int* addr, int expect) {
+-  constexpr int WAIT = 0;
+-  futex(reinterpret_cast<volatile uint32_t*>(addr), WAIT, expect, NULL, NULL);
++  futex(reinterpret_cast<volatile uint32_t*>(addr), FUTEX_WAIT, expect, NULL, NULL);
+   __tsan_acquire(addr);
+ }
+ void PlatformFutexWake(int* addr) {
+-  constexpr int WAKE = 1;
+   __tsan_release(addr);
+-  futex(reinterpret_cast<volatile uint32_t*>(addr), WAKE, INT_MAX, NULL, NULL);
++  futex(reinterpret_cast<volatile uint32_t*>(addr), FUTEX_WAKE, INT_MAX, NULL, NULL);
+ }
+ #elif defined(SYS_futex)
+ void PlatformFutexWait(int* addr, int expect) {

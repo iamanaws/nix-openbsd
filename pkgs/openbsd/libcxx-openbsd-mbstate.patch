@@ -1,0 +1,15 @@
+--- a/libcxx/include/__mbstate_t.h
++++ b/libcxx/include/__mbstate_t.h
+@@ -39,6 +39,12 @@
+ #  define __NEED_mbstate_t
+ #  include <bits/alltypes.h>
+ #  undef __NEED_mbstate_t
++#elif defined(__OpenBSD__)
++#  include <sys/_types.h> // Avoid importing wchar.h's overloads into this module.
++#  ifndef _MBSTATE_T_DEFINED_
++#    define _MBSTATE_T_DEFINED_
++typedef __mbstate_t mbstate_t;
++#  endif
+ #elif __has_include(<bits/types/mbstate_t.h>)
+ #  include <bits/types/mbstate_t.h> // works on most Unixes
+ #elif __has_include(<sys/_types/_mbstate_t.h>)

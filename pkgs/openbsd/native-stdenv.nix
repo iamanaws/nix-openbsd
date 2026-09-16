@@ -75,7 +75,11 @@ let
           "--unwindlib=libunwind"
           "-lunwind"
         ];
-        cc-ldflags = [ "-L${lib.getLib bootstrap.libunwind}/lib" ];
+        cc-ldflags = [
+          # Binary wrappers also compile outside stdenv's dependency setup hooks.
+          "-L${lib.getLib bootstrap.compiler-rt}/lib"
+          "-L${lib.getLib bootstrap.libunwind}/lib"
+        ];
       };
       extraBuildCommands = ''
         rsrc="$out/resource-root"
