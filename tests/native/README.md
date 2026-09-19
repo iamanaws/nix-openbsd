@@ -3,22 +3,30 @@
 Run from `nixopenbsd`, with `nixbsd` beside it:
 
 ```sh
-nix build --impure --max-jobs 1 --cores 6 --out-link result-native-test --expr \
-  '(import ./tests/native { nixbsd = builtins.getFlake ("path:" + toString ../nixbsd); }).test'
+nix build --impure --max-jobs 1 --cores 6 --out-link result-native-test \
+  --extra-substituters https://nix-openbsd.cachix.org \
+  --extra-trusted-public-keys 'nix-openbsd.cachix.org-1:IbN25q8l3NyIq8L16AWaJ1MNTxZRiYdzO5eYFQv1J+4=' \
+  --expr '(import ./tests/native { nixbsd = builtins.getFlake ("path:" + toString ../nixbsd); }).test'
 ./result-native-test/bin/test-openbsd-native
 ```
 
 The host supplies cross-built seed tools and sources to an OpenBSD 7.9 VM.
 The VM rebuilds the build tools, curl, Perl, minimal Python, libc, compiler
-builtins, libunwind and libc++ from Nixpkgs, then builds test packages without substitutes.
-The first run may need to cross-build LLVM and Clang.
+builtins, libunwind and libc++ from Nixpkgs, reusing cached outputs when available.
 See the [stdenv notes](../../notes/native-stdenv.md) for current results and remaining work.
+
+Recipes and tests are imported after boot over a local host-to-guest connection.
+Rerun the build command after editing them; the base image is reused.
+Seed tools, preloaded sources and VM configuration changes still rebuild it.
+
+Use `--prepare-only` to check recipe transfer and evaluation without building
+packages, or `--cxx` to run the full C++ suites.
 
 The VM has six vCPUs, 8 GiB of RAM and a 64 GiB root filesystem. Host and
 guest builds run one package at a time, with six cores per build.
 
 Failed runs keep the log, disk and failed build directories. Set
-`OPENBSD_VM_KEEP_TMP=1` to keep successful runs too. The timeout is 90 minutes;
+`OPENBSD_VM_KEEP_TMP=1` to keep successful runs too. The timeout is 24 hours;
 change it with `OPENBSD_VM_TIMEOUT`, in seconds. The runner requests a clean
 guest shutdown after the test.
 

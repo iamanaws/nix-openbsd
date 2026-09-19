@@ -1,6 +1,13 @@
 {
   description = "OpenBSD packages, NixBSD modules and a work-in-progress native stdenv";
 
+  nixConfig = {
+    extra-substituters = [ "https://nix-openbsd.cachix.org" ];
+    extra-trusted-public-keys = [
+      "nix-openbsd.cachix.org-1:IbN25q8l3NyIq8L16AWaJ1MNTxZRiYdzO5eYFQv1J+4="
+    ];
+  };
+
   inputs = {
     nixbsd.url = "path:/home/iamanaws/repos/nix-bsd/nixbsd";
   };

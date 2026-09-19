@@ -1,6 +1,6 @@
 # Native stdenv status
 
-Status as of 2026-09-16. Build work is paused; the stdenv is not finished.
+Status as of 2026-09-18. The stdenv is not finished.
 
 ## Verified
 

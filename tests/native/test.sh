@@ -1,5 +1,15 @@
 set -euo pipefail
 
+substitute_args=(--option substitute true --option fallback true)
+
+if [[ ${1:-} == --prepare-only ]]; then
+    exec nix-instantiate "$NATIVE_RECIPE" -A pkgs.hello.drvPath \
+        --argstr environment "$NATIVE_ENVIRONMENT" \
+        --argstr packageSetSource "$NATIVE_PACKAGES" \
+        --argstr consumerSource "$NATIVE_CONSUMER" \
+        --argstr nonce prepare --eval --strict
+fi
+
 if [[ ${1:-} == --cxx ]]; then
     export NIX_REMOTE=daemon
     exec nix-build "$NATIVE_RECIPE" -A cxxChecks \
@@ -8,7 +18,7 @@ if [[ ${1:-} == --cxx ]]; then
         --argstr consumerSource "$NATIVE_CONSUMER" \
         --argstr nonce upstream-cxx \
         --no-out-link --keep-failed --max-jobs 1 --cores "$NATIVE_BUILD_CORES" \
-        --option substituters ''
+        "${substitute_args[@]}"
 fi
 
 if [[ ${1:-} != --client ]]; then
@@ -44,16 +54,16 @@ nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A noLibc > "$work/no-libc.drv"
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A pkgs.netbsd.source.drvPath \
     --eval --strict > /dev/null
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A libraries > "$work/libraries.drv"
-libraries=$(nix-store --realise "$(cat "$work/libraries.drv")" --keep-failed --option substituters '')
+libraries=$(nix-store --realise "$(cat "$work/libraries.drv")" --keep-failed "${substitute_args[@]}")
 for binary in dynamic static builtins tls cxx-dynamic cxx-static; do
     "$libraries/bin/$binary"
 done
 nix-store --verify-path "$libraries"
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A fetched > "$work/fetched.drv"
-fetched=$(nix-store --realise "$(cat "$work/fetched.drv")" --keep-failed --option substituters '')
+fetched=$(nix-store --realise "$(cat "$work/fetched.drv")" --keep-failed "${substitute_args[@]}")
 test "$(cat "$fetched")" = "native fetchurl $nonce"
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A testPython > "$work/python.drv"
-test_python=$(nix-store --realise "$(cat "$work/python.drv")" --keep-failed --option substituters '')
+test_python=$(nix-store --realise "$(cat "$work/python.drv")" --keep-failed "${substitute_args[@]}")
 "$test_python/bin/python3" -B <<'PY'
 import ctypes
 import os
@@ -70,12 +80,12 @@ print("native test Python checks passed")
 PY
 
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A smoke > "$work/smoke.drv"
-smoke=$(nix-store --realise "$(cat "$work/smoke.drv")" --keep-failed --option substituters '')
+smoke=$(nix-store --realise "$(cat "$work/smoke.drv")" --keep-failed "${substitute_args[@]}")
 "$smoke/bin/hello"
 "$smoke/bin/hello-cxx"
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A consumer > "$work/consumer.drv"
 drv=$(cat "$work/consumer.drv")
-consumer=$(nix-store --realise "$drv" --keep-failed --option substituters '')
+consumer=$(nix-store --realise "$drv" --keep-failed "${substitute_args[@]}")
 library=$(nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A library.outPath --eval --strict --json \
     | tr -d '"')
 for output in "$smoke" "$library" "$consumer" "$libraries"; do
@@ -92,7 +102,7 @@ echo "$mode daemon client: native libagentx and consumers passed"
 for package in hello zlib pigz; do
     nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A "pkgs.$package" > "$work/$package.drv"
     nix-store --realise "$(cat "$work/$package.drv")" --keep-failed \
-        --option substituters '' > /dev/null
+        "${substitute_args[@]}" > /dev/null
     nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A "pkgs.$package.outPath" \
         --eval --strict --json | tr -d '"' > "$work/$package.out"
 done

@@ -110,7 +110,8 @@ import nixpkgs {
       libffi = prev.libffi.overrideAttrs (old: {
         patches = (old.patches or [ ]) ++ [ ./libffi-openbsd-closures.patch ];
       });
-      tcl = prev.tcl.override {
+      # Expect's package scope uses tcl-8_6 directly, bypassing the tcl alias.
+      tcl-8_6 = prev.tcl-8_6.override {
         extraPatch = ''
           # LLD needs unversioned shared-library names; keep Tcl's stub names consistent.
           substituteInPlace unix/configure \

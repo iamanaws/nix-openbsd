@@ -33,7 +33,7 @@ local NixBSD input. Set its path in [flake.nix](flake.nix) to your custom
 NixBSD checkout. It inherits that checkout's Nixpkgs pin.
 
 ```sh
-nix build .#vm
+nix build --accept-flake-config .#vm
 ./result/bin/run-openbsd-webserver-vm
 ```
 
@@ -62,6 +62,21 @@ nix build .#system-image
 nix build .#toplevel
 nix build .#libagentx
 ```
+
+## Binary cache
+
+Use [nix-openbsd.cachix.org](https://nix-openbsd.cachix.org) alongside the
+standard Nix cache by accepting the flake's cache settings:
+
+```sh
+nix build --accept-flake-config .#minimal-vm
+```
+
+The cache contains cross-built seed packages and successful native builds.
+The native stdenv is still unfinished. VM images and build history stay local.
+
+The [native test](tests/native/README.md) uses the cache inside the guest
+and builds missing packages locally.
 
 ## Next steps
 
