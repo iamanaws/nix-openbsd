@@ -1,0 +1,98 @@
+--- a/lib/Support/Unix/Program.inc
++++ b/lib/Support/Unix/Program.inc
+@@ -28,6 +28,7 @@
+ #include "llvm/Support/StringSaver.h"
+ #include "llvm/Support/SystemZ/zOSSupport.h"
+ #include "llvm/Support/raw_ostream.h"
++#include <chrono>
+ #include <sys/stat.h>
+ #include <sys/resource.h>
+ #include <signal.h>
+@@ -135,7 +136,9 @@
+ }
+ #endif
+ 
++#ifndef __OpenBSD__
+ static void TimeOutHandler(int Sig) {}
++#endif
+ 
+ static void SetMemoryLimits(unsigned size) {
+   struct rlimit r;
+@@ -383,7 +386,9 @@
+                             std::string *ErrMsg,
+                             std::optional<ProcessStatistics> *ProcStat,
+                             bool Polling) {
++#ifndef __OpenBSD__
+   struct sigaction Act, Old;
++#endif
+   assert(PI.Pid && "invalid pid to wait on, process not started?");
+ 
+   int WaitPidOptions = 0;
+@@ -395,6 +400,7 @@
+     if (*SecondsToWait == 0)
+       WaitPidOptions = WNOHANG;
+ 
++#ifndef __OpenBSD__
+     // Install a timeout handler.  The handler itself does nothing, but the
+     // simple fact of having a handler at all causes the wait below to return
+     // with EINTR, unlike if we used SIG_IGN.
+@@ -404,6 +410,7 @@
+     sigaction(SIGALRM, &Act, &Old);
+     // FIXME The alarm signal may be delivered to another thread.
+     alarm(*SecondsToWait);
++#endif
+   }
+ 
+   // Parent process: Wait for the child process to terminate.
+@@ -414,6 +421,26 @@
+   if (ProcStat)
+     ProcStat->reset();
+ 
++#ifdef __OpenBSD__
++  if (SecondsToWait && *SecondsToWait != 0) {
++    // SIGALRM can reach a worker thread instead of interrupting wait4.
++    const auto Deadline = std::chrono::steady_clock::now() +
++                          std::chrono::seconds(*SecondsToWait);
++    for (;;) {
++      WaitResult.Pid = sys::wait4(ChildPid, &status, WNOHANG, &Info);
++      if (WaitResult.Pid > 0 || (WaitResult.Pid == -1 && errno != EINTR))
++        break;
++      if (std::chrono::steady_clock::now() >= Deadline) {
++        if (Polling)
++          return ProcessInfo();
++        WaitResult.Pid = -1;
++        errno = EINTR;
++        break;
++      }
++      usleep(10000);
++    }
++  } else
++#endif
+   do {
+     WaitResult.Pid = sys::wait4(ChildPid, &status, WaitPidOptions, &Info);
+   } while (WaitUntilTerminates && WaitResult.Pid == -1 && errno == EINTR);
+@@ -429,8 +456,10 @@
+         kill(PI.Pid, SIGKILL);
+ 
+         // Turn off the alarm and restore the signal handler
++#ifndef __OpenBSD__
+         alarm(0);
+         sigaction(SIGALRM, &Old, nullptr);
++#endif
+ 
+         // Wait for child to die
+         // FIXME This could grab some other child process out from another
+@@ -450,11 +479,13 @@
+     }
+   }
+ 
++#ifndef __OpenBSD__
+   // We exited normally without timeout, so turn off the timer.
+   if (SecondsToWait && !WaitUntilTerminates) {
+     alarm(0);
+     sigaction(SIGALRM, &Old, nullptr);
+   }
++#endif
+ 
+ #ifndef __Fuchsia__
+   if (ProcStat) {

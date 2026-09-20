@@ -10,13 +10,15 @@ if [[ ${1:-} == --prepare-only ]]; then
         --argstr nonce prepare --eval --strict
 fi
 
-if [[ ${1:-} == --cxx ]]; then
+if [[ ${1:-} == --cxx || ${1:-} == --toolchain ]]; then
+    target=cxxChecks
+    if [[ $1 == --toolchain ]]; then target=toolchainChecks; fi
     export NIX_REMOTE=daemon
-    exec nix-build "$NATIVE_RECIPE" -A cxxChecks \
+    exec nix-build "$NATIVE_RECIPE" -A "$target" \
         --argstr environment "$NATIVE_ENVIRONMENT" \
         --argstr packageSetSource "$NATIVE_PACKAGES" \
         --argstr consumerSource "$NATIVE_CONSUMER" \
-        --argstr nonce upstream-cxx \
+        --argstr nonce "$target" \
         --no-out-link --keep-failed --max-jobs 1 --cores "$NATIVE_BUILD_CORES" \
         "${substitute_args[@]}"
 fi

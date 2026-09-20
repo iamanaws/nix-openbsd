@@ -103,5 +103,8 @@ genericStdenv (
   // {
     name = "stdenv-openbsd-bootstrap";
     inherit cc;
+    extraAttrs = {
+      openbsdBootstrap = bootstrap;
+    };
   }
 )

@@ -222,6 +222,18 @@ let
   testPython = import (builtins.dirOf packageSetSource + "/native-test-python.nix") {
     pkgs = stdenv.__bootPackages;
   };
+  toolchain = import (builtins.dirOf packageSetSource + "/native-toolchain.nix") {
+    inherit pkgs;
+    python3 = testPython;
+  };
+  toolchainStdenv =
+    (import (builtins.dirOf packageSetSource + "/native-stdenv.nix") {
+      inherit nixpkgs;
+      bootstrap = stdenv.openbsdBootstrap // {
+        inherit (toolchain) clang bintools;
+      };
+    }).override
+      { name = "stdenv-openbsd-native-toolchain"; };
 in
 {
   inherit
@@ -230,12 +242,19 @@ in
     smoke
     library
     pkgs
+    toolchain
+    toolchainStdenv
     ;
   fetched = stdenv.fetchurlBoot {
     url = "file://${builtins.toFile "native-fetch-source" fetchText}";
     sha256 = builtins.hashString "sha256" fetchText;
   };
   noLibc = pkgs.mkStdenvNoLibs stdenv;
+  toolchainChecks = import ./toolchain-checks.nix {
+    stdenv = toolchainStdenv;
+    inherit lib nonce toolchain;
+    compiler-rt = stdenv.openbsdBootstrap.compiler-rt;
+  };
   cxxChecks = import ./cxx-checks.nix {
     libcxx = stdenv.cc.libcxx;
     llvmSrc = pkgs.llvmPackages.llvm.monorepoSrc;

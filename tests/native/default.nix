@@ -1,6 +1,6 @@
 { nixbsd }:
 let
-  cores = 6;
+  cores = 8;
   host = nixbsd.inputs.nixpkgs.legacyPackages.x86_64-linux;
   system = nixbsd.nixosConfigurations.openbsd-base.extendModules {
     modules = [
@@ -54,7 +54,7 @@ let
           trusted-public-keys = [ "nix-openbsd.cachix.org-1:IbN25q8l3NyIq8L16AWaJ1MNTxZRiYdzO5eYFQv1J+4=" ];
         };
         virtualisation.vmVariant.virtualisation = {
-          memorySize = 8192;
+          memorySize = 16384;
           inherit cores;
           # Leave room for LLVM sources, native outputs and large-file tests.
           rootSize = "64g";

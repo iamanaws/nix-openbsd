@@ -1,0 +1,153 @@
+OpenBSD's libm lacks roundeven/roundevenf, so LLVM's interpreter aborts when
+it tries to call them. Use LLVM's APFloat to round halfway values to the
+nearest even integer without depending on those functions.
+
+--- a/lib/ExecutionEngine/Interpreter/Execution.cpp
++++ b/lib/ExecutionEngine/Interpreter/Execution.cpp
+@@ -11,6 +11,7 @@
+ //===----------------------------------------------------------------------===//
+ 
+ #include "Interpreter.h"
++#include "llvm/ADT/APFloat.h"
+ #include "llvm/ADT/APInt.h"
+ #include "llvm/ADT/Statistic.h"
+ #include "llvm/CodeGen/IntrinsicLowering.h"
+@@ -1098,6 +1099,24 @@
+ 
+ void Interpreter::visitIntrinsicInst(IntrinsicInst &I) {
+   ExecutionContext &SF = ECStack.back();
++
++  // C libraries need not provide roundeven, and nearbyint follows the host's
++  // rounding mode rather than the intrinsic's fixed ties-to-even mode.
++  if (I.getIntrinsicID() == Intrinsic::roundeven &&
++      (I.getType()->isFloatTy() || I.getType()->isDoubleTy())) {
++    GenericValue V = getOperandValue(I.getArgOperand(0), SF);
++    if (I.getType()->isFloatTy()) {
++      APFloat F(V.FloatVal);
++      F.roundToIntegral(APFloat::rmNearestTiesToEven);
++      V.FloatVal = F.convertToFloat();
++    } else {
++      APFloat F(V.DoubleVal);
++      F.roundToIntegral(APFloat::rmNearestTiesToEven);
++      V.DoubleVal = F.convertToDouble();
++    }
++    SetValue(&I, V, SF);
++    return;
++  }
+ 
+   // If it is an unknown intrinsic function, use the intrinsic lowering
+   // class to transform it into hopefully tasty LLVM code.
+--- /dev/null
++++ b/test/ExecutionEngine/Interpreter/roundeven.ll
+@@ -0,0 +1,111 @@
++; RUN: lli -force-interpreter < %s
++
++declare float @llvm.roundeven.f32(float)
++declare double @llvm.roundeven.f64(double)
++
++define i32 @main() {
++  %v0 = call float @llvm.roundeven.f32(float 0x3FE0000000000000)
++  %b0 = bitcast float %v0 to i32
++  %ok0 = icmp eq i32 %b0, 0
++  %all0 = and i1 true, %ok0
++  %v1 = call float @llvm.roundeven.f32(float 0x3FF8000000000000)
++  %b1 = bitcast float %v1 to i32
++  %ok1 = icmp eq i32 %b1, 1073741824
++  %all1 = and i1 %all0, %ok1
++  %v2 = call float @llvm.roundeven.f32(float 0x4004000000000000)
++  %b2 = bitcast float %v2 to i32
++  %ok2 = icmp eq i32 %b2, 1073741824
++  %all2 = and i1 %all1, %ok2
++  %v3 = call float @llvm.roundeven.f32(float 0xBFE0000000000000)
++  %b3 = bitcast float %v3 to i32
++  %ok3 = icmp eq i32 %b3, 2147483648
++  %all3 = and i1 %all2, %ok3
++  %v4 = call float @llvm.roundeven.f32(float 0xBFF8000000000000)
++  %b4 = bitcast float %v4 to i32
++  %ok4 = icmp eq i32 %b4, 3221225472
++  %all4 = and i1 %all3, %ok4
++  %v5 = call float @llvm.roundeven.f32(float 0xC004000000000000)
++  %b5 = bitcast float %v5 to i32
++  %ok5 = icmp eq i32 %b5, 3221225472
++  %all5 = and i1 %all4, %ok5
++  %v6 = call float @llvm.roundeven.f32(float 0x3FF4000000000000)
++  %b6 = bitcast float %v6 to i32
++  %ok6 = icmp eq i32 %b6, 1065353216
++  %all6 = and i1 %all5, %ok6
++  %v7 = call float @llvm.roundeven.f32(float 0x3FFC000000000000)
++  %b7 = bitcast float %v7 to i32
++  %ok7 = icmp eq i32 %b7, 1073741824
++  %all7 = and i1 %all6, %ok7
++  %v8 = call float @llvm.roundeven.f32(float 0xBFD0000000000000)
++  %b8 = bitcast float %v8 to i32
++  %ok8 = icmp eq i32 %b8, 2147483648
++  %all8 = and i1 %all7, %ok8
++  %v9 = call float @llvm.roundeven.f32(float 0x7FF0000000000000)
++  %b9 = bitcast float %v9 to i32
++  %ok9 = icmp eq i32 %b9, 2139095040
++  %all9 = and i1 %all8, %ok9
++  %v10 = call float @llvm.roundeven.f32(float 0xFFF0000000000000)
++  %b10 = bitcast float %v10 to i32
++  %ok10 = icmp eq i32 %b10, 4286578688
++  %all10 = and i1 %all9, %ok10
++  %v11 = call float @llvm.roundeven.f32(float 0x4160000000000000)
++  %b11 = bitcast float %v11 to i32
++  %ok11 = icmp eq i32 %b11, 1258291200
++  %all11 = and i1 %all10, %ok11
++  %v12 = call float @llvm.roundeven.f32(float 0x7FF8000000000000)
++  %ok12 = fcmp uno float %v12, %v12
++  %all12 = and i1 %all11, %ok12
++  %v13 = call double @llvm.roundeven.f64(double 0x3FE0000000000000)
++  %b13 = bitcast double %v13 to i64
++  %ok13 = icmp eq i64 %b13, 0
++  %all13 = and i1 %all12, %ok13
++  %v14 = call double @llvm.roundeven.f64(double 0x3FF8000000000000)
++  %b14 = bitcast double %v14 to i64
++  %ok14 = icmp eq i64 %b14, 4611686018427387904
++  %all14 = and i1 %all13, %ok14
++  %v15 = call double @llvm.roundeven.f64(double 0x4004000000000000)
++  %b15 = bitcast double %v15 to i64
++  %ok15 = icmp eq i64 %b15, 4611686018427387904
++  %all15 = and i1 %all14, %ok15
++  %v16 = call double @llvm.roundeven.f64(double 0xBFE0000000000000)
++  %b16 = bitcast double %v16 to i64
++  %ok16 = icmp eq i64 %b16, 9223372036854775808
++  %all16 = and i1 %all15, %ok16
++  %v17 = call double @llvm.roundeven.f64(double 0xBFF8000000000000)
++  %b17 = bitcast double %v17 to i64
++  %ok17 = icmp eq i64 %b17, 13835058055282163712
++  %all17 = and i1 %all16, %ok17
++  %v18 = call double @llvm.roundeven.f64(double 0xC004000000000000)
++  %b18 = bitcast double %v18 to i64
++  %ok18 = icmp eq i64 %b18, 13835058055282163712
++  %all18 = and i1 %all17, %ok18
++  %v19 = call double @llvm.roundeven.f64(double 0x3FF4000000000000)
++  %b19 = bitcast double %v19 to i64
++  %ok19 = icmp eq i64 %b19, 4607182418800017408
++  %all19 = and i1 %all18, %ok19
++  %v20 = call double @llvm.roundeven.f64(double 0x3FFC000000000000)
++  %b20 = bitcast double %v20 to i64
++  %ok20 = icmp eq i64 %b20, 4611686018427387904
++  %all20 = and i1 %all19, %ok20
++  %v21 = call double @llvm.roundeven.f64(double 0xBFD0000000000000)
++  %b21 = bitcast double %v21 to i64
++  %ok21 = icmp eq i64 %b21, 9223372036854775808
++  %all21 = and i1 %all20, %ok21
++  %v22 = call double @llvm.roundeven.f64(double 0x7FF0000000000000)
++  %b22 = bitcast double %v22 to i64
++  %ok22 = icmp eq i64 %b22, 9218868437227405312
++  %all22 = and i1 %all21, %ok22
++  %v23 = call double @llvm.roundeven.f64(double 0xFFF0000000000000)
++  %b23 = bitcast double %v23 to i64
++  %ok23 = icmp eq i64 %b23, 18442240474082181120
++  %all23 = and i1 %all22, %ok23
++  %v24 = call double @llvm.roundeven.f64(double 0x4330000000000000)
++  %b24 = bitcast double %v24 to i64
++  %ok24 = icmp eq i64 %b24, 4841369599423283200
++  %all24 = and i1 %all23, %ok24
++  %v25 = call double @llvm.roundeven.f64(double 0x7FF8000000000000)
++  %ok25 = fcmp uno double %v25, %v25
++  %all25 = and i1 %all24, %ok25
++  %status = select i1 %all25, i32 0, i32 1
++  ret i32 %status
++}

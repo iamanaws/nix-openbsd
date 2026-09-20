@@ -1,0 +1,13 @@
+diff --git a/ELF/Options.td b/ELF/Options.td
+--- a/ELF/Options.td
++++ b/ELF/Options.td
+@@ -385,6 +385,9 @@ defm pie: B<"pie",
+     "Create a position independent executable",
+     "Do not create a position independent executable (default)">;
+ 
++// Clang's OpenBSD driver passes -nopie for non-PIE executables.
++def: F<"nopie">, Alias<no_pie>, HelpText<"Alias for --no-pie">;
++
+ defm print_gc_sections: B<"print-gc-sections",
+     "List removed unused sections",
+     "Do not list removed unused sections (default)">;

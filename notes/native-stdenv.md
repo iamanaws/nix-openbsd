@@ -42,9 +42,8 @@ The regression lives in [`semaphore.c`](../tests/native/semaphore.c).
 
 ## Remaining work
 
-- Finish the native LLVM build, then build and test LLD and Clang. LLVM was
-  still building dependencies when the VM was paused.
-- Validate the LLD `-nopie` compatibility fix before adding it to the package set.
+- Build and test native LLVM, LLD and Clang with `--toolchain`, including
+  the LLD `-nopie` compatibility fix.
 - Replace the seed compiler and linker with the native outputs.
 - Rerun the full C++ suites. Header-visibility, locale and other OpenBSD
   compatibility failures remain; they have not been disabled.

@@ -3,7 +3,7 @@
 Run from `nixopenbsd`, with `nixbsd` beside it:
 
 ```sh
-nix build --impure --max-jobs 1 --cores 6 --out-link result-native-test \
+nix build --impure --max-jobs 1 --cores 8 --out-link result-native-test \
   --extra-substituters https://nix-openbsd.cachix.org \
   --extra-trusted-public-keys 'nix-openbsd.cachix.org-1:IbN25q8l3NyIq8L16AWaJ1MNTxZRiYdzO5eYFQv1J+4=' \
   --expr '(import ./tests/native { nixbsd = builtins.getFlake ("path:" + toString ../nixbsd); }).test'
@@ -20,10 +20,11 @@ Rerun the build command after editing them; the base image is reused.
 Seed tools, preloaded sources and VM configuration changes still rebuild it.
 
 Use `--prepare-only` to check recipe transfer and evaluation without building
-packages, or `--cxx` to run the full C++ suites.
+packages, `--cxx` to run the full C++ suites, or `--toolchain` to build and test
+native LLVM, Clang and LLD.
 
-The VM has six vCPUs, 8 GiB of RAM and a 64 GiB root filesystem. Host and
-guest builds run one package at a time, with six cores per build.
+The VM has eight vCPUs, 16 GiB of RAM and a 64 GiB root filesystem. Host and
+guest builds run one package at a time, with eight cores per build.
 
 Failed runs keep the log, disk and failed build directories. Set
 `OPENBSD_VM_KEEP_TMP=1` to keep successful runs too. The timeout is 24 hours;

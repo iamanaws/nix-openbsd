@@ -23,6 +23,7 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--prepare-only", action="store_true")
     mode.add_argument("--cxx", action="store_true")
+    mode.add_argument("--toolchain", action="store_true")
     args = parser.parse_args()
     work = Path(tempfile.mkdtemp(prefix="nixopenbsd-native."))
     (work / "runtime").mkdir()
@@ -109,7 +110,11 @@ def main():
                 result = expect(r"\r?\nIMPORT_DONE:[0-9]+\r?\n")
                 if not result.rstrip().endswith(b"IMPORT_DONE:0"):
                     raise RuntimeError("Could not import native recipes")
-                flag = " --prepare-only" if args.prepare_only else " --cxx" if args.cxx else ""
+                flag = (
+                    " --prepare-only" if args.prepare_only else
+                    " --cxx" if args.cxx else
+                    " --toolchain" if args.toolchain else ""
+                )
                 send(
                     "nix-store --realise --add-root /var/lib/native-test --indirect "
                     f"{shlex.quote(args.recipes)} && "
