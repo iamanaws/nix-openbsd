@@ -9,14 +9,14 @@ for a complete demo configuration.
 logging, SNMP and sensors. [ACME renewal](security/acme-client.nix) uses cron.
 The modules declare options, service users and runtime directories. They
 check configuration before startup where the daemon supports it.
-Configuration text follows the corresponding OpenBSD configuration format.
+Use each daemon's OpenBSD configuration format.
 
 ## Before enabling services
 
 - Configuration text goes into the readable Nix store. Do not put real
   passwords or VPN pre-shared keys in these options. Runtime file permissions
   do not protect the store copy.
-- PF loads kernel rules through `pfctl`; it is not a daemon. Use explicit
+- PF loads kernel rules through `pfctl`. Use explicit
   rules before exposing services or enabling forwarding.
 - Routing modules do not enable IP forwarding. Enable it separately with
   `boot.kernel.sysctl."net.inet.ip.forwarding" = 1` when needed.
@@ -27,11 +27,11 @@ Configuration text follows the corresponding OpenBSD configuration format.
 - `services.newsyslog` runs log rotation through cron and prepares log files
   for syslogd. It does not start a separate daemon.
 - The demo's SNMP service listens only on localhost with a public test
-  community. Its client is `snmp`, not the removed `snmpctl`.
+  community. Use the `snmp` client.
 - QEMU may expose no hardware sensors, so a running `sensorsd` alone does not
   validate sensor readings.
-- ACME issuance needs public HTTP-01 reachability. Test against a staging
-  authority before requesting real certificates.
+- ACME certificate issuance requires public access to the HTTP-01 challenge.
+  Test against a staging authority before requesting real certificates.
 
-Boot and service tests do not establish that live configuration switching
-works. See the [integration notes](../notes/nixbsd-integration.md).
+See the [integration gaps](../notes/nixbsd-integration.md) for live
+configuration switching.

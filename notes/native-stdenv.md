@@ -1,54 +1,31 @@
 # Native stdenv status
 
-Status as of 2026-09-18. The stdenv is not finished.
+As of 2026-09-23, the native stdenv passes validation in the OpenBSD VM.
+The toolchain and package checks pass through the daemon as root and a
+non-root client. The final closure contains native tools and runtimes;
+the closure check rejects bootstrap seed outputs.
 
-## Verified
+See the [test instructions and coverage](../tests/native/README.md) to run it.
 
-- Native libc, compiler builtins, libunwind and libc++ build. C/C++ consumers
-  pass with dynamic linking and static PIE.
-- Tcl, Expect and DejaGnu build. DejaGnu reports 604 expected passes.
-- Libffi's tests report 1,658 passes and no failures after the closure fix.
-- Minimal Python supports zlib and ctypes callbacks. Psutil's selected tests
-  report 28 passes, five skips and 16 deselections.
-- The libc++abi suite reports 58 passes and 22 unsupported tests after fixing
-  its OpenBSD futex operation constants. Its test runner still needed manual
-  cleanup in those runs.
-- Focused libc++ checks report 307 passes, one failure, three unsupported
-  tests and one expected failure. The remaining failure expects locale-aware
-  number formatting that OpenBSD does not provide.
+## Suite results
 
-These are results from individual builds and tests, not a fresh end-to-end run
-with every recent change.
+- LLVM's full test suite passes.
+- libc++abi has 58 passes and 22 unsupported tests.
+- libc++ has 9,948 passes, 782 unsupported tests and 49 expected failures.
+  This includes all 393 header-visibility tests after the OpenBSD declaration fix.
+  Floating-point atomic stress tests run serially to avoid exhausting
+  OpenBSD's thread table.
 
-## Python worker shutdown
+## Limitations
 
-Python worker pools sometimes stopped making progress when jobs combined
-timer threads and subprocesses. The problem was reproduced outside LLVM's
-test runner.
+OpenBSD provides C-locale formatting and UTF-8 character conversion. Tests
+requiring regional locales or the absent `quick_exit` API report unsupported.
+The tests cover compiler builtins, but not sanitizers or other compiler-rt libraries.
+Bootstrap Perl has crypt disabled to break its dependency cycle with libxcrypt.
+Texinfo loads native helper extensions but uses its Perl parser.
+Nixpkgs disables coreutils' full check phase on BSD. GNU make skips one test
+that requires `/bin/echo`.
 
-The `libpthread` fix uses process-private futex operations for unnamed
-semaphores. Named semaphores retain their shared behavior.
-
-Validation so far:
-
-- A small C regression fails with the old library and passes with the patch.
-- Dynamic and static PIE tests pass for private and shared semaphores,
-  timeouts and thread cancellation.
-- Three Python runs complete all 18,000 jobs and shut down normally.
-
-The patch is included in the seed and native package definitions. The full
-libc++abi runner and the complete bootstrap still need validation with it.
-The regression lives in [`semaphore.c`](../tests/native/semaphore.c).
-
-## Remaining work
-
-- Build and test native LLVM, LLD and Clang with `--toolchain`, including
-  the LLD `-nopie` compatibility fix.
-- Replace the seed compiler and linker with the native outputs.
-- Rerun the full C++ suites. Header-visibility, locale and other OpenBSD
-  compatibility failures remain; they have not been disabled.
-- Run the complete bootstrap and consumer tests in a fresh VM, then check
-  which outputs still depend on seed tools or libraries.
-
-See [test instructions](../tests/native/README.md). Tested fixes can be proposed
-upstream separately; the complete stdenv is not ready for upstream submission.
+The native package test does not cover HTTP/TLS fetching or AgentX exchanges
+with an SNMP daemon. See [package fixes](../pkgs/openbsd) and the
+[project next steps](../README.md#next-steps).

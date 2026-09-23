@@ -1,0 +1,52 @@
+OpenBSD hides locale APIs under older _XOPEN_SOURCE values, but libc++
+headers still need them. Declare the required interfaces without changing
+the application's feature-test macros.
+
+--- a/libcxx/include/__locale_dir/locale_base_api/openbsd.h
++++ b/libcxx/include/__locale_dir/locale_base_api/openbsd.h
+@@ -10,10 +10,44 @@
+ #ifndef _LIBCPP___LOCALE_DIR_LOCALE_BASE_API_OPENBSD_H
+ #define _LIBCPP___LOCALE_DIR_LOCALE_BASE_API_OPENBSD_H
+ 
+-#include <__support/xlocale/__strtonum_fallback.h>
+ #include <clocale>
+ #include <cstdlib>
+ #include <ctype.h>
+ #include <cwctype>
++#include <stdarg.h>
++#include <stdio.h>
++#if _LIBCPP_HAS_WIDE_CHARACTERS
++#  include <wchar.h>
++#endif
++
++// libc++ needs these interfaces even when _XOPEN_SOURCE hides their declarations.
++// Keep OpenBSD's feature-test macros unchanged for the rest of the application.
++#if __POSIX_VISIBLE < 200809
++#  ifndef _LOCALE_T_DEFINED_
++#    define _LOCALE_T_DEFINED_
++typedef void* locale_t;
++#  endif
++#  define LC_COLLATE_MASK (1 << LC_COLLATE)
++#  define LC_CTYPE_MASK (1 << LC_CTYPE)
++#  define LC_MONETARY_MASK (1 << LC_MONETARY)
++#  define LC_NUMERIC_MASK (1 << LC_NUMERIC)
++#  define LC_TIME_MASK (1 << LC_TIME)
++#  define LC_MESSAGES_MASK (1 << LC_MESSAGES)
++#  define LC_ALL_MASK ((1 << _LC_LAST) - 2)
++extern "C" {
++locale_t uselocale(locale_t);
++int isdigit_l(int, locale_t);
++int isxdigit_l(int, locale_t);
++#  if _LIBCPP_HAS_WIDE_CHARACTERS
++size_t mbsnrtowcs(wchar_t*, const char**, size_t, size_t, mbstate_t*);
++size_t wcsnrtombs(char*, const wchar_t**, size_t, size_t, mbstate_t*);
++#  endif
++}
++#endif
++#if !__BSD_VISIBLE
++extern "C" int vasprintf(char**, const char*, va_list);
++#endif
++
++#include <__support/xlocale/__strtonum_fallback.h>
+ 
+ #endif // _LIBCPP___LOCALE_DIR_LOCALE_BASE_API_OPENBSD_H

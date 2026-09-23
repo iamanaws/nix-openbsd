@@ -64,6 +64,7 @@ let
         patches = (old.patches or [ ]) ++ [
           ./libcxxabi-openbsd-futex.patch
           ./libcxx-openbsd-mbstate.patch
+          ./libcxx-openbsd-locale-headers.patch
         ];
       });
 in

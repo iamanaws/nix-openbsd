@@ -26,7 +26,7 @@ Separate build users do not isolate the builder's filesystem or network.
   the parent to read EOF before the child opens the slave. A supervisor keeps
   the slave open until the builder exits and its output drains, then preserves
   its exit code or signal. It shares the builder's UID and process group.
-  Stdout/stderr remain terminals, using Nix's existing startup protocol.
+  Stdout and stderr remain terminals. The supervisor uses Nix's startup protocol.
 - Enable Nix's build-user handling on OpenBSD. Nix previously ignored
   `nixbld` and ran root's builders as UID 0.
 - Patch Nix's initialization code to preserve libc's thread flag across
@@ -37,14 +37,14 @@ Separate build users do not isolate the builder's filesystem or network.
 
 The overlay also disables AWS support and applies terminal and Boost fixes.
 
-The extended tests found three more issues:
+The extended tests found these issues:
 
-- Loopback had no address and was down. The OpenBSD network module now
+- Loopback had no address and was down. The OpenBSD network module
   configures `lo0` before network services start.
 - Git's configure check could not find `-lcurl`, so it omitted its HTTPS
-  helper. The curl package now provides the unversioned linker name.
+  helper. The curl package provides the unversioned linker name.
 - Garbage collection deleted the running system in the test VM. OpenBSD
-  activation now registers `/run/current-system` and `/run/booted-system`
+  activation registers `/run/current-system` and `/run/booted-system`
   as GC roots. This change does not apply to FreeBSD.
 
 ## Tests
@@ -78,29 +78,25 @@ a non-root builder. It checks the OS version and calls `pledge()` and
 `strlcpy()`. The test runs the executable during the build and from the
 client account. It passed in all three store/client modes.
 
-The [libagentx test](../tests/native/README.md) builds a real library inside
-OpenBSD using Clang 21.1.8 and the upstream OpenBSD makefile. It installs the
-header, manual, shared library and static archive, then builds and runs consumers
-of both libraries. It passed on 2026-09-12 through the daemon as root and `bestie`,
-with fresh builds under `nixbld` and store verification.
+Native stdenv and package testing is documented in the
+[native test guide](../tests/native/README.md). See the
+[stdenv status](native-stdenv.md) for current results.
 
-Its tools are cross-built with the VM. The explicit environment selects an
-OpenBSD shell for BSD make and supplies the compiler wrapper settings and
-`compiler-rt` library path that stdenv normally provides.
+## Default Nixpkgs bootstrap
 
-The default native Nixpkgs recipe for Nix still fails to evaluate in ncurses
+The default native Nixpkgs recipe for Nix fails to evaluate in ncurses
 because `stdenv.cc.libc` is null. Nixpkgs selects a bootstrap that expects
-tools under `/usr` and does not provide packaged libc metadata. This does
-not prevent native builds with an explicitly supplied environment, as the
-C test demonstrates. Reproduce the default recipe failure with:
+tools under `/usr` and does not provide packaged libc metadata. This check
+uses Nixpkgs' default bootstrap, not this project's native stdenv.
+Reproduce the default recipe failure with:
 
 ```sh
 bash nixbsd/scripts/check-nix-openbsd-native.sh
 ```
 
-At the same Nixpkgs pin, the native FreeBSD recipe for stable Nix evaluates
-successfully. FreeBSD has a dedicated bootstrap with packaged Clang and libc.
-This check does not establish that a fresh FreeBSD build completes.
+At the same Nixpkgs pin, the native FreeBSD recipe for stable Nix evaluates.
+FreeBSD has a dedicated bootstrap with packaged Clang and libc. This check
+covers evaluation only.
 
 The base image's login limits also cause stack-size and initial GC-heap warnings.
 

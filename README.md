@@ -3,15 +3,13 @@
 Work in progress toward declarative OpenBSD systems with NixBSD.
 
 This repository contains OpenBSD packages, service modules and an experimental
-native stdenv. Part of the work now lives in our [custom NixBSD checkout](https://github.com/iamanaws/nixbsd),
-which provides boot, login, SSH, basic networking and a patched Nix daemon.
+native stdenv. A [custom NixBSD checkout](https://github.com/iamanaws/nixbsd)
+provides boot, login, SSH, basic networking and a patched Nix daemon.
 The goal is to configure, build and update OpenBSD through NixBSD as we do
 Linux through NixOS.
 
-The stdenv rebuilds tools, libc, C++ runtimes and test packages inside OpenBSD,
-but still relies on a cross-built compiler and linker. Nix builds run under
-separate users without a build sandbox. This is a development environment,
-not a production-ready system.
+The native stdenv passes VM validation. See the [results and limitations](notes/native-stdenv.md).
+This is a development environment. Nix builds use separate users without a sandbox.
 
 ## Code and tests
 
@@ -28,7 +26,7 @@ not a production-ready system.
 
 ## Run the demo
 
-Use x86_64 Linux with KVM and flakes enabled. The flake intentionally uses a
+Use x86_64 Linux with KVM and flakes enabled. The flake uses a
 local NixBSD input. Set its path in [flake.nix](flake.nix) to your custom
 NixBSD checkout. It inherits that checkout's Nixpkgs pin.
 
@@ -50,7 +48,7 @@ configuration, NTP, cron, logging and local monitoring. Routing daemons and
 VPNs stay disabled unless a test or configuration enables them.
 
 The test accounts `root` and `bestie` use the password `toor`. Do not expose
-the VM or reuse these credentials. Its state lives in
+the VM or reuse these credentials. The VM stores its state in
 `openbsd-webserver.qcow2` in the working directory.
 
 Other build outputs include the minimal VM, system image, system closure
@@ -72,19 +70,14 @@ standard Nix cache by accepting the flake's cache settings:
 nix build --accept-flake-config .#minimal-vm
 ```
 
-The cache contains cross-built seed packages and successful native builds.
-The native stdenv is still unfinished. VM images and build history stay local.
-
-The [native test](tests/native/README.md) uses the cache inside the guest
-and builds missing packages locally.
+The cache contains cross-built seeds and the validated native stdenv, Clang,
+LLD and runtimes. Important outputs are pinned. VM images and build history
+stay local.
 
 ## Next steps
 
-- Finish the native stdenv and a reproducible bootstrap that rebuilds the
-  compiler, runtime and remaining seed tools.
-- Complete modern Nix support on OpenBSD, including building Nix natively.
-- Integrate the remaining system work with NixBSD, including live
-  configuration switching, service restarts and rollback.
+- Build Nix natively on OpenBSD.
+- Add live configuration switching, service restarts and rollback through NixBSD.
 - Improve disk-image generation and add raw `disk.img` export. The
   [integration notes](notes/nixbsd-integration.md) track these gaps.
 - Expand native package builds and tests.

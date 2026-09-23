@@ -24,8 +24,8 @@ let
   ) seed;
   pkgs = import packageSetSource { inherit nixpkgs bootstrap; };
   inherit (pkgs) stdenv;
-  # Tools are rebuilt first, then used to rebuild libc and compiler builtins.
-  toolsStage = stdenv.__bootPackages.stdenv.__bootPackages;
+  tools = stdenv.openbsdBootstrap;
+  toolsStage = stdenv.__bootPackages;
   fetchText = "native fetchurl ${nonce}\n";
   common = {
     strictDeps = true;
@@ -33,21 +33,21 @@ let
       test "$EUID" -ne 0
       case "$CC" in /*) test -x "$CC";; *) command -v "$CC";; esac
       case ":$PATH:" in *:/bin:*|*:/usr/bin:*|*:/usr/local/bin:*) exit 1;; esac
-      test "$BASH" = "${toolsStage.bashNative}/bin/bash"
-      test "$(command -v diff)" = "${toolsStage.diffutils}/bin/diff"
-      test "$(command -v find)" = "${toolsStage.findutils}/bin/find"
-      test "$(command -v grep)" = "${toolsStage.gnugrep}/bin/grep"
-      test "$(command -v awk)" = "${toolsStage.gawk}/bin/awk"
-      test "$(command -v tar)" = "${toolsStage.gnutar}/bin/tar"
-      test "$(command -v bzip2)" = "${lib.getBin toolsStage.bzip2}/bin/bzip2"
-      test "$(command -v patch)" = "${toolsStage.patch}/bin/patch"
-      test "$(command -v patchelf)" = "${toolsStage.patchelf}/bin/patchelf"
-      test "$(command -v sed)" = "${toolsStage.gnused}/bin/sed"
-      test "$(command -v gzip)" = "${toolsStage.gzip}/bin/gzip"
-      test "$(command -v file)" = "${toolsStage.file}/bin/file"
-      test "$(command -v xz)" = "${lib.getBin toolsStage.xz}/bin/xz"
+      test "$BASH" = "${tools.bashNonInteractive}/bin/bash"
+      test "$(command -v diff)" = "${tools.diffutils}/bin/diff"
+      test "$(command -v find)" = "${tools.findutils}/bin/find"
+      test "$(command -v grep)" = "${tools.gnugrep}/bin/grep"
+      test "$(command -v awk)" = "${tools.gawk}/bin/awk"
+      test "$(command -v tar)" = "${tools.gnutar}/bin/tar"
+      test "$(command -v bzip2)" = "${lib.getBin tools.bzip2}/bin/bzip2"
+      test "$(command -v patch)" = "${tools.patch}/bin/patch"
+      test "$(command -v patchelf)" = "${tools.patchelf}/bin/patchelf"
+      test "$(command -v sed)" = "${tools.gnused}/bin/sed"
+      test "$(command -v gzip)" = "${tools.gzip}/bin/gzip"
+      test "$(command -v file)" = "${tools.file}/bin/file"
+      test "$(command -v xz)" = "${lib.getBin tools.xz}/bin/xz"
       for tool in cat cp mkdir rm sort stat sha256sum factor; do
-        test "$(command -v "$tool")" = "${toolsStage.coreutilsNative}/bin/$tool"
+        test "$(command -v "$tool")" = "${tools.coreutils}/bin/$tool"
       done
     '';
     postInstall = ''
@@ -61,12 +61,12 @@ let
       dontUnpack = true;
       dontConfigure = true;
       nativeBuildInputs = [
-        toolsStage.perl
+        tools.perl
         toolsStage.python3Minimal
       ];
       buildPhase = ''
         runHook preBuild
-        test "$(command -v make)" = "${toolsStage.gnumake}/bin/make"
+        test "$(command -v make)" = "${tools.gnumake}/bin/make"
         "${toolsStage.ncurses}/bin/tic" -V
         "${toolsStage.ncurses}/bin/infocmp" -A "${toolsStage.ncurses}/share/terminfo" xterm > /dev/null
         printf '#define _XOPEN_SOURCE 700\n#include <sys/types.h>\n#include <sys/stat.h>\n' \
@@ -162,7 +162,7 @@ let
         sha256sum -c hello.sha256
         test "$(printf '2\n1\n2\n' | sort -nu)" = $'1\n2'
         test "$(factor 18446744073709551617)" = '18446744073709551617: 274177 67280421310721'
-        "$READELF" -d ${toolsStage.coreutilsNative}/bin/coreutils | grep 'NEEDED.*libgmp.so'
+        "$READELF" -d ${tools.coreutils}/bin/coreutils | grep 'NEEDED.*libgmp.so'
         "$CXX" -Wall -Wextra -Werror ${builtins.toFile "hello.cc" ''
           #include <iostream>
           int main() { std::cout << "native C++ stdenv passed\n"; }
@@ -219,21 +219,8 @@ let
       '';
     }
   );
-  testPython = import (builtins.dirOf packageSetSource + "/native-test-python.nix") {
-    pkgs = stdenv.__bootPackages;
-  };
-  toolchain = import (builtins.dirOf packageSetSource + "/native-toolchain.nix") {
-    inherit pkgs;
-    python3 = testPython;
-  };
-  toolchainStdenv =
-    (import (builtins.dirOf packageSetSource + "/native-stdenv.nix") {
-      inherit nixpkgs;
-      bootstrap = stdenv.openbsdBootstrap // {
-        inherit (toolchain) clang bintools;
-      };
-    }).override
-      { name = "stdenv-openbsd-native-toolchain"; };
+  testPython = pkgs.nativeTestPython;
+  toolchain = pkgs.nativeToolchain;
 in
 {
   inherit
@@ -243,16 +230,31 @@ in
     library
     pkgs
     toolchain
-    toolchainStdenv
     ;
+  seedClosure =
+    pkgs.runCommand "openbsd-native-seed-closure"
+      {
+        disallowedRequisites = lib.unique (
+          lib.concatMap (
+            p: builtins.filter (v: builtins.isString v && lib.hasPrefix "/nix/store/" v) (builtins.attrValues p)
+          ) (builtins.attrValues seed)
+        );
+      }
+      ''
+        ln -s ${stdenv} "$out"
+      '';
   fetched = stdenv.fetchurlBoot {
     url = "file://${builtins.toFile "native-fetch-source" fetchText}";
     sha256 = builtins.hashString "sha256" fetchText;
   };
   noLibc = pkgs.mkStdenvNoLibs stdenv;
   toolchainChecks = import ./toolchain-checks.nix {
-    stdenv = toolchainStdenv;
-    inherit lib nonce toolchain;
+    inherit
+      stdenv
+      lib
+      nonce
+      toolchain
+      ;
     compiler-rt = stdenv.openbsdBootstrap.compiler-rt;
   };
   cxxChecks = import ./cxx-checks.nix {
@@ -262,7 +264,7 @@ in
   };
   libraries = import ./libraries.nix {
     inherit stdenv lib nonce;
-    compiler-rt = stdenv.__bootPackages.compilerRtNative;
+    compiler-rt = stdenv.openbsdBootstrap.compiler-rt;
   };
   consumer = stdenv.mkDerivation (
     common

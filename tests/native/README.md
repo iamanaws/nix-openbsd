@@ -11,13 +11,13 @@ nix build --impure --max-jobs 1 --cores 8 --out-link result-native-test \
 ```
 
 The host supplies cross-built seed tools and sources to an OpenBSD 7.9 VM.
-The VM rebuilds the build tools, curl, Perl, minimal Python, libc, compiler
-builtins, libunwind and libc++ from Nixpkgs, reusing cached outputs when available.
-See the [stdenv notes](../../notes/native-stdenv.md) for current results and remaining work.
+The guest builds the native stdenv and test packages, using the
+[binary cache](../../README.md#binary-cache) when available.
+See the [stdenv status](../../notes/native-stdenv.md) for results and limitations.
 
-Recipes and tests are imported after boot over a local host-to-guest connection.
-Rerun the build command after editing them; the base image is reused.
-Seed tools, preloaded sources and VM configuration changes still rebuild it.
+The runner imports recipes and tests after boot over a local connection.
+Rerun the build command after editing them. Changes to seed tools, preloaded
+sources or VM configuration rebuild the base image. Recipe changes reuse it.
 
 Use `--prepare-only` to check recipe transfer and evaluation without building
 packages, `--cxx` to run the full C++ suites, or `--toolchain` to build and test
@@ -27,8 +27,8 @@ The VM has eight vCPUs, 16 GiB of RAM and a 64 GiB root filesystem. Host and
 guest builds run one package at a time, with eight cores per build.
 
 Failed runs keep the log, disk and failed build directories. Set
-`OPENBSD_VM_KEEP_TMP=1` to keep successful runs too. The timeout is 24 hours;
-change it with `OPENBSD_VM_TIMEOUT`, in seconds. The runner requests a clean
+`OPENBSD_VM_KEEP_TMP=1` to keep successful runs too. The timeout is 24 hours.
+Change it with `OPENBSD_VM_TIMEOUT`, in seconds. The runner requests a clean
 guest shutdown after the test.
 
 ## Checks
@@ -36,6 +36,7 @@ guest shutdown after the test.
 Root and `bestie` request builds through the daemon. The test checks:
 
 - Non-root `nixbld` builders and use of the rebuilt tools.
+- A final stdenv closure without bootstrap seed outputs.
 - C/C++ compilation, response files, compression and coreutils operations.
 - Dynamic and static PIE libc consumers, compiler builtins and C++ thread-local storage.
 - Private and shared semaphores, timed waits and thread cancellation.
@@ -49,18 +50,3 @@ Root and `bestie` request builds through the daemon. The test checks:
 - Libagentx shared-library and static-archive consumers, including store
   references and RPATH.
 - Nixpkgs' hello, zlib and pigz recipes, plus local-file fetching.
-
-## Limitations
-
-The compiler and linker still come from the seed.
-The normal run checks C++ consumers. Inside the VM, `test-openbsd-native --cxx`
-runs the full libc++/libc++abi suites; some OpenBSD failures remain under investigation.
-Only compiler builtins are rebuilt; sanitizers and the other compiler-rt libraries
-are not covered. Non-PIE linking still needs a Clang/LLD flag compatibility fix.
-Bootstrap Perl has crypt disabled to break its dependency cycle with libxcrypt.
-Texinfo loads native helper extensions but uses its Perl parser.
-The test does not cover HTTP/TLS fetching or AgentX exchanges with an SNMP daemon.
-
-Nixpkgs disables coreutils' full check phase on BSD. GNU make skips one test
-that requires `/bin/echo`. The remaining package fixes live in
-[`pkgs/openbsd`](../../pkgs/openbsd).

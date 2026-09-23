@@ -11,8 +11,8 @@ let
     stage:
     bootstrap
     // {
-      bashNonInteractive = stage.bashNative;
-      coreutils = stage.coreutilsNative;
+      bashNonInteractive = stage.bashNative or stage.bashNonInteractive;
+      coreutils = stage.coreutilsNative or stage.coreutils;
       curl = stage.curlMinimal;
       inherit (stage)
         diffutils
@@ -277,13 +277,26 @@ import nixpkgs {
                   };
                   rsync = prev.rsync.override { python3 = final.python3Minimal; };
                   stdenvNoLibc = prev.stdenvNoLibc.override {
-                    cc = prev.stdenvNoLibc.cc.override {
+                    cc = prev.stdenvNoLibc.cc.override (old: {
                       # libc and libexecinfo both link against the compiler builtins.
                       extraPackages = [ final.compilerRtBootstrap ];
-                    };
+                      # The C libraries do not use unwinding. Inherited -lunwind
+                      # otherwise makes libpthread depend on the seed runtime.
+                      nixSupport = old.nixSupport // {
+                        cc-cflags = map (flag: if flag == "--unwindlib=libunwind" then "--unwindlib=none" else flag) (
+                          builtins.filter (flag: flag != "-lunwind") old.nixSupport.cc-cflags
+                        );
+                        cc-ldflags = builtins.filter (
+                          flag: flag != "-L${lib.getLib bootstrap.libunwind}/lib"
+                        ) old.nixSupport.cc-ldflags;
+                      };
+                    });
                   };
                   openbsd = prev.openbsd.overrideScope (
                     _: old: {
+                      libc = old.libc.overrideAttrs (attrs: {
+                        disallowedRequisites = (attrs.disallowedRequisites or [ ]) ++ [ bootstrap.libunwind ];
+                      });
                       libcMinimal = old.libcMinimal.overrideAttrs (attrs: {
                         patches = (attrs.patches or [ ]) ++ [ ./libc-difftime.patch ];
                         # Nixpkgs rewrites this private guard to "true", which is active in C23.
@@ -342,6 +355,122 @@ import nixpkgs {
                 name = "stdenv-openbsd-native-runtimes";
                 overrides = final: _: {
                   inherit (tools) bashNonInteractive coreutils perl;
+                  fetchurl = final.stdenv.fetchurlBoot;
+                };
+              };
+        }
+      )
+      (
+        prevStage:
+        let
+          tools = prevStage.stdenv.openbsdBootstrap;
+          python3 = import ./native-test-python.nix {
+            pkgs = prevStage.stdenv.__bootPackages;
+          };
+          toolchain = import ./native-toolchain.nix {
+            pkgs = prevStage;
+            inherit python3;
+          };
+        in
+        {
+          inherit config overlays;
+          stdenv =
+            (import ./native-stdenv.nix {
+              inherit
+                nixpkgs
+                lib
+                localSystem
+                config
+                ;
+              bootstrap = tools // {
+                inherit (toolchain) clang bintools;
+              };
+            }).override
+              {
+                name = "stdenv-openbsd-native-compiler";
+                overrides = final: prev: {
+                  inherit (tools) bashNonInteractive coreutils perl;
+                  bashNative = prev.bashNonInteractive;
+                  coreutilsNative = prev.coreutils;
+                  nativeToolchain = toolchain;
+                  nativeTestPython = python3;
+                  fetchurl = final.stdenv.fetchurlBoot;
+                };
+              };
+        }
+      )
+      (
+        prevStage:
+        let
+          # Rebuild script interpreters first so the remaining tools' shebangs
+          # and helper scripts no longer retain the earlier tools.
+          tools = prevStage.stdenv.openbsdBootstrap // {
+            bashNonInteractive = prevStage.bashNative;
+            coreutils = prevStage.coreutilsNative;
+          };
+        in
+        {
+          inherit config overlays;
+          stdenv =
+            (import ./native-stdenv.nix {
+              inherit
+                nixpkgs
+                lib
+                localSystem
+                config
+                ;
+              bootstrap = tools;
+            }).override
+              {
+                name = "stdenv-openbsd-native-shell";
+                overrides = final: prev: {
+                  inherit (tools) bashNonInteractive coreutils perl;
+                  inherit (prevStage) nativeToolchain nativeTestPython;
+                  perlNative =
+                    let
+                      perl = prev.perl5.override {
+                        enableCrypt = false;
+                        self = perl;
+                      };
+                    in
+                    perl;
+                  fetchurl = final.stdenv.fetchurlBoot;
+                };
+              };
+        }
+      )
+      (
+        prevStage:
+        let
+          tools = toolsFor prevStage // {
+            inherit (prevStage.stdenv.openbsdBootstrap)
+              clang
+              bintools
+              libc
+              compiler-rt
+              libunwind
+              libcxx
+              ;
+            perl = prevStage.perlNative;
+          };
+        in
+        {
+          inherit config overlays;
+          stdenv =
+            (import ./native-stdenv.nix {
+              inherit
+                nixpkgs
+                lib
+                localSystem
+                config
+                ;
+              bootstrap = tools;
+            }).override
+              {
+                name = "stdenv-openbsd-native";
+                overrides = final: _: {
+                  inherit (tools) bashNonInteractive coreutils perl;
+                  inherit (prevStage) nativeToolchain nativeTestPython;
                   fetchurl = final.stdenv.fetchurlBoot;
                 };
               };

@@ -1,6 +1,6 @@
 set -euo pipefail
 
-substitute_args=(--option substitute true --option fallback true)
+build_args=(--max-jobs 1 --cores "$NATIVE_BUILD_CORES" --option substitute true --option fallback true)
 
 if [[ ${1:-} == --prepare-only ]]; then
     exec nix-instantiate "$NATIVE_RECIPE" -A pkgs.hello.drvPath \
@@ -19,8 +19,8 @@ if [[ ${1:-} == --cxx || ${1:-} == --toolchain ]]; then
         --argstr packageSetSource "$NATIVE_PACKAGES" \
         --argstr consumerSource "$NATIVE_CONSUMER" \
         --argstr nonce "$target" \
-        --no-out-link --keep-failed --max-jobs 1 --cores "$NATIVE_BUILD_CORES" \
-        "${substitute_args[@]}"
+        --no-out-link --keep-failed \
+        "${build_args[@]}"
 fi
 
 if [[ ${1:-} != --client ]]; then
@@ -50,22 +50,25 @@ args=(
     --argstr consumerSource "$NATIVE_CONSUMER"
     --argstr nonce "$nonce"
 )
+# Reject a final stdenv that still retains a seed tool or runtime.
+nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A seedClosure > "$work/seed-closure.drv"
+nix-store --realise "$(cat "$work/seed-closure.drv")" "${build_args[@]}" > /dev/null
 # Exercise the compiler and linker overrides used while bootstrapping libc.
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A noLibc > "$work/no-libc.drv"
 # Bootstrap source fetchers must evaluate without Linux-only dependencies.
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A pkgs.netbsd.source.drvPath \
     --eval --strict > /dev/null
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A libraries > "$work/libraries.drv"
-libraries=$(nix-store --realise "$(cat "$work/libraries.drv")" --keep-failed "${substitute_args[@]}")
+libraries=$(nix-store --realise "$(cat "$work/libraries.drv")" --keep-failed "${build_args[@]}")
 for binary in dynamic static builtins tls cxx-dynamic cxx-static; do
     "$libraries/bin/$binary"
 done
 nix-store --verify-path "$libraries"
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A fetched > "$work/fetched.drv"
-fetched=$(nix-store --realise "$(cat "$work/fetched.drv")" --keep-failed "${substitute_args[@]}")
+fetched=$(nix-store --realise "$(cat "$work/fetched.drv")" --keep-failed "${build_args[@]}")
 test "$(cat "$fetched")" = "native fetchurl $nonce"
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A testPython > "$work/python.drv"
-test_python=$(nix-store --realise "$(cat "$work/python.drv")" --keep-failed "${substitute_args[@]}")
+test_python=$(nix-store --realise "$(cat "$work/python.drv")" --keep-failed "${build_args[@]}")
 "$test_python/bin/python3" -B <<'PY'
 import ctypes
 import os
@@ -82,12 +85,12 @@ print("native test Python checks passed")
 PY
 
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A smoke > "$work/smoke.drv"
-smoke=$(nix-store --realise "$(cat "$work/smoke.drv")" --keep-failed "${substitute_args[@]}")
+smoke=$(nix-store --realise "$(cat "$work/smoke.drv")" --keep-failed "${build_args[@]}")
 "$smoke/bin/hello"
 "$smoke/bin/hello-cxx"
 nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A consumer > "$work/consumer.drv"
 drv=$(cat "$work/consumer.drv")
-consumer=$(nix-store --realise "$drv" --keep-failed "${substitute_args[@]}")
+consumer=$(nix-store --realise "$drv" --keep-failed "${build_args[@]}")
 library=$(nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A library.outPath --eval --strict --json \
     | tr -d '"')
 for output in "$smoke" "$library" "$consumer" "$libraries"; do
@@ -104,7 +107,7 @@ echo "$mode daemon client: native libagentx and consumers passed"
 for package in hello zlib pigz; do
     nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A "pkgs.$package" > "$work/$package.drv"
     nix-store --realise "$(cat "$work/$package.drv")" --keep-failed \
-        "${substitute_args[@]}" > /dev/null
+        "${build_args[@]}" > /dev/null
     nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A "pkgs.$package.outPath" \
         --eval --strict --json | tr -d '"' > "$work/$package.out"
 done

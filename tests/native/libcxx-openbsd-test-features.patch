@@ -1,0 +1,56 @@
+Match the tests to OpenBSD's libc and kernel capabilities: named locales
+do not supply regional formatting, quick_exit is absent, and RLIMIT_NPROC
+does not limit threads. Keep unsupported features visible in lit results.
+
+--- a/libcxx/utils/libcxx/test/features.py
++++ b/libcxx/utils/libcxx/test/features.py
+@@ -444,7 +444,10 @@
+     DEFAULT_FEATURES.append(
+         Feature(
+             name="locale.{}".format(locale),
+-            when=lambda cfg, alts=alts: hasAnyLocale(cfg, alts),
++            # OpenBSD accepts these names but only implements C-locale formatting.
++            # A successful setlocale call does not mean the named locale exists.
++            when=lambda cfg, alts=alts: "__OpenBSD__" not in compilerMacros(cfg)
++            and hasAnyLocale(cfg, alts),
+             actions=lambda cfg, locale=locale, alts=alts: _getLocaleFlagsAction(
+                 cfg, locale, alts, provide_locale_conversions[locale]
+             )
+@@ -593,6 +596,15 @@
+         when=lambda cfg: "__ANDROID__" in compilerMacros(cfg),
+     ),
+     Feature(name="netbsd", when=lambda cfg: "__NetBSD__" in compilerMacros(cfg)),
++    Feature(name="openbsd", when=lambda cfg: "__OpenBSD__" in compilerMacros(cfg)),
++    Feature(
++        name="has-quick-exit",
++        when=lambda cfg: sourceBuilds(cfg, """
++            #include <cstdlib>
++            void handler() {}
++            int main() { std::at_quick_exit(handler); std::quick_exit(0); }
++        """),
++    ),
+     Feature(name="freebsd", when=lambda cfg: "__FreeBSD__" in compilerMacros(cfg)),
+     Feature(
+         name="LIBCXX-FREEBSD-FIXME",
+--- a/libcxx/test/std/language.support/support.start.term/quick_exit.pass.cpp
++++ b/libcxx/test/std/language.support/support.start.term/quick_exit.pass.cpp
+@@ -7,6 +7,7 @@
+ //===----------------------------------------------------------------------===//
+ 
+ // UNSUPPORTED: c++03
++// REQUIRES: has-quick-exit
+ 
+ // ::quick_exit and ::at_quick_exit were not implemented in older versions of macOS
+ // TODO: We should never be using `darwin` as the triple, but LLVM's config.guess script
+--- a/libcxx/test/std/thread/futures/futures.async/thread_create_failure.pass.cpp
++++ b/libcxx/test/std/thread/futures/futures.async/thread_create_failure.pass.cpp
+@@ -19,7 +19,8 @@
+ // AIX, macOS and FreeBSD seem to limit the number of processes, not threads via RLIMIT_NPROC
+ // XFAIL: target={{.+}}-aix{{.*}}
+ // XFAIL: target={{.+}}-apple-{{.*}}
+-// XFAIL: freebsd
++// OpenBSD also applies RLIMIT_NPROC to processes, not threads.
++// XFAIL: freebsd, openbsd
+ 
+ // z/OS does not have mechanism to limit the number of threads
+ // XFAIL: target={{.+}}-zos{{.*}}

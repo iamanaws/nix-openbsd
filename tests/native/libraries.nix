@@ -52,6 +52,8 @@ stdenv.mkDerivation {
     ./cxx-dynamic
     "$CXX" -static -pie ${./cxx.cc} libthrows.a -pthread -o cxx-static
     ./cxx-static
+    "$CXX" -std=c++17 ${./locale.cc} -o locale
+    ./locale
     LD_TRACE_LOADED_OBJECTS=1 ./cxx-dynamic > cxx-loaded-libraries
     cat cxx-loaded-libraries
     grep -F '${stdenv.cc.libunwind}/lib/libunwind.so' cxx-loaded-libraries
@@ -70,7 +72,7 @@ stdenv.mkDerivation {
   installPhase = ''
     runHook preInstall
     mkdir -p "$out/bin"
-    cp dynamic static semaphore-dynamic semaphore-static builtins tls cxx-dynamic cxx-static "$out/bin/"
+    cp dynamic static semaphore-dynamic semaphore-static builtins tls cxx-dynamic cxx-static locale "$out/bin/"
     cp loaded-libraries cxx-loaded-libraries link.map tls.map "$out/"
     echo "$EUID" > "$out/build-uid"
     runHook postInstall

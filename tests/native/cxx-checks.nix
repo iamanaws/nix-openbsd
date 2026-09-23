@@ -5,6 +5,7 @@
 }:
 (libcxx.override { inherit python3; }).overrideAttrs (old: {
   doCheck = true;
+  patches = (old.patches or [ ]) ++ [ ./libcxx-openbsd-test-features.patch ];
   postUnpack = (old.postUnpack or "") + ''
     # The ABI tests compare demanglers; Nixpkgs' source subset omits these files.
     mkdir -p "$sourceRoot/llvm/include/llvm/Testing"
@@ -12,6 +13,12 @@
     cp -r ${llvmSrc}/llvm/include/llvm/Testing/Demangle "$sourceRoot/llvm/include/llvm/Testing/"
   '';
   postPatch = (old.postPatch or "") + ''
+    # Rapid thread creation can outrun OpenBSD's kernel reaper and fill its thread table.
+    # Serialize these stress tests; each test still exercises multiple threads.
+    cat > ../libcxx/test/std/atomics/atomics.types.generic/atomics.types.float/lit.local.cfg <<'EOF'
+    lit_config.parallelism_groups["openbsd-atomic-float"] = 1
+    config.parallelism_group = "openbsd-atomic-float"
+    EOF
     # OpenBSD accepts arbitrary bare locale names, but rejects unknown encodings.
     substituteInPlace ../libcxx/test/selftest/dsl/dsl.sh.py \
       --replace-fail '"forsurethisisnotanexistinglocale"' \
