@@ -50,10 +50,6 @@ OSPF, RIP, IKEv1, certificate authentication, rekeying or reboot persistence.
 See the [integration gaps](../../notes/nixbsd-integration.md) for live
 configuration switching.
 
-The standalone base VM acquires a DHCP lease, but `/etc/rc.d/dhcpcd check`
-reports failure because its default process pattern does not match the
-running `dhcpcd: [manager] ...` title. The static-network test does not run DHCP.
-
 ## Fixes found
 
 The first runs found missing `/etc/protocols` and `/etc/services` files in

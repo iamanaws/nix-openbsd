@@ -47,6 +47,7 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    openbsd.rc.conf.pf = cfg.enableFilter;
     environment.etc."pf.conf".text = cfg.config;
     environment.etc."pf.os".text = cfg.fingerprints;
     environment.systemPackages = [ cfg.package ];

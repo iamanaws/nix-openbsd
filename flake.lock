@@ -137,8 +137,8 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1789328430,
-        "narHash": "sha256-Z5phk3GgFYIucliQis/q4WGZ93AZmTQFYnJK6zVrkzk=",
+        "lastModified": 1790169066,
+        "narHash": "sha256-Ff7TuZGb/66E5yQhwZjQVYFYEZlZ57/OtZTseVfwXA8=",
         "path": "/home/iamanaws/repos/nix-bsd/nixbsd",
         "type": "path"
       },

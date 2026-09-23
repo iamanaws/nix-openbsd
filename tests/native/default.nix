@@ -4,6 +4,7 @@ let
   host = nixbsd.inputs.nixpkgs.legacyPackages.x86_64-linux;
   system = nixbsd.nixosConfigurations.openbsd-base.extendModules {
     modules = [
+      ../../modules/system/openbsd.nix
       ({ lib, pkgs, ... }: {
         nixpkgs.buildPlatform = "x86_64-linux";
         # The BSD image builder creates a temporary partition but reads the store copy.
@@ -31,9 +32,6 @@ let
         networking.hostName = lib.mkForce "native-packages";
         networking.useDHCP = true;
         services.openssh.enable = lib.mkForce false;
-        # Without a final ruleset, rc leaves its temporary block rules active.
-        # They reject libuv's network tests and cache downloads with EACCES.
-        openbsd.rc.conf.pf = false;
         # GENERIC only uses one CPU, even when QEMU exposes more.
         boot.kernel.package = lib.mkForce (pkgs.openbsd.sys.override { baseConfig = "GENERIC.MP"; });
         environment.systemPackages = [ guestLauncher ];

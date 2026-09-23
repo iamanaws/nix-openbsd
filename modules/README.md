@@ -11,6 +11,10 @@ The modules declare options, service users and runtime directories. They
 check configuration before startup where the daemon supports it.
 Use each daemon's OpenBSD configuration format.
 
+The flake and tests import [OpenBSD integration fixes](system/openbsd.nix)
+for PF defaults, DHCP process matching, MTU and IPv6 default routes. This module
+only applies on OpenBSD. The fixes remain here pending upstream compatibility testing.
+
 ## Before enabling services
 
 - Configuration text goes into the readable Nix store. Do not put real

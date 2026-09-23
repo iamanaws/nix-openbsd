@@ -7,6 +7,7 @@ let
       remote = toString (3 - number);
       system = flake.inputs.nixbsd.nixosConfigurations.openbsd-base.extendModules {
         modules = [
+          ../../modules/system/openbsd.nix
           ({ lib, pkgs, ... }: {
             imports = [
               ../../modules/services/bgpd.nix

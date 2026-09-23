@@ -9,6 +9,7 @@ The goal is to configure, build and update OpenBSD through NixBSD as we do
 Linux through NixOS.
 
 The native stdenv passes VM validation. See the [results and limitations](notes/native-stdenv.md).
+The demo is cross-built; native Nix and a native-built system are future work.
 This is a development environment. Nix builds use separate users without a sandbox.
 
 ## Code and tests
@@ -18,6 +19,8 @@ This is a development environment. Nix builds use separate users without a sandb
   the extra OpenBSD packages to Nixpkgs.
 - [Modules](modules/README.md) configure networking, web services, VPNs,
   logging and monitoring through NixBSD.
+- [Base VM checks](tests/base/run.sh) test DHCP service control, outbound HTTPS,
+  MTU and IPv6 routes. Run `bash tests/base/run.sh --max-jobs 1 --cores 8`.
 - [Native build tests](tests/native/README.md) rebuild tools and compile
   packages through the Nix daemon as root and an unprivileged client.
 - [Network tests](tests/network/README.md) check declarative addresses,

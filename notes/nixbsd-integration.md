@@ -2,11 +2,10 @@
 
 ## Live configuration switching
 
-The integration review found a missing OpenBSD substitution for `@rcorder@`
-in `switch-to-configuration.sh`. Review OpenBSD service ordering
-and `check` versus `status` handling before testing `switch`, `test`, service
-restarts and rollback in a disposable VM. Boot and login tests do not cover
-these operations.
+The local [OpenBSD module](../modules/system/openbsd.nix) disables
+`system.switch.enable` and rejects attempts to enable it.
+The switching script needs OpenBSD service ordering and `check` semantics.
+Implement and test switching, service restarts and rollback before enabling it.
 
 ## Raw disk export
 

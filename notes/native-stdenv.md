@@ -9,7 +9,10 @@ See the [test instructions and coverage](../tests/native/README.md) to run it.
 
 ## Suite results
 
-- LLVM's full test suite passes.
+These counts come from the recorded VM runs. A cached test run can reuse their outputs.
+
+- LLVM's `check-all` passes for the X86 configuration. Full Clang and LLD
+  suites are disabled; the toolchain tests cover compilation and linking.
 - libc++abi has 58 passes and 22 unsupported tests.
 - libc++ has 9,948 passes, 782 unsupported tests and 49 expected failures.
   This includes all 393 header-visibility tests after the OpenBSD declaration fix.

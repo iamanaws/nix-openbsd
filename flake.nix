@@ -19,6 +19,7 @@
 
       openbsdBase = nixbsd.nixosConfigurations.openbsd-base.extendModules {
         modules = [
+          ./modules/system/openbsd.nix
           {
             nixpkgs.buildPlatform = system;
           }
