@@ -62,9 +62,11 @@ in
       "d /var/log 0755 root wheel - -"
     ];
 
+    openbsd.rc.services.syslogd.shellVariables.pexp = "syslogd: \\[priv\\]";
+
     init.services.syslogd = {
       description = "OpenBSD system logging daemon";
-      dependencies = [ "FILESYSTEMS" ] ++ lib.optional config.services.newsyslog.enable "newsyslog-check";
+      dependencies = [ "FILESYSTEMS" ] ++ lib.optional (config.services.newsyslog.enable or false) "newsyslog-check";
       before = [ "SERVERS" ];
       startType = "forking";
       path = [ pkgs.coreutils ];

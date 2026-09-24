@@ -67,6 +67,8 @@ in
       "d /etc/isakmpd/pubkeys 0755 root wheel - -"
     ];
 
+    openbsd.rc.services.isakmpd.shellVariables.pexp = "isakmpd: monitor \\[priv\\]";
+
     init.services.isakmpd = {
       description = "OpenBSD IKEv1 daemon";
       dependencies = [ "NETWORKING" ];

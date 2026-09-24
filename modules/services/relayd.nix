@@ -56,7 +56,7 @@ in
 
     init.services.relayd = {
       description = "OpenBSD relay daemon";
-      dependencies = [ "NETWORKING" ] ++ lib.optional config.services.httpd.enable "httpd";
+      dependencies = [ "NETWORKING" ] ++ lib.optional (config.services.httpd.enable or false) "httpd";
       before = [ "SERVERS" ];
       startType = "forking";
       path = [

@@ -59,6 +59,8 @@ in
       "f ${cfg.logFile} 0600 root wheel - -"
     ];
 
+    openbsd.rc.services.pflogd.shellVariables.pexp = "pflogd: \\[priv\\]";
+
     init.services.pflogd = {
       description = "OpenBSD packet filter logging daemon";
       dependencies = [ "NETWORKING" ];

@@ -12,6 +12,7 @@ let
   gateway = cfg.defaultGateway6;
   hasGateway = gateway != null && gateway.address != "";
   dhcp = cfg.dhcpcd.enable && (cfg.useDHCP || lib.any (i: i.useDHCP == true) interfaces);
+  networkPostStart = config.init.services.network_interfaces.postStart;
   networkOptions = pkgs.writeShellScript "openbsd-network-options" ''
     set -e
     ${lib.concatMapStringsSep "\n" (i: ''
@@ -54,9 +55,18 @@ in
       }
     ];
     # rc.subr must match the manager's changed title, not dhcpcd's original argv.
-    openbsd.rc.services = lib.mkIf dhcp {
-      dhcpcd.shellVariables.pexp = "dhcpcd: \\[manager\\].*";
-    };
+    openbsd.rc.services = lib.mkMerge [
+      (lib.mkIf dhcp {
+        dhcpcd.shellVariables.pexp = "dhcpcd: \\[manager\\].*";
+      })
+      (lib.mkIf (networkPostStart != null) {
+        # The upstream hook lets postStart hide an address-setup failure.
+        network_interfaces.hooks.rc_start = lib.mkForce ''
+          rc_exec "''${daemon} ''${daemon_flags}" || return $?
+          ${networkPostStart}
+        '';
+      })
+    ];
     system.build.openbsdNetworkOptions = networkOptions;
     # NixBSD configures the addresses; apply the missing options afterward.
     init.services.network_interfaces.postStart =
