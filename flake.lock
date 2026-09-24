@@ -137,14 +137,18 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1790169066,
-        "narHash": "sha256-Ff7TuZGb/66E5yQhwZjQVYFYEZlZ57/OtZTseVfwXA8=",
-        "path": "/home/iamanaws/repos/nix-bsd/nixbsd",
-        "type": "path"
+        "lastModified": 1789273373,
+        "narHash": "sha256-ddb2cxMxcEOokJfy3ZgdbE6VYTePGrtfvsamgoGndBs=",
+        "owner": "iamanaws",
+        "repo": "nixbsd",
+        "rev": "c292e2760f5a4b4807c377368aafa46ec7d11a1f",
+        "type": "github"
       },
       "original": {
-        "path": "/home/iamanaws/repos/nix-bsd/nixbsd",
-        "type": "path"
+        "owner": "iamanaws",
+        "ref": "openbsd",
+        "repo": "nixbsd",
+        "type": "github"
       }
     },
     "nixpkgs": {

@@ -1,0 +1,93 @@
+Doctest's fallback labels OpenBSD as Linux, failing its platform test.
+Recognize OpenBSD explicitly in both the source and generated header.
+
+--- a/doctest/parts/public/platform.h
++++ b/doctest/parts/public/platform.h
+@@ -20,6 +20,9 @@
+ #elif defined(__wasi__)
+ #define DOCTEST_PLATFORM_WASI
+ 
++#elif defined(__OpenBSD__)
++#define DOCTEST_PLATFORM_OPENBSD
++
+ #else // defined(linux) || defined(__linux) // defined(__linux__)
+ #define DOCTEST_PLATFORM_LINUX
+ #endif // DOCTEST_PLATFORM
+--- a/doctest/doctest.h
++++ b/doctest/doctest.h
+@@ -339,6 +339,9 @@
+ #elif defined(__wasi__)
+ #define DOCTEST_PLATFORM_WASI
+ 
++#elif defined(__OpenBSD__)
++#define DOCTEST_PLATFORM_OPENBSD
++
+ #else // defined(linux) || defined(__linux) // defined(__linux__)
+ #define DOCTEST_PLATFORM_LINUX
+ #endif // DOCTEST_PLATFORM
+--- a/tests/doctest/test_platform.cpp
++++ b/tests/doctest/test_platform.cpp
+@@ -35,6 +35,12 @@
+ constexpr auto linux_ = false;
+ #endif // DOCTEST_PLATFORM_LINUX
+ 
++#if defined(DOCTEST_PLATFORM_OPENBSD)
++constexpr auto openbsd = true;
++#else
++constexpr auto openbsd = false;
++#endif
++
+ } // namespace platform
+ 
+ TEST_CASE("Exactly one platform is detected") {
+@@ -43,6 +49,7 @@
+     CAPTURE(platform::windows);
+     CAPTURE(platform::wasi);
+     CAPTURE(platform::linux_);
++    CAPTURE(platform::openbsd);
+ 
+     const auto detected = std::multiset<bool>{
+         platform::mac,
+@@ -50,6 +57,7 @@
+         platform::windows,
+         platform::wasi,
+         platform::linux_,
++        platform::openbsd,
+     };
+ 
+     CHECK(detected.count(true) == 1);
+@@ -69,4 +77,5 @@
+     CHECK(platform::windows == (cmake_system_name == "Windows"));
+     CHECK(platform::wasi == (cmake_system_name == "Emscripten"));
+     CHECK(platform::linux_ == (cmake_system_name == "Linux"));
++    CHECK(platform::openbsd == (cmake_system_name == "OpenBSD"));
+ }
+--- a/tests/doctest/test_debugger.cpp
++++ b/tests/doctest/test_debugger.cpp
+@@ -6,7 +6,7 @@
+ #include <windows.h>
+ DOCTEST_CLANG_SUPPRESS_WARNING_POP
+ 
+-#elif defined(DOCTEST_PLATFORM_LINUX)
++#elif defined(DOCTEST_PLATFORM_LINUX) || defined(DOCTEST_PLATFORM_OPENBSD)
+ #include <csignal>
+ 
+ #else
+@@ -44,7 +44,7 @@
+     REQUIRE(handle == nullptr);
+     handle = AddVectoredExceptionHandler(1, veh);
+ 
+-#elif defined(DOCTEST_PLATFORM_LINUX)
++#elif defined(DOCTEST_PLATFORM_LINUX) || defined(DOCTEST_PLATFORM_OPENBSD)
+     DOCTEST_CLANG_SUPPRESS_WARNING_WITH_PUSH("-Wdisabled-macro-expansion") /* sa_handler is a self-referential macro */
+     struct sigaction sa = {};
+     sa.sa_handler = [](int) { signal_caught = true; };
+@@ -61,7 +61,7 @@
+         RemoveVectoredExceptionHandler(handle);
+         handle = nullptr;
+     }
+-#elif defined(DOCTEST_PLATFORM_LINUX)
++#elif defined(DOCTEST_PLATFORM_LINUX) || defined(DOCTEST_PLATFORM_OPENBSD)
+ #if DOCTEST_CLANG >= DOCTEST_COMPILER(5, 0, 0)
+     DOCTEST_CLANG_SUPPRESS_WARNING_WITH_PUSH(
+         "-Wzero-as-null-pointer-constant"

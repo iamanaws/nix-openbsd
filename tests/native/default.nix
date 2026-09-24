@@ -274,6 +274,7 @@ let
     exec /var/lib/native-test/bin/test-openbsd-native "$@"
   '';
   guestTest = pkgs.writeShellScriptBin "test-openbsd-native" ''
+    export NATIVE_NIXBSD=${nixbsd.outPath}
     export NATIVE_BUILD_CORES=${toString cores}
     export NATIVE_ENVIRONMENT=${environment}
     export NATIVE_RECIPE=${./.}/package.nix

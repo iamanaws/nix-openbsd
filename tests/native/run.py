@@ -24,6 +24,7 @@ def main():
     mode.add_argument("--prepare-only", action="store_true")
     mode.add_argument("--cxx", action="store_true")
     mode.add_argument("--toolchain", action="store_true")
+    mode.add_argument("--nix", action="store_true")
     args = parser.parse_args()
     work = Path(tempfile.mkdtemp(prefix="nixopenbsd-native."))
     (work / "runtime").mkdir()
@@ -113,7 +114,8 @@ def main():
                 flag = (
                     " --prepare-only" if args.prepare_only else
                     " --cxx" if args.cxx else
-                    " --toolchain" if args.toolchain else ""
+                    " --toolchain" if args.toolchain else
+                    " --nix" if args.nix else ""
                 )
                 send(
                     "nix-store --realise --add-root /var/lib/native-test --indirect "

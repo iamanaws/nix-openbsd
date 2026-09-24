@@ -7,6 +7,12 @@ the closure check rejects bootstrap seed outputs.
 
 See the [test instructions and coverage](../tests/native/README.md) to run it.
 
+Native Nix 2.34.8 passed the package checks through its own daemon on
+2026-09-24, as root and a regular user with unprivileged builders. Signed
+Cachix downloads, store verification and isolated garbage collection passed.
+Its runtime closure contains no declared bootstrap outputs. Full upstream
+Nix suites have not been run; BLAKE3 uses its non-TBB implementation.
+
 ## Suite results
 
 These counts come from the recorded VM runs. A cached test run can reuse their outputs.
@@ -29,6 +35,6 @@ Texinfo loads native helper extensions but uses its Perl parser.
 Nixpkgs disables coreutils' full check phase on BSD. GNU make skips one test
 that requires `/bin/echo`.
 
-The native package test does not cover HTTP/TLS fetching or AgentX exchanges
-with an SNMP daemon. See [package fixes](../pkgs/openbsd) and the
+The native package test does not cover AgentX exchanges with an SNMP daemon.
+HTTP/TLS cache fetching is covered by `--nix`. See [package fixes](../pkgs/openbsd) and the
 [project next steps](../README.md#next-steps).

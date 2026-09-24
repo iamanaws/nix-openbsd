@@ -21,7 +21,10 @@ sources or VM configuration rebuild the base image. Recipe changes reuse it.
 
 Use `--prepare-only` to check recipe transfer and evaluation without building
 packages, `--cxx` to run the full C++ suites, or `--toolchain` to build and test
-native LLVM, Clang and LLD.
+native LLVM, Clang and LLD. Use `--nix` to build the native Nix CLI and daemon,
+then run the package checks through that daemon as root and `bestie`. It also
+checks for bootstrap references, downloads from Cachix, and tests garbage
+collection in a disposable store. The original daemon is restored afterward.
 
 The VM has eight vCPUs, 16 GiB of RAM and a 64 GiB root filesystem. Host and
 guest builds run one package at a time, with eight cores per build.

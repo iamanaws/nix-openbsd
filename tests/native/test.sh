@@ -1,6 +1,15 @@
 set -euo pipefail
 
+if [[ -n ${NATIVE_NIX_BIN:-} ]]; then
+    export PATH="$NATIVE_NIX_BIN:$PATH"
+    test "$(command -v nix)" = "$NATIVE_NIX_BIN/nix"
+fi
+
 build_args=(--max-jobs 1 --cores "$NATIVE_BUILD_CORES" --option substitute true --option fallback true)
+
+if [[ ${1:-} == --nix-checks ]]; then
+    exec bash "$(dirname "$NATIVE_RECIPE")/nix-checks.sh" "$2" "$0"
+fi
 
 if [[ ${1:-} == --prepare-only ]]; then
     exec nix-instantiate "$NATIVE_RECIPE" -A pkgs.hello.drvPath \
@@ -10,17 +19,27 @@ if [[ ${1:-} == --prepare-only ]]; then
         --argstr nonce prepare --eval --strict
 fi
 
-if [[ ${1:-} == --cxx || ${1:-} == --toolchain ]]; then
+if [[ ${1:-} == --cxx || ${1:-} == --toolchain || ${1:-} == --nix ]]; then
     target=cxxChecks
     if [[ $1 == --toolchain ]]; then target=toolchainChecks; fi
+    if [[ $1 == --nix ]]; then
+        target=nativeNix
+        build_args+=(--show-trace)
+    fi
     export NIX_REMOTE=daemon
-    exec nix-build "$NATIVE_RECIPE" -A "$target" \
+    output=$(nix-build "$NATIVE_RECIPE" -A "$target" \
+        --argstr nixbsdSource "$NATIVE_NIXBSD" \
         --argstr environment "$NATIVE_ENVIRONMENT" \
         --argstr packageSetSource "$NATIVE_PACKAGES" \
         --argstr consumerSource "$NATIVE_CONSUMER" \
         --argstr nonce "$target" \
         --no-out-link --keep-failed \
-        "${build_args[@]}"
+        "${build_args[@]}")
+    echo "$output"
+    if [[ $1 == --nix ]]; then
+        exec bash "$(dirname "$NATIVE_RECIPE")/nix-checks.sh" "$output" "$0"
+    fi
+    exit
 fi
 
 if [[ ${1:-} != --client ]]; then

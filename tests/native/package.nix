@@ -3,6 +3,7 @@
   packageSetSource ? ../../pkgs/openbsd/native-packages.nix,
   consumerSource,
   nonce,
+  nixbsdSource ? null,
 }:
 let
   # JSON drops string contexts; restore references to the bootstrap store paths.
@@ -231,6 +232,10 @@ in
     pkgs
     toolchain
     ;
+  nativeNix = import ./nix.nix {
+    inherit pkgs;
+    nixbsdSource = store nixbsdSource;
+  };
   seedClosure =
     pkgs.runCommand "openbsd-native-seed-closure"
       {

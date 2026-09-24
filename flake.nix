@@ -9,7 +9,7 @@
   };
 
   inputs = {
-    nixbsd.url = "path:/home/iamanaws/repos/nix-bsd/nixbsd";
+    nixbsd.url = "github:iamanaws/nixbsd/openbsd";
   };
 
   outputs =

@@ -8,8 +8,8 @@ provides boot, login, SSH, basic networking and a patched Nix daemon.
 The goal is to configure, build and update OpenBSD through NixBSD as we do
 Linux through NixOS.
 
-The native stdenv passes VM validation. See the [results and limitations](notes/native-stdenv.md).
-The demo is cross-built; native Nix and a native-built system are future work.
+The native stdenv and Nix pass VM validation. See the [results and limitations](notes/native-stdenv.md).
+The demo is cross-built; a native-built system is future work.
 This is a development environment. Nix builds use separate users without a sandbox.
 
 ## Code and tests
@@ -79,7 +79,7 @@ stay local.
 
 ## Next steps
 
-- Build Nix natively on OpenBSD.
+- Integrate native Nix into the demo.
 - Add live configuration switching, service restarts and rollback through NixBSD.
 - Improve disk-image generation and add raw `disk.img` export. The
   [integration notes](notes/nixbsd-integration.md) track these gaps.
