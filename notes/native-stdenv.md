@@ -13,6 +13,10 @@ Cachix downloads, store verification and isolated garbage collection passed.
 Its runtime closure contains no declared bootstrap outputs. Full upstream
 Nix suites have not been run; BLAKE3 uses its non-TBB implementation.
 
+A fresh demo VM also passed on 2026-09-24 with native Nix: root and regular-user
+daemon builds, daemon restart, signed cache downloads and HTTP serving.
+The demo's other system packages are cross-built.
+
 ## Suite results
 
 These counts come from the recorded VM runs. A cached test run can reuse their outputs.

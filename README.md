@@ -9,7 +9,7 @@ The goal is to configure, build and update OpenBSD through NixBSD as we do
 Linux through NixOS.
 
 The native stdenv and Nix pass VM validation. See the [results and limitations](notes/native-stdenv.md).
-The demo is cross-built; a native-built system is future work.
+The demo uses native Nix; its other system packages are cross-built.
 This is a development environment. Nix builds use separate users without a sandbox.
 
 ## Code and tests
@@ -19,8 +19,9 @@ This is a development environment. Nix builds use separate users without a sandb
   the extra OpenBSD packages to Nixpkgs.
 - [Modules](modules/README.md) configure networking, web services, VPNs,
   logging and monitoring through NixBSD.
-- [Base VM checks](tests/base/run.sh) test DHCP service control, outbound HTTPS,
-  MTU and IPv6 routes. Run `bash tests/base/run.sh --max-jobs 1 --cores 8`.
+- [Base VM checks](tests/base/run.sh) test service control, outbound HTTPS,
+  MTU, IPv6 routes and network startup failures.
+  Run `bash tests/base/run.sh --max-jobs 1 --cores 8`.
 - [Native build tests](tests/native/README.md) rebuild tools and compile
   packages through the Nix daemon as root and an unprivileged client.
 - [Network tests](tests/network/README.md) check declarative addresses,
@@ -29,17 +30,16 @@ This is a development environment. Nix builds use separate users without a sandb
 
 ## Run the demo
 
-Use x86_64 Linux with KVM and flakes enabled. The flake uses a
-local NixBSD input. Set its path in [flake.nix](flake.nix) to your custom
-NixBSD checkout. It inherits that checkout's Nixpkgs pin.
+Use x86_64 Linux with KVM and flakes enabled. The flake pins the custom
+NixBSD branch and inherits its Nixpkgs pin.
 
 ```sh
 nix build --accept-flake-config .#vm
 ./result/bin/run-openbsd-webserver-vm
 ```
 
-The first build may need to cross-compile packages for OpenBSD. Once the VM
-boots, test HTTP or connect over SSH:
+The Linux build uses cached native Nix and cross-compiles other packages as
+needed. Once the VM boots, test HTTP or connect over SSH:
 
 ```sh
 curl http://127.0.0.1:8080/
@@ -62,6 +62,7 @@ nix build .#minimal-vm
 nix build .#system-image
 nix build .#toplevel
 nix build .#libagentx
+nix build --accept-flake-config .#native-nix
 ```
 
 ## Binary cache
@@ -73,13 +74,13 @@ standard Nix cache by accepting the flake's cache settings:
 nix build --accept-flake-config .#minimal-vm
 ```
 
-The cache contains cross-built seeds and the validated native stdenv, Clang,
-LLD and runtimes. Important outputs are pinned. VM images and build history
+The cache contains cross-built seeds and the validated native Nix, stdenv,
+Clang, LLD and runtimes. Important outputs are pinned. VM images and build history
 stay local.
 
 ## Next steps
 
-- Integrate native Nix into the demo.
+- Build the system configuration with the native stdenv.
 - Add live configuration switching, service restarts and rollback through NixBSD.
 - Improve disk-image generation and add raw `disk.img` export. The
   [integration notes](notes/nixbsd-integration.md) track these gaps.

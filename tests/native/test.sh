@@ -29,6 +29,7 @@ if [[ ${1:-} == --cxx || ${1:-} == --toolchain || ${1:-} == --nix ]]; then
     export NIX_REMOTE=daemon
     output=$(nix-build "$NATIVE_RECIPE" -A "$target" \
         --argstr nixbsdSource "$NATIVE_NIXBSD" \
+        --argstr nixPackageSource "$(dirname "$NATIVE_PACKAGES")/native-nix.nix" \
         --argstr environment "$NATIVE_ENVIRONMENT" \
         --argstr packageSetSource "$NATIVE_PACKAGES" \
         --argstr consumerSource "$NATIVE_CONSUMER" \

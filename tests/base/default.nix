@@ -14,6 +14,21 @@ let
   network = base.extendModules {
     modules = [
       {
+        imports = [
+          ../../modules/services/syslogd.nix
+          ../../modules/services/pflogd.nix
+          ../../modules/services/isakmpd.nix
+        ];
+        nixpkgs.overlays = [ (import ../../overlays/openbsd.nix) ];
+        services.syslogd = {
+          enable = true;
+          config = "*.notice /var/log/messages";
+        };
+        services.pflogd.enable = true;
+        services.isakmpd = {
+          enable = true;
+          config = "";
+        };
         networking.interfaces.vio0 = {
           mtu = 1400;
           ipv6.addresses = [
@@ -84,6 +99,44 @@ assert lib.hasInfix "change -inet6 default 2001:db8::1 -ifp vio0 -priority 10" s
       check_network
       /etc/rc.d/network_interfaces start
       check_network
+      ${network.pkgs.openbsd.ifconfig}/bin/ifconfig pflog0 create 2>/dev/null ||
+        ${network.pkgs.openbsd.ifconfig}/bin/ifconfig pflog0
+      ${network.pkgs.openbsd.ifconfig}/bin/ifconfig pflog0 up
+      ${lib.concatMapStringsSep "\n"
+        (name: ''
+          service=/etc/rc.d/${name}
+          pattern=${lib.escapeShellArg network.config.openbsd.rc.services.${name}.shellVariables.pexp}
+          "$service" stop
+          # This base test keeps PF disabled, which also disables pflogd in rc.conf.
+          "$service" -f start
+          "$service" check
+          ${network.pkgs.openbsd.pkill}/bin/pgrep -xf "$pattern"
+          "$service" stop
+          if "$service" check || ${network.pkgs.openbsd.pkill}/bin/pgrep -xf "$pattern"; then
+            echo '${name} survived stop' >&2
+            exit 1
+          fi
+          "$service" -f start
+          "$service" check
+        '')
+        [
+          "syslogd"
+          "pflogd"
+          "isakmpd"
+        ]
+      }
+      work=$(mktemp -d)
+      trap 'rm -rf "$work"' EXIT
+      # Run the generated hook in its own shell, as rc.subr requires.
+      sed '/^rc_cmd /d' /etc/rc.d/network_interfaces > "$work/network_hook"
+      cat >> "$work/network_hook" <<'CHECK_NETWORK_FAILURE'
+    rc_exec() { return 29; }
+    status=0
+    rc_start || status=$?
+    test "$status" -eq 29
+    CHECK_NETWORK_FAILURE
+      chmod +x "$work/network_hook"
+      "$work/network_hook"
     OPENBSD_NETWORK_PROBE
     then
       printf '\nOPENBSD_NETWORK_%s\n' PASS

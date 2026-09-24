@@ -16,6 +16,39 @@
     { self, nixbsd, ... }:
     let
       system = "x86_64-linux";
+      inherit (nixbsd.inputs.nixpkgs) lib;
+
+      seedMetadata = import ./pkgs/openbsd/native-bootstrap.nix { pkgs = openbsdBase.pkgs; };
+      # Match the VM's seed references: store outputs, without Linux build derivations.
+      seed = lib.mapAttrsRecursive (
+        _: value:
+        if builtins.isString value && lib.hasPrefix "/nix/store/" value then
+          let
+            path = builtins.unsafeDiscardStringContext value;
+          in
+          builtins.appendContext path {
+            "${path}" = {
+              path = true;
+            };
+          }
+        else
+          value
+      ) seedMetadata;
+      nativePackages = import ./pkgs/openbsd/native-packages.nix {
+        nixpkgs = nixbsd.inputs.nixpkgs.outPath;
+        bootstrap = lib.mapAttrs (
+          _: p:
+          removeAttrs p [ "path" ]
+          // {
+            type = "derivation";
+            outPath = p.path;
+          }
+        ) seed;
+      };
+      nativeNix = import ./pkgs/openbsd/native-nix.nix {
+        pkgs = nativePackages;
+        nixbsdSource = nixbsd.outPath;
+      };
 
       openbsdBase = nixbsd.nixosConfigurations.openbsd-base.extendModules {
         modules = [
@@ -56,6 +89,14 @@
               ];
 
               nixpkgs.overlays = [ (import ./overlays/openbsd.nix) ];
+              nix.package = nativeNix;
+              nix.settings = {
+                substituters = lib.mkBefore [ "https://nix-openbsd.cachix.org" ];
+                trusted-public-keys = [
+                  "nix-openbsd.cachix.org-1:IbN25q8l3NyIq8L16AWaJ1MNTxZRiYdzO5eYFQv1J+4="
+                ];
+                fallback = true;
+              };
               environment.systemPackages = [ pkgs.openbsd.netstat ];
               fonts.fontconfig.enable = false;
               systemd.tmpfiles.rules = [
@@ -189,6 +230,7 @@
       nixosConfigurations.openbsd-webserver = openbsdWebserver;
 
       packages.${system} = {
+        native-nix = nativeNix;
         inherit (openbsdWebserver.pkgs.openbsd)
           acme-client
           arp

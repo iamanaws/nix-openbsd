@@ -1,5 +1,12 @@
 { pkgs, nixbsdSource }:
 let
+  # Copy individual patches so checkout metadata cannot change Nix's derivation.
+  nixPatch =
+    name:
+    builtins.path {
+      path = nixbsdSource + "/overlays/${name}";
+      inherit name;
+    };
   tools = pkgs.stdenv.__bootPackages;
   overrides = _: previous: {
     python3 = pkgs.nativeTestPython.python;
@@ -19,10 +26,11 @@ let
     });
     boehmgc = previous.boehmgc.overrideAttrs (old: {
       # Some test executables have no .data; define its start even when empty.
-      postConfigure = builtins.replaceStrings
-        [ "__data_start = ADDR(.data);" ]
-        [ "SECTIONS { .data : { __data_start = .; *(.data .data.*) } } INSERT BEFORE .bss;" ]
-        old.postConfigure;
+      postConfigure =
+        builtins.replaceStrings
+          [ "__data_start = ADDR(.data);" ]
+          [ "SECTIONS { .data : { __data_start = .; *(.data .data.*) } } INSERT BEFORE .bss;" ]
+          old.postConfigure;
     });
     # TBB's OpenBSD tests fail; BLAKE3 also supports hashing without it.
     libblake3 = previous.libblake3.override { useTBB = false; };
@@ -40,7 +48,9 @@ let
           --replace-fail '#  include <sys/timeb.h>' ""
       '';
       # Its legacy configure probes rely on implicit function declarations.
-      env = old.env // { NIX_CFLAGS_COMPILE = "-std=gnu89"; };
+      env = old.env // {
+        NIX_CFLAGS_COMPILE = "-std=gnu89";
+      };
       doCheck = true;
       checkTarget = "check";
     });
@@ -80,13 +90,13 @@ in
             "'${pkgs.stdenv.hostPlatform.system}'"
       '';
       patches = (old.patches or [ ]) ++ [
-        (nixbsdSource + "/overlays/nix-openbsd-builder-pty.patch")
-        (nixbsdSource + "/overlays/nix-openbsd-build-users.patch")
+        (nixPatch "nix-openbsd-builder-pty.patch")
+        (nixPatch "nix-openbsd-build-users.patch")
       ];
     });
     nix-main = prev.nix-main.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
-        (nixbsdSource + "/overlays/nix-openbsd-atfork.patch")
+        (nixPatch "nix-openbsd-atfork.patch")
       ];
     });
     nix-util = prev.nix-util.overrideAttrs (old: {

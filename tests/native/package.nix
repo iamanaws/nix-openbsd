@@ -1,6 +1,7 @@
 {
   environment,
   packageSetSource ? ../../pkgs/openbsd/native-packages.nix,
+  nixPackageSource ? ../../pkgs/openbsd/native-nix.nix,
   consumerSource,
   nonce,
   nixbsdSource ? null,
@@ -232,7 +233,7 @@ in
     pkgs
     toolchain
     ;
-  nativeNix = import ./nix.nix {
+  nativeNix = import nixPackageSource {
     inherit pkgs;
     nixbsdSource = store nixbsdSource;
   };

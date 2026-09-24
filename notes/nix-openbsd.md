@@ -1,7 +1,9 @@
 # Nix on OpenBSD
 
-NixBSD uses stable Nix 2.34.8 from its Nixpkgs pin. `nix.package` defaults
-to `pkgs.nix`. The Nix daemon module installs it and starts the service.
+The demo selects native Nix 2.34.8 through `nix.package`. Its
+[recipe](../pkgs/openbsd/native-nix.nix) is shared with the native tests.
+The Nix daemon module installs it and starts the service. Standalone NixBSD
+and the minimal bootstrap VM still use cross-built Nix.
 
 From the workspace containing both repositories:
 
