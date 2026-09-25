@@ -41,7 +41,7 @@ let
     mkdir -p $out/efi/boot
     cp ${cross.openbsd.stand}/bin/BOOTX64.EFI $out/efi/boot/BOOTX64.EFI
   '';
-  root = import (source + "/lib/make-partition-image.nix") {
+  rootPartition = import (source + "/lib/make-partition-image.nix") {
     inherit pkgs lib;
     label = "nixos";
     filesystem = "ufs";
@@ -72,6 +72,10 @@ let
     extraMtreeContents = "${devices}/dev";
     extraMtreeContentsDest = "/";
   };
+  root = rootPartition.overrideAttrs (old: {
+    # Avoid writing zeros across the unused space in the 12 GiB filesystem.
+    buildCommand = builtins.replaceStrings [ "/bin/makefs " ] [ "/bin/makefs -Z " ] old.buildCommand;
+  });
   data = import (source + "/lib/make-disk-image.nix") {
     inherit pkgs lib;
     partitions = [ (root // { tooLargeIntermediate = false; }) ];
@@ -119,6 +123,7 @@ let
     name = "run-openbsd-native-vm";
     runtimeInputs = [
       hostPkgs.qemu_kvm
+      hostPkgs.nix.nix-cli
       pkgs.coreutils
     ];
     text = ''
@@ -126,6 +131,7 @@ let
       mkdir -p "$state"
       state=$(realpath "$state")
       if [ ! -e "$state/disk.qcow2" ]; then
+        nix-store --add-root "$state/base-image" --realise ${image} >/dev/null
         qemu-img create -f qcow2 -F qcow2 -b ${image}/${image.filename} "$state/disk.qcow2"
       fi
       if [ ! -e "$state/efi.fd" ]; then
@@ -138,7 +144,7 @@ let
         -device virtio-rng-pci \
         -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:''${NIX_VM_HTTP_PORT:-8080}-:80,hostfwd=tcp:127.0.0.1:''${NIX_VM_SSH_PORT:-2222}-:22" \
         -device virtio-net-pci,netdev=net0 \
-        -drive "file=$state/disk.qcow2,format=qcow2,if=none,id=root" \
+        -drive "file=$state/disk.qcow2,format=qcow2,if=none,id=root,cache=none,bps_rd=''${NIX_VM_DISK_READ_BPS:-41943040},bps_wr=''${NIX_VM_DISK_WRITE_BPS:-20971520}" \
         -device virtio-blk-pci,drive=root,bootindex=1 \
         -drive if=pflash,format=raw,unit=0,readonly=on,file=${pkgs.OVMF.fd}/FV/OVMF_CODE.fd \
         -drive "if=pflash,format=raw,unit=1,file=$state/efi.fd" \

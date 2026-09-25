@@ -9,7 +9,7 @@ The goal is to configure, build and update OpenBSD through NixBSD as we do
 Linux through NixOS.
 
 The native stdenv and Nix pass VM validation. See the [results and limitations](notes/native-stdenv.md).
-The demo uses native Nix; its other system packages are cross-built.
+The native VM includes native Nix, system packages and an SMP kernel.
 This is a development environment. Nix builds use separate users without a sandbox.
 
 ## Code and tests
@@ -28,18 +28,17 @@ This is a development environment. Nix builds use separate users without a sandb
   hostnames, routes, BGP and IPsec between two VMs.
 - [Nix on OpenBSD](notes/nix-openbsd.md) records the runtime fixes and tests.
 
-## Run the demo
+## Run the native VM
 
 Use x86_64 Linux with KVM and flakes enabled. The flake pins the custom
 NixBSD branch and inherits its Nixpkgs pin.
 
 ```sh
-nix build --accept-flake-config .#vm
-./result/bin/run-openbsd-webserver-vm
+nix run --accept-flake-config .#native-vm
 ```
 
-The Linux build uses cached native Nix and cross-compiles other packages as
-needed. Once the VM boots, test HTTP or connect over SSH:
+Linux assembles the image from the cached native system. Once it boots,
+test HTTP or connect over SSH:
 
 ```sh
 curl http://127.0.0.1:8080/
@@ -51,8 +50,54 @@ configuration, NTP, cron, logging and local monitoring. Routing daemons and
 VPNs stay disabled unless a test or configuration enables them.
 
 The test accounts `root` and `bestie` use the password `toor`. Do not expose
-the VM or reuse these credentials. The VM stores its state in
-`openbsd-webserver.qcow2` in the working directory.
+the VM or reuse these credentials.
+
+The VM uses 8 CPUs and 4 GiB RAM. State lives in `openbsd-native-vm/`;
+its `base-image` link keeps the backing image safe from garbage collection.
+Set `NIX_VM_STATE_DIR` to use another directory. `NIX_VM_CORES`,
+`NIX_VM_MEMORY` (MiB), `NIX_VM_HTTP_PORT` and `NIX_VM_SSH_PORT` override defaults.
+VM disk traffic is capped at 40 MiB/s reads and 20 MiB/s writes.
+`NIX_VM_DISK_READ_BPS` and `NIX_VM_DISK_WRITE_BPS` override these limits in bytes/s.
+These limits apply to the running VM; image builds run through the host Nix daemon.
+Shut down as root with `shutdown -p now` inside the VM.
+Rebuilding the launcher preserves existing state; use a new state directory
+to boot an updated system. Live switching is not supported yet.
+
+## Build packages inside OpenBSD
+
+As `bestie`, build and run a native package directly from the flake:
+
+```sh
+nix build --accept-flake-config github:iamanaws/nix-openbsd#hello
+./result/bin/hello
+```
+
+Or run it directly:
+
+```sh
+nix run --accept-flake-config github:iamanaws/nix-openbsd#hello
+nix run --accept-flake-config github:iamanaws/nix-openbsd#jq -- -n '1 + 1'
+```
+
+Native package outputs include `hello`, `jq`, `curl` and `git`.
+From a local checkout, use `.#hello` instead of the GitHub reference.
+`nix develop` provides the native compiler environment for package development.
+
+The native package set is exposed as `legacyPackages.x86_64-openbsd` for
+custom derivations. Package coverage is still experimental; the
+[validation notes](notes/native-stdenv.md) describe what has been tested.
+
+From Linux, run the fresh-VM development and restart test with:
+
+```sh
+nix run --accept-flake-config .#test-native-vm
+```
+
+It checks `nix build` and `nix run` as a regular user, services,
+HTTP, SSH availability and persistent state. Logs stay in the printed test
+directory; successful test disks are removed. Use `-- --keep` to keep them.
+
+## Other targets
 
 Other build outputs include the minimal VM, system image, system closure
 and individual packages:
@@ -72,20 +117,12 @@ kernel with the native stdenv. Run inside OpenBSD:
 nix build --accept-flake-config .#native-system --max-jobs 1 --cores 8
 ```
 
-To boot the cached native system from Linux:
+The `vm` target is the original cross-built demo with native Nix:
 
 ```sh
-nix build --accept-flake-config .#native-vm
-./result/bin/run-openbsd-native-vm
+nix build --accept-flake-config .#vm
+./result/bin/run-openbsd-webserver-vm
 ```
-
-It uses the same accounts and ports as the demo, with 8 CPUs and 4 GiB RAM.
-State is saved in `openbsd-native-vm/`. Set `NIX_VM_STATE_DIR` to use another
-directory; a new directory starts a fresh VM from the built image.
-`NIX_VM_CORES`, `NIX_VM_MEMORY` (MiB), `NIX_VM_HTTP_PORT` and `NIX_VM_SSH_PORT`
-override the defaults. Keep the launcher output rooted while using its disk.
-Rebuilding the launcher preserves existing VM state; use a new state directory
-to boot an updated system. Live switching is not supported yet.
 
 `native-system-image` builds the standalone QCOW2 image. Image assembly runs
 on Linux and requires the native system closure locally or in the cache.

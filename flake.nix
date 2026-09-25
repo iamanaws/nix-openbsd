@@ -116,8 +116,14 @@
               ];
 
               nixpkgs.overlays = [ (import ./overlays/openbsd.nix) ];
+              # Use the maintained caches; the inherited NixBSD cache no longer resolves.
+              nixbsd.enableExtraSubstituters = false;
               nix.package = nativeNix;
               nix.settings = {
+                experimental-features = [
+                  "nix-command"
+                  "flakes"
+                ];
                 substituters = lib.mkBefore [ "https://nix-openbsd.cachix.org" ];
                 trusted-public-keys = [
                   "nix-openbsd.cachix.org-1:IbN25q8l3NyIq8L16AWaJ1MNTxZRiYdzO5eYFQv1J+4="
@@ -257,9 +263,32 @@
       nixosConfigurations.openbsd-webserver = openbsdWebserver;
       nixosConfigurations.openbsd-native = openbsdNative;
 
+      legacyPackages.x86_64-openbsd = nativeSystemPackages;
+      devShells.x86_64-openbsd.default = nativeSystemPackages.mkShell {
+        name = "openbsd-development";
+      };
+
+      apps.${system} = {
+        native-vm = {
+          type = "app";
+          program = "${nativeVM.launcher}/bin/run-openbsd-native-vm";
+        };
+        test-native-vm = {
+          type = "app";
+          program = "${
+            import ./tests/vm/default.nix {
+              pkgs = openbsdWebserver.config.virtualisation.vmVariant.virtualisation.host.pkgs;
+              source = self.outPath;
+            }
+          }/bin/test-openbsd-native-vm";
+        };
+      };
+
       packages.x86_64-openbsd = {
         native-nix = nativeNix;
         native-system = openbsdNative.config.system.build.toplevel;
+        inherit (nativeSystemPackages) hello jq curl;
+        git = nativeSystemPackages.gitMinimal;
       };
 
       packages.${system} = {

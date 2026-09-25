@@ -27,6 +27,11 @@ recipe supplies the EFI disklabel entry, initial Nix database and runtime direct
 The `native-vm` launcher passed the same runtime checks from a fresh disk,
 plus a shutdown and restart check with persistent state.
 
+The package workflow also passes as `bestie`: `nix build .#hello`,
+`nix run .#hello` and `nix run .#jq`. The test covers HTTP, SSH availability
+and the saved package after a clean restart. Flakes are enabled by default;
+the VM uses Cachix and the standard Nix cache.
+
 ## Suite results
 
 These counts come from the recorded VM runs. A cached test run can reuse their outputs.
