@@ -72,9 +72,24 @@ kernel with the native stdenv. Run inside OpenBSD:
 nix build --accept-flake-config .#native-system --max-jobs 1 --cores 8
 ```
 
-The native system builds and passes VM boot and runtime checks.
-See [validation results](notes/native-stdenv.md). The demo VM still uses
-cross-built system packages with native Nix.
+To boot the cached native system from Linux:
+
+```sh
+nix build --accept-flake-config .#native-vm
+./result/bin/run-openbsd-native-vm
+```
+
+It uses the same accounts and ports as the demo, with 8 CPUs and 4 GiB RAM.
+State is saved in `openbsd-native-vm/`. Set `NIX_VM_STATE_DIR` to use another
+directory; a new directory starts a fresh VM from the built image.
+`NIX_VM_CORES`, `NIX_VM_MEMORY` (MiB), `NIX_VM_HTTP_PORT` and `NIX_VM_SSH_PORT`
+override the defaults. Keep the launcher output rooted while using its disk.
+Rebuilding the launcher preserves existing VM state; use a new state directory
+to boot an updated system. Live switching is not supported yet.
+
+`native-system-image` builds the standalone QCOW2 image. Image assembly runs
+on Linux and requires the native system closure locally or in the cache.
+The EFI loader is still cross-built. See [validation results](notes/native-stdenv.md).
 
 ## Binary cache
 
@@ -91,7 +106,6 @@ stay local.
 
 ## Next steps
 
-- Add a reproducible VM image target for the native system.
 - Add live configuration switching, service restarts and rollback through NixBSD.
 - Improve disk-image generation and add raw `disk.img` export. The
   [integration notes](notes/nixbsd-integration.md) track these gaps.

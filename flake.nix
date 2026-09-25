@@ -70,6 +70,13 @@
         ];
       };
 
+      nativeVM = import ./vm/native.nix {
+        cross = openbsdWebserver.pkgs;
+        hostPkgs = openbsdWebserver.config.virtualisation.vmVariant.virtualisation.host.pkgs;
+        nixbsdSource = nixbsd.outPath;
+        nativeSystem = openbsdNative.config.system.build.toplevel;
+      };
+
       openbsdBase = nixbsd.nixosConfigurations.openbsd-base.extendModules {
         modules = [
           ./modules/system/openbsd.nix
@@ -256,6 +263,8 @@
       };
 
       packages.${system} = {
+        native-vm = nativeVM.launcher;
+        native-system-image = nativeVM.image;
         native-nix = nativeNix;
         native-system = openbsdNative.config.system.build.toplevel;
         inherit (openbsdWebserver.pkgs.openbsd)

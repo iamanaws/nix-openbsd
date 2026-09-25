@@ -22,8 +22,10 @@ The native system and SMP kernel passed VM boot and runtime checks on
 all 272 recorded derivations target `x86_64-openbsd`. Checks covered EFI mounting,
 HTTP, DHCP, cron, syslog, root and regular-user Nix builds, daemon restart,
 signed cache downloads, and compiling and running C with the cached native stdenv.
-The test image used the existing cross-built EFI loader. Image preparation
-supplied the EFI disklabel entry, initial Nix database and runtime directories.
+The image uses the existing cross-built EFI loader. The `native-system-image`
+recipe supplies the EFI disklabel entry, initial Nix database and runtime directories.
+The `native-vm` launcher passed the same runtime checks from a fresh disk,
+plus a shutdown and restart check with persistent state.
 
 ## Suite results
 
@@ -39,8 +41,7 @@ These counts come from the recorded VM runs. A cached test run can reuse their o
 
 ## Limitations
 
-Native system image assembly is not yet exposed as a flake target. Boot still
-prints warnings for unfinished base integration, including optional IPsec key
+Boot prints warnings for unfinished base integration, including optional IPsec key
 generation, savecore and vi recovery.
 
 OpenBSD provides C-locale formatting and UTF-8 character conversion. Tests
