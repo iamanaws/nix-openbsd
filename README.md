@@ -65,6 +65,17 @@ nix build .#libagentx
 nix build --accept-flake-config .#native-nix
 ```
 
+The experimental `native-system` target builds the system packages and SMP
+kernel with the native stdenv. Run inside OpenBSD:
+
+```sh
+nix build --accept-flake-config .#native-system --max-jobs 1 --cores 8
+```
+
+The native system builds and passes VM boot and runtime checks.
+See [validation results](notes/native-stdenv.md). The demo VM still uses
+cross-built system packages with native Nix.
+
 ## Binary cache
 
 Use [nix-openbsd.cachix.org](https://nix-openbsd.cachix.org) alongside the
@@ -74,13 +85,13 @@ standard Nix cache by accepting the flake's cache settings:
 nix build --accept-flake-config .#minimal-vm
 ```
 
-The cache contains cross-built seeds and the validated native Nix, stdenv,
-Clang, LLD and runtimes. Important outputs are pinned. VM images and build history
+The cache contains cross-built seeds and the validated native system, Nix,
+stdenv, Clang, LLD and runtimes. Important outputs are pinned. VM images and build history
 stay local.
 
 ## Next steps
 
-- Build the system configuration with the native stdenv.
+- Add a reproducible VM image target for the native system.
 - Add live configuration switching, service restarts and rollback through NixBSD.
 - Improve disk-image generation and add raw `disk.img` export. The
   [integration notes](notes/nixbsd-integration.md) track these gaps.

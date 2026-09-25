@@ -49,6 +49,26 @@
         pkgs = nativePackages;
         nixbsdSource = nixbsd.outPath;
       };
+      nativeSystemPackages = import ./pkgs/openbsd/native-system-packages.nix {
+        inherit nativeNix;
+        nixbsdSource = nixbsd.outPath;
+      };
+      openbsdNative = openbsdWebserver.extendModules {
+        modules = [
+          {
+            nixpkgs.pkgs = nativeSystemPackages;
+            nixpkgs.overlays = lib.mkForce [ ];
+            nixpkgs.buildPlatform = lib.mkForce "x86_64-openbsd";
+            boot.kernel.package = lib.mkForce (
+              nativeSystemPackages.openbsd.sys.override { baseConfig = "GENERIC.MP"; }
+            );
+            nix.settings = {
+              cores = 8;
+              max-jobs = 1;
+            };
+          }
+        ];
+      };
 
       openbsdBase = nixbsd.nixosConfigurations.openbsd-base.extendModules {
         modules = [
@@ -228,9 +248,16 @@
     in
     {
       nixosConfigurations.openbsd-webserver = openbsdWebserver;
+      nixosConfigurations.openbsd-native = openbsdNative;
+
+      packages.x86_64-openbsd = {
+        native-nix = nativeNix;
+        native-system = openbsdNative.config.system.build.toplevel;
+      };
 
       packages.${system} = {
         native-nix = nativeNix;
+        native-system = openbsdNative.config.system.build.toplevel;
         inherit (openbsdWebserver.pkgs.openbsd)
           acme-client
           arp

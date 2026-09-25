@@ -48,6 +48,10 @@ in
     # Without a ruleset, rc leaves its temporary outbound block rules active.
     openbsd.rc.conf.pf = lib.mkDefault false;
     system.switch.enable = lib.mkDefault false;
+    # mount finds filesystem helpers through PATH before the login environment exists.
+    environment.etc."rc".text = lib.mkBefore ''
+      export PATH="${lib.makeBinPath config.system.fsPackages}:$PATH"
+    '';
     assertions = [
       {
         assertion = !config.system.switch.enable;

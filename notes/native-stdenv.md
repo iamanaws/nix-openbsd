@@ -17,6 +17,14 @@ A fresh demo VM also passed on 2026-09-24 with native Nix: root and regular-user
 daemon builds, daemon restart, signed cache downloads and HTTP serving.
 The demo's other system packages are cross-built.
 
+The native system and SMP kernel passed VM boot and runtime checks on
+2026-09-25. Its 296-path closure contains none of the 37 bootstrap outputs;
+all 272 recorded derivations target `x86_64-openbsd`. Checks covered EFI mounting,
+HTTP, DHCP, cron, syslog, root and regular-user Nix builds, daemon restart,
+signed cache downloads, and compiling and running C with the cached native stdenv.
+The test image used the existing cross-built EFI loader. Image preparation
+supplied the EFI disklabel entry, initial Nix database and runtime directories.
+
 ## Suite results
 
 These counts come from the recorded VM runs. A cached test run can reuse their outputs.
@@ -30,6 +38,10 @@ These counts come from the recorded VM runs. A cached test run can reuse their o
   OpenBSD's thread table.
 
 ## Limitations
+
+Native system image assembly is not yet exposed as a flake target. Boot still
+prints warnings for unfinished base integration, including optional IPsec key
+generation, savecore and vi recovery.
 
 OpenBSD provides C-locale formatting and UTF-8 character conversion. Tests
 requiring regional locales or the absent `quick_exit` API report unsupported.

@@ -114,4 +114,9 @@ in
       };
     });
   }
-)).nix-cli
+)).nix-cli.overrideAttrs
+  (old: {
+    passthru = (old.passthru or { }) // {
+      nativePackageSet = native;
+    };
+  })
