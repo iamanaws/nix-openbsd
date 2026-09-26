@@ -55,6 +55,7 @@
       };
       openbsdNative = openbsdWebserver.extendModules {
         modules = [
+          ./modules/system/generations.nix
           {
             nixpkgs.pkgs = nativeSystemPackages;
             nixpkgs.overlays = lib.mkForce [ ];

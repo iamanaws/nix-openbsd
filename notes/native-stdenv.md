@@ -17,7 +17,7 @@ A fresh demo VM also passed on 2026-09-24 with native Nix: root and regular-user
 daemon builds, daemon restart, signed cache downloads and HTTP serving.
 The demo's other system packages are cross-built.
 
-The native system and SMP kernel passed VM boot and runtime checks on
+The initial native system and SMP kernel passed VM boot and runtime checks on
 2026-09-25. Its 296-path closure contains none of the 37 bootstrap outputs;
 all 272 recorded derivations target `x86_64-openbsd`. Checks covered EFI mounting,
 HTTP, DHCP, cron, syslog, root and regular-user Nix builds, daemon restart,

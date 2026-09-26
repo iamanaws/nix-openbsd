@@ -25,6 +25,9 @@ let
       '';
   layout = pkgs.runCommand "native-system-layout" { } ''
     mkdir -p $out/boot/efi $out/var/db
+    mkdir -p $out/nix/var/nix/profiles
+    ln -s ${system} $out/nix/var/nix/profiles/system-1-link
+    ln -s system-1-link $out/nix/var/nix/profiles/system
     install -d -m 700 $out/var/authpf
     install -m 600 /dev/null $out/var/db/host.random
   '';
@@ -36,6 +39,7 @@ let
     set image ${system}/kernel
     set init ${system}/bin/activate-init-native
     CONF
+    cp $out/nixos/default.conf $out/nixos/1.conf
   '';
   esp = pkgs.runCommand "native-system-esp" { } ''
     mkdir -p $out/efi/boot

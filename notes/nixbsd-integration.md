@@ -2,10 +2,12 @@
 
 ## Live configuration switching
 
-The local [OpenBSD module](../modules/system/openbsd.nix) disables
-`system.switch.enable` and rejects attempts to enable it.
-The switching script needs OpenBSD service ordering and `check` semantics.
-Implement and test switching, service restarts and rollback before enabling it.
+The native system uses a [local generation manager](../modules/system/generations.nix).
+It handles supported service updates, boot selection and rollback. Networking
+and other unsupported live changes require a reboot.
+
+The inherited `system.switch.enable` implementation stays disabled. Its
+OpenBSD service ordering and checks need separate work before upstream use.
 
 ## Raw disk export
 

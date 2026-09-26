@@ -60,8 +60,49 @@ VM disk traffic is capped at 40 MiB/s reads and 20 MiB/s writes.
 `NIX_VM_DISK_READ_BPS` and `NIX_VM_DISK_WRITE_BPS` override these limits in bytes/s.
 These limits apply to the running VM; image builds run through the host Nix daemon.
 Shut down as root with `shutdown -p now` inside the VM.
-Rebuilding the launcher preserves existing state; use a new state directory
-to boot an updated system. Live switching is not supported yet.
+Rebuilding the launcher preserves existing state. Update that VM from inside
+OpenBSD using system generations below.
+
+## Update the native system
+
+Build inside OpenBSD, then run the activation commands as root:
+
+```sh
+nix build --accept-flake-config .#native-system --max-jobs 1 --cores 8
+./result/bin/switch-to-configuration dry-activate
+./result/bin/switch-to-configuration test
+./result/bin/switch-to-configuration switch
+```
+
+`dry-activate` checks and previews changes. `test` applies them for the current
+boot. `switch` also selects the configuration for future boots.
+Packages, HTTP and relayd support live updates. Other services can opt in through
+`openbsd.system.services`. Kernel, filesystem, networking and unhandled service
+changes require a reboot:
+
+```sh
+./result/bin/switch-to-configuration boot
+shutdown -r now
+```
+
+An older VM needs one reboot into the new system before it can switch live.
+
+List generations or return to the previous one:
+
+```sh
+openbsd-system list
+openbsd-system rollback --live
+```
+
+For rollback at the next boot, use `openbsd-system rollback` and reboot.
+Append a generation number to select a specific retained generation.
+After a temporary `test`, return to the boot selection with
+`openbsd-system test /nix/var/nix/profiles/system`.
+
+Failed live updates attempt to restore the previous configuration and services.
+Logs are in `/var/log/openbsd-system.log`. Rollback covers packages and
+configuration, not application data. See the [generation tests](tests/generations/README.md)
+for coverage and boot-console recovery.
 
 ## Build packages inside OpenBSD
 
@@ -143,7 +184,7 @@ stay local.
 
 ## Next steps
 
-- Add live configuration switching, service restarts and rollback through NixBSD.
+- Extend live updates to more services and networking changes.
 - Improve disk-image generation and add raw `disk.img` export. The
   [integration notes](notes/nixbsd-integration.md) track these gaps.
 - Expand native package builds and tests.
