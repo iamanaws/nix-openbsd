@@ -31,7 +31,7 @@ def main():
     print(f'Test files: {work}', flush=True)
     source = f'path:{args.source}'
     subprocess.run(['nix', 'build', '--accept-flake-config', f'{source}#native-vm',
-                    '--cores', '8', '--max-jobs', '1', '-o', str(work / 'launcher')], check=True)
+                    '--cores', '2', '--max-jobs', '1', '-o', str(work / 'launcher')], check=True)
     # Archive direct inputs without recursively fetching development-tool inputs.
     roots = json.loads(output('nix', 'eval', '--impure', '--json', '--expr',
         f'let f = builtins.getFlake {json.dumps(source)}; in '
@@ -53,6 +53,7 @@ def main():
  nix build --accept-flake-config {flake}#hello --out-link result
  test "$(./result/bin/hello)" = "Hello, world!"
  test "$(nix run --accept-flake-config {flake}#hello)" = "Hello, world!"
+ test "$(nix run --offline --accept-flake-config {flake}#hello)" = "Hello, world!"
  nix run --accept-flake-config {flake}#jq -- -n '1 + 1' | grep '^2$'
  nix-store --verify-path "$(readlink -f result)"
  echo USER_PACKAGE_PASS
@@ -91,7 +92,6 @@ def main():
     env = os.environ | {
         'NIX_VM_STATE_DIR': str(work / 'state'),
         'NIX_VM_HTTP_PORT': str(http_port), 'NIX_VM_SSH_PORT': str(ssh_port),
-        'NIX_VM_CORES': '8', 'NIX_VM_MEMORY': '4096',
     }
     success = False
     try:

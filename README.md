@@ -34,7 +34,7 @@ Use x86_64 Linux with KVM and flakes enabled. The flake pins the custom
 NixBSD branch and inherits its Nixpkgs pin.
 
 ```sh
-nix run --accept-flake-config .#native-vm
+nix run --accept-flake-config github:iamanaws/nix-openbsd#native-vm
 ```
 
 Linux assembles the image from the cached native system. Once it boots,
@@ -52,7 +52,15 @@ VPNs stay disabled unless a test or configuration enables them.
 The test accounts `root` and `bestie` use the password `toor`. Do not expose
 the VM or reuse these credentials.
 
-The VM uses 8 CPUs and 4 GiB RAM. State lives in `openbsd-native-vm/`;
+The VM defaults to 2 virtual CPUs and 4 GiB RAM. To give it 8 CPUs and 8 GiB RAM:
+
+```sh
+NIX_VM_CORES=8 NIX_VM_MEMORY=8192 nix run --accept-flake-config github:iamanaws/nix-openbsd#native-vm
+```
+
+Set these when starting the VM; shut it down first if it is already running.
+Nix builds use the CPUs available inside the guest, one package at a time.
+State lives in `openbsd-native-vm/`;
 its `base-image` link keeps the backing image safe from garbage collection.
 Set `NIX_VM_STATE_DIR` to use another directory. `NIX_VM_CORES`,
 `NIX_VM_MEMORY` (MiB), `NIX_VM_HTTP_PORT` and `NIX_VM_SSH_PORT` override defaults.
@@ -68,7 +76,7 @@ OpenBSD using system generations below.
 Build inside OpenBSD, then run the activation commands as root:
 
 ```sh
-nix build --accept-flake-config .#native-system --max-jobs 1 --cores 8
+nix build --accept-flake-config .#native-system
 ./result/bin/switch-to-configuration dry-activate
 ./result/bin/switch-to-configuration test
 ./result/bin/switch-to-configuration switch
@@ -155,7 +163,7 @@ The experimental `native-system` target builds the system packages and SMP
 kernel with the native stdenv. Run inside OpenBSD:
 
 ```sh
-nix build --accept-flake-config .#native-system --max-jobs 1 --cores 8
+nix build --accept-flake-config .#native-system
 ```
 
 The `vm` target is the original cross-built demo with native Nix:

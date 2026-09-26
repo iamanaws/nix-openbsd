@@ -64,7 +64,7 @@
               nativeSystemPackages.openbsd.sys.override { baseConfig = "GENERIC.MP"; }
             );
             nix.settings = {
-              cores = 8;
+              cores = 0; # Use the CPUs available inside the guest.
               max-jobs = 1;
             };
           }

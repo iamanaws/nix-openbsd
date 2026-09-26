@@ -23,9 +23,12 @@ let
         mkdir -p $out
         cp -a "$TMP/store/nix/var/nix/db" $out/db
       '';
+  # The image copier rejects overlapping destinations. Keep the database and
+  # generation profiles in one tree instead of copying /nix/var/nix twice.
   layout = pkgs.runCommand "native-system-layout" { } ''
     mkdir -p $out/boot/efi $out/var/db
     mkdir -p $out/nix/var/nix/profiles
+    cp -a ${database}/db $out/nix/var/nix/db
     ln -s ${system} $out/nix/var/nix/profiles/system-1-link
     ln -s system-1-link $out/nix/var/nix/profiles/system
     install -d -m 700 $out/var/authpf
@@ -58,10 +61,6 @@ let
       {
         target = "/";
         source = layout;
-      }
-      {
-        target = "/nix/var/nix";
-        source = database;
       }
       {
         target = "/boot";
@@ -144,7 +143,7 @@ let
       fi
       # Host CPU passthrough caused illegal instructions during native Nix cache downloads.
       exec qemu-system-x86_64 -enable-kvm \
-        -name openbsd-native -m "''${NIX_VM_MEMORY:-4096}" -smp "''${NIX_VM_CORES:-8}" \
+        -name openbsd-native -m "''${NIX_VM_MEMORY:-4096}" -smp "''${NIX_VM_CORES:-2}" \
         -device virtio-rng-pci \
         -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:''${NIX_VM_HTTP_PORT:-8080}-:80,hostfwd=tcp:127.0.0.1:''${NIX_VM_SSH_PORT:-2222}-:22" \
         -device virtio-net-pci,netdev=net0 \
