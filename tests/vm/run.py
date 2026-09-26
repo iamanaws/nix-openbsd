@@ -122,10 +122,20 @@ def main():
                             process.stdin.flush()
 
                         expect(rb'login:')
+                        send('bestie')
+                        expect(rb'Password:')
+                        send('toor')
+                        expect(rb'bestie@')
+                        send("test \"$(id -un)\" = bestie && printf '\\nCONSOLE_LOGIN_OK\\n'")
+                        expect(rb'\nCONSOLE_LOGIN_OK\r?\n')
+                        send('exit')
+                        expect(rb'login:')
                         send('root')
                         expect(rb'Password:')
                         send('toor')
                         expect(rb'root@')
+                        if b'initial setsid() failed' in (work / f'{phase}.log').read_bytes():
+                            raise RuntimeError(f'Init failed to reuse the activation session; see {phase}.log')
                         if phase == 'fresh':
                             probe = f"curl --noproxy '*' -fsS {url}/probe.sh -o /tmp/probe.sh && bash /tmp/probe.sh"
                         else:

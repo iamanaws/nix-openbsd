@@ -34,28 +34,60 @@ Use x86_64 Linux with KVM and flakes enabled. The flake pins the custom
 NixBSD branch and inherits its Nixpkgs pin.
 
 ```sh
-nix run --accept-flake-config github:iamanaws/nix-openbsd#native-vm
+nix run github:iamanaws/nix-openbsd#native-vm
 ```
 
-Linux assembles the image from the cached native system. Once it boots,
-test HTTP or connect over SSH:
+When Nix asks about the cache URL and signing key, answer `y` to accept each
+setting and `y` again to remember it. Do this once per user on each system.
+
+Linux assembles the image from cached packages. When the console shows
+`login:`, log in as **bestie**, password **toor**.
+
+Inside OpenBSD, build and run hello:
 
 ```sh
-curl http://127.0.0.1:8080/
+nix build github:iamanaws/nix-openbsd#hello
+nix run github:iamanaws/nix-openbsd#hello
+uname -srm
+```
+
+You should see `Hello, world!` and `OpenBSD 7.9 amd64`. No checkout is needed.
+These commands use cached packages when available; `nix build` does not force
+compilation. The first run also fetches sources and build inputs, which can
+take a few minutes. To try another package:
+
+```sh
+nix run github:iamanaws/nix-openbsd#jq -- -n '1 + 1'
+```
+
+This prints `2`. Native package outputs include `hello`, `jq`, `curl` and `git`.
+
+Alternatively, connect over SSH from another terminal on the Linux host:
+
+```sh
 ssh -p 2222 bestie@127.0.0.1
 ```
 
-HTTP goes through `relayd` to `httpd`. The demo also enables PF, DNS
-configuration, NTP, cron, logging and local monitoring. Routing daemons and
-VPNs stay disabled unless a test or configuration enables them.
-
-The test accounts `root` and `bestie` use the password `toor`. Do not expose
+The web service is at http://127.0.0.1:8080/ on the host, through `relayd` to
+`httpd`. The VM also enables PF, DNS configuration, NTP, cron, logging and
+local monitoring.
+The test accounts `root` and `bestie` both use `toor`. Do not expose
 the VM or reuse these credentials.
+
+To stop the VM, log in as **root** with password **toor**, then run:
+
+```sh
+shutdown -p now
+```
+
+From a `bestie` shell, use `su -` first (password `toor`).
+If the guest is unresponsive, press **Ctrl+A**, release, then **X** to quit
+QEMU immediately. This is a forced stop, so prefer a clean shutdown.
 
 The VM defaults to 2 virtual CPUs and 4 GiB RAM. To give it 8 CPUs and 8 GiB RAM:
 
 ```sh
-NIX_VM_CORES=8 NIX_VM_MEMORY=8192 nix run --accept-flake-config github:iamanaws/nix-openbsd#native-vm
+NIX_VM_CORES=8 NIX_VM_MEMORY=8192 nix run github:iamanaws/nix-openbsd#native-vm
 ```
 
 Set these when starting the VM; shut it down first if it is already running.
@@ -67,16 +99,16 @@ Set `NIX_VM_STATE_DIR` to use another directory. `NIX_VM_CORES`,
 VM disk traffic is capped at 40 MiB/s reads and 20 MiB/s writes.
 `NIX_VM_DISK_READ_BPS` and `NIX_VM_DISK_WRITE_BPS` override these limits in bytes/s.
 These limits apply to the running VM; image builds run through the host Nix daemon.
-Shut down as root with `shutdown -p now` inside the VM.
 Rebuilding the launcher preserves existing state. Update that VM from inside
 OpenBSD using system generations below.
 
 ## Update the native system
 
-Build inside OpenBSD, then run the activation commands as root:
+From a nix-openbsd checkout inside OpenBSD (see [development](#develop-packages-inside-openbsd)),
+build the system, then run the activation commands as root:
 
 ```sh
-nix build --accept-flake-config .#native-system
+nix build .#native-system
 ./result/bin/switch-to-configuration dry-activate
 ./result/bin/switch-to-configuration test
 ./result/bin/switch-to-configuration switch
@@ -112,25 +144,19 @@ Logs are in `/var/log/openbsd-system.log`. Rollback covers packages and
 configuration, not application data. See the [generation tests](tests/generations/README.md)
 for coverage and boot-console recovery.
 
-## Build packages inside OpenBSD
+## Develop packages inside OpenBSD
 
-As `bestie`, build and run a native package directly from the flake:
-
-```sh
-nix build --accept-flake-config github:iamanaws/nix-openbsd#hello
-./result/bin/hello
-```
-
-Or run it directly:
+Git is included in the VM. To edit packages locally:
 
 ```sh
-nix run --accept-flake-config github:iamanaws/nix-openbsd#hello
-nix run --accept-flake-config github:iamanaws/nix-openbsd#jq -- -n '1 + 1'
+git clone https://github.com/iamanaws/nix-openbsd
+cd nix-openbsd
+nix build .#hello
+nix run .#hello
 ```
 
-Native package outputs include `hello`, `jq`, `curl` and `git`.
-From a local checkout, use `.#hello` instead of the GitHub reference.
-`nix develop` provides the native compiler environment for package development.
+From this checkout, `nix develop` provides the native compiler environment.
+The `.#native-system` commands above also run from this directory.
 
 The native package set is exposed as `legacyPackages.x86_64-openbsd` for
 custom derivations. Package coverage is still experimental; the
@@ -139,7 +165,7 @@ custom derivations. Package coverage is still experimental; the
 From Linux, run the fresh-VM development and restart test with:
 
 ```sh
-nix run --accept-flake-config .#test-native-vm
+nix run .#test-native-vm
 ```
 
 It checks `nix build` and `nix run` as a regular user, services,
@@ -156,20 +182,20 @@ nix build .#minimal-vm
 nix build .#system-image
 nix build .#toplevel
 nix build .#libagentx
-nix build --accept-flake-config .#native-nix
+nix build .#native-nix
 ```
 
 The experimental `native-system` target builds the system packages and SMP
 kernel with the native stdenv. Run inside OpenBSD:
 
 ```sh
-nix build --accept-flake-config .#native-system
+nix build .#native-system
 ```
 
 The `vm` target is the original cross-built demo with native Nix:
 
 ```sh
-nix build --accept-flake-config .#vm
+nix build .#vm
 ./result/bin/run-openbsd-webserver-vm
 ```
 
@@ -180,11 +206,8 @@ The EFI loader is still cross-built. See [validation results](notes/native-stden
 ## Binary cache
 
 Use [nix-openbsd.cachix.org](https://nix-openbsd.cachix.org) alongside the
-standard Nix cache by accepting the flake's cache settings:
-
-```sh
-nix build --accept-flake-config .#minimal-vm
-```
+standard Nix cache. Accept and remember the flake's cache settings when prompted,
+as described above. The VM already configures these caches for its daemon.
 
 The cache contains cross-built seeds and the validated native system, Nix,
 stdenv, Clang, LLD and runtimes. Important outputs are pinned. VM images and build history

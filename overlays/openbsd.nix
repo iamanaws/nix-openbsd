@@ -3,6 +3,15 @@ final: prev:
 {
   openbsd = prev.openbsd.overrideScope (
     openbsdFinal: openbsdPrev: {
+      init = openbsdPrev.init.overrideAttrs (old: {
+        postPatch = (old.postPatch or "") + ''
+          # activate-init-native already creates PID 1's session before activation.
+          # Keep session creation for direct boots and preserve real error reporting.
+          substituteInPlace "$BSDSRCDIR/sbin/init/init.c" \
+            --replace-fail $'if (setsid() == -1)\n\t\twarning("initial setsid() failed: %m");' \
+              $'if (getsid(0) != getpid() && setsid() == -1)\n\t\twarning("initial setsid() failed: %m");'
+        '';
+      });
       acme-client = openbsdFinal.callPackage ../pkgs/openbsd/acme-client.nix { };
       arp = openbsdFinal.callPackage ../pkgs/openbsd/arp.nix { };
       bgpctl = openbsdFinal.callPackage ../pkgs/openbsd/bgpctl.nix { };
