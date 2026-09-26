@@ -18,6 +18,21 @@ final: prev:
           substituteInPlace "$BSDSRCDIR/etc/rc" \
             --replace-fail 'if /etc/rc.d/vmd check > /dev/null; then' \
               'if [[ -x /etc/rc.d/vmd ]] && /etc/rc.d/vmd check > /dev/null; then'
+          # Networking is configured by NixBSD services. Traditional setup and
+          # recovery tools are only available when explicitly installed.
+          substituteInPlace "$BSDSRCDIR/etc/rc" \
+            --replace-fail 'sh /etc/netstart' '[[ ! -f /etc/netstart ]] || sh /etc/netstart' \
+            --replace-fail 'if [[ ! -f $_isakmpd_key ]]; then' \
+              'if [[ ''${isakmpd_flags:-NO} != NO && ! -f $_isakmpd_key ]]; then' \
+            --replace-fail 'if [[ ! -f $_iked_key ]]; then' \
+              'if [[ ''${iked_flags:-NO} != NO && ! -f $_iked_key ]]; then' \
+            --replace-fail 'if [[ -d /var/crash ]]; then' \
+              'if [[ -d /var/crash ]] && command -v savecore >/dev/null; then' \
+            --replace-fail "echo 'preserving editor files.'; /usr/libexec/vi.recover" \
+              "if [[ -x /usr/libexec/vi.recover ]]; then echo 'preserving editor files.'; /usr/libexec/vi.recover; fi"
+          # The startup timer can exit before the daemon's start hook returns.
+          substituteInPlace "$BSDSRCDIR/etc/rc.d/rc.subr" \
+            --replace-fail 'kill -ALRM ''${_TIMERSUB}' 'kill -ALRM ''${_TIMERSUB} 2>/dev/null'
         '';
       });
       init = openbsdPrev.init.overrideAttrs (old: {

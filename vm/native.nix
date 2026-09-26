@@ -26,13 +26,14 @@ let
   # The image copier rejects overlapping destinations. Keep the database and
   # generation profiles in one tree instead of copying /nix/var/nix twice.
   layout = pkgs.runCommand "native-system-layout" { } ''
-    mkdir -p $out/boot/efi $out/var/db
+    mkdir -p $out/boot/efi $out/var/db $out/etc
     mkdir -p $out/nix/var/nix/profiles
     cp -a ${database}/db $out/nix/var/nix/db
     ln -s ${system} $out/nix/var/nix/profiles/system-1-link
     ln -s system-1-link $out/nix/var/nix/profiles/system
     install -d -m 700 $out/var/authpf
     install -m 600 /dev/null $out/var/db/host.random
+    ${pkgs.python3}/bin/python3 ${./seed.py} reserve $out/etc/random.seed
   '';
   devices = cross.openbsd.callPackage (source + "/lib/openbsd-makedev-mtree.nix") { };
   boot = pkgs.runCommand "native-system-boot" { } ''
@@ -114,6 +115,7 @@ let
     ];
     buildCommand = old.buildCommand + ''
       python3 ${./disklabel.py} "$out/${raw.filename}"
+      python3 ${./seed.py} locate "$out/${raw.filename}" > "$out/random-seed-offset"
       qemu-img convert -f raw -O qcow2 "$out/${raw.filename}" "$out/openbsd-native.qcow2"
       rm "$out/${raw.filename}"
       echo "file qcow2-image $out/openbsd-native.qcow2" > "$out/nix-support/hydra-build-products"
@@ -135,7 +137,17 @@ let
       state=$(realpath "$state")
       if [ ! -e "$state/disk.qcow2" ]; then
         nix-store --add-root "$state/base-image" --realise ${image} >/dev/null
-        qemu-img create -f qcow2 -F qcow2 -b ${image}/${image.filename} "$state/disk.qcow2"
+        # Never boot the shared template seed. Write host entropy into the
+        # private overlay before making the new disk available to QEMU.
+        seed=$(mktemp "$state/.random-seed.XXXXXX")
+        trap 'rm -f "$seed" "$state/disk.qcow2.tmp"' EXIT
+        dd if=/dev/urandom of="$seed" bs=512 count=1 status=none
+        qemu-img create -f qcow2 -F qcow2 -b ${image}/${image.filename} "$state/disk.qcow2.tmp"
+        (cd "$state"; qemu-io -f qcow2 \
+          -c "write -q -s ''${seed##*/} $(cat ${image}/random-seed-offset) 512" disk.qcow2.tmp)
+        mv "$state/disk.qcow2.tmp" "$state/disk.qcow2"
+        rm "$seed"
+        trap - EXIT
       elif [ "$(readlink -f "$state/base-image")" != "${image}" ]; then
         echo "Using existing VM disk in $state, created from an older image." >&2
         echo "Update the guest, or set NIX_VM_STATE_DIR to a new directory for a fresh VM." >&2

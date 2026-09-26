@@ -44,7 +44,20 @@ let
   '';
 in
 {
+  # A null password becomes an empty field in the BSD account writer.
+  # Accounts without an explicit password must start locked.
+  options.users.users = lib.mkOption {
+    type = lib.types.attrsOf (lib.types.submodule {
+      config.initialHashedPassword = lib.mkOverride 1100 "*";
+    });
+  };
   config = lib.mkIf pkgs.stdenv.hostPlatform.isOpenBSD {
+    # pwd_mkdb validates root's shell before the rest of /etc is activated.
+    system.activationScripts.users.text = lib.mkBefore ''
+      if [ "''${NIXOS_ACTION:-}" != dry-activate ]; then
+        ln -sfn ${config.environment.etc."shells".source} /etc/shells
+      fi
+    '';
     # Activation checks root before mounting it writable. rc must not fsck it again.
     fileSystems."/".noCheck = true;
     # Without a ruleset, rc leaves its temporary outbound block rules active.

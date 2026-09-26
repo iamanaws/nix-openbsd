@@ -73,6 +73,9 @@ def main():
     (payload / 'probe.sh').write_text(f'''set -eu
  test "$(readlink -f /run/current-system)" = {shlex.quote(expected)}
  mount | grep ' /boot/efi '
+ # Service accounts must be locked, never silently given an empty password.
+ awk -F: '$1 == "daemon" {{ if ($2 != "*") exit 1; found=1 }} END {{ if (!found) exit 1 }}' /etc/master.passwd
+ test "$(wc -c < /etc/random.seed)" -ge 512
  for service in nix_daemon sshd dhcpcd httpd relayd cron syslogd; do
    /etc/rc.d/$service check
  done
@@ -170,6 +173,14 @@ def main():
                                         b'SUMMARY INFORMATION BAD', b'SALVAGE?',
                                         b'hostname: sethostname: Operation not permitted',
                                         b'cannot write random seed', b'/etc/rc.d/vmd: not found',
+                                        b'cannot open hd0a:/etc/random.seed',
+                                        b'random seed is being reused',
+                                        b'Use of uninitialized value', b'unknown root shell',
+                                        b'/etc/netstart: No such file',
+                                        b'openssl: generating isakmpd RSA keys... failed',
+                                        b'openssl: generating iked ECDSA keys... failed',
+                                        b'savecore: not found', b'vi.recover: not found',
+                                        b'No such process',
                                         b'WARNING: / was not properly unmounted'):
                             if warning in console:
                                 raise RuntimeError(f'{phase}: unexpected warning {warning!r}')
