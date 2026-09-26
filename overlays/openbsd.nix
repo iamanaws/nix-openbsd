@@ -3,6 +3,23 @@ final: prev:
 {
   openbsd = prev.openbsd.overrideScope (
     openbsdFinal: openbsdPrev: {
+      reboot = openbsdPrev.reboot.overrideAttrs (old: {
+        postPatch = (old.postPatch or "") + ''
+          # Preserve shutdown's authorized root identity in the rc shell child.
+          substituteInPlace "$BSDSRCDIR/sbin/reboot/reboot.c" \
+            --replace-fail 'execl(_PATH_BSHELL, "sh", _PATH_RC, "shutdown", (char *)NULL);' \
+              'if (setuid(0) == -1) err(1, "setuid");
+              execl(_PATH_BSHELL, "sh", _PATH_RC, "shutdown", (char *)NULL);'
+        '';
+      });
+      rc = openbsdPrev.rc.overrideAttrs (old: {
+        postPatch = (old.postPatch or "") + ''
+          # vmd is not installed unless its service is configured.
+          substituteInPlace "$BSDSRCDIR/etc/rc" \
+            --replace-fail 'if /etc/rc.d/vmd check > /dev/null; then' \
+              'if [[ -x /etc/rc.d/vmd ]] && /etc/rc.d/vmd check > /dev/null; then'
+        '';
+      });
       init = openbsdPrev.init.overrideAttrs (old: {
         postPatch = (old.postPatch or "") + ''
           # activate-init-native already creates PID 1's session before activation.

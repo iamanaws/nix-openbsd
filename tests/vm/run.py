@@ -56,6 +56,9 @@ def main():
  test "$(nix run --offline --accept-flake-config {flake}#hello)" = "Hello, world!"
  nix run --accept-flake-config {flake}#jq -- -n '1 + 1' | grep '^2$'
  nix-store --verify-path "$(readlink -f result)"
+ # Regular users must still be unable to add or replace the daemon's signing keys.
+ nix-store --realise "$(readlink -f result)" --option trusted-public-keys untrusted-test-key 2> rejected-key.log
+ grep -q 'restricted setting' rejected-key.log
  echo USER_PACKAGE_PASS
 ''')
     expected = output('nix', 'eval', '--raw', f'{source}#native-system.outPath')
@@ -150,10 +153,26 @@ def main():
                         with socket.create_connection(('127.0.0.1', ssh_port), timeout=10) as ssh:
                             if not ssh.recv(256).startswith(b'SSH-2.0-'):
                                 raise RuntimeError('Missing SSH banner')
+                        send('exit')
+                        expect(rb'login:')
+                        send('bestie')
+                        expect(rb'Password:')
+                        send('toor')
+                        expect(rb'bestie@')
                         send('shutdown -p now')
                         process.wait(timeout=60)
                         if process.returncode != 0:
                             raise RuntimeError('VM shutdown failed')
+                        console = (work / f'{phase}.log').read_bytes()
+                        for warning in (b'initial setsid() failed', b'Stack size hard limit',
+                                        b"client-specified setting 'trusted-public-keys'",
+                                        b"mkdir: cannot create directory '/var/run/dev.db'",
+                                        b'SUMMARY INFORMATION BAD', b'SALVAGE?',
+                                        b'hostname: sethostname: Operation not permitted',
+                                        b'cannot write random seed', b'/etc/rc.d/vmd: not found',
+                                        b'WARNING: / was not properly unmounted'):
+                            if warning in console:
+                                raise RuntimeError(f'{phase}: unexpected warning {warning!r}')
                         print(f'PASS {phase}: guest checks, HTTP and SSH', flush=True)
                 finally:
                     if process.poll() is None:

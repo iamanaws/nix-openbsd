@@ -45,6 +45,8 @@ let
 in
 {
   config = lib.mkIf pkgs.stdenv.hostPlatform.isOpenBSD {
+    # Activation checks root before mounting it writable. rc must not fsck it again.
+    fileSystems."/".noCheck = true;
     # Without a ruleset, rc leaves its temporary outbound block rules active.
     openbsd.rc.conf.pf = lib.mkDefault false;
     system.switch.enable = lib.mkDefault false;
@@ -52,6 +54,15 @@ in
     environment.etc."rc".text = lib.mkBefore ''
       export PATH="${lib.makeBinPath config.system.fsPackages}:$PATH"
     '';
+    # dev_mkdb creates dev.db as a file. Only its parent directory is needed here.
+    environment.etc."rc".source = lib.mkForce (
+      pkgs.writeText "rc" (
+        lib.replaceStrings
+          [ "mkdir -p /var/run/dev.db   # make su work" ]
+          [ "mkdir -p /var/run" ]
+          config.environment.etc."rc".text
+      )
+    );
     assertions = [
       {
         assertion = !config.system.switch.enable;

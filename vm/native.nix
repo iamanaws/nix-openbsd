@@ -136,6 +136,9 @@ let
       if [ ! -e "$state/disk.qcow2" ]; then
         nix-store --add-root "$state/base-image" --realise ${image} >/dev/null
         qemu-img create -f qcow2 -F qcow2 -b ${image}/${image.filename} "$state/disk.qcow2"
+      elif [ "$(readlink -f "$state/base-image")" != "${image}" ]; then
+        echo "Using existing VM disk in $state, created from an older image." >&2
+        echo "Update the guest, or set NIX_VM_STATE_DIR to a new directory for a fresh VM." >&2
       fi
       if [ ! -e "$state/efi.fd" ]; then
         cp ${pkgs.OVMF.fd}/FV/OVMF_VARS.fd "$state/efi.fd"

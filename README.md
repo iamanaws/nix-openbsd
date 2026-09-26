@@ -74,13 +74,12 @@ local monitoring.
 The test accounts `root` and `bestie` both use `toor`. Do not expose
 the VM or reuse these credentials.
 
-To stop the VM, log in as **root** with password **toor**, then run:
+To stop the VM:
 
 ```sh
 shutdown -p now
 ```
 
-From a `bestie` shell, use `su -` first (password `toor`).
 If the guest is unresponsive, press **Ctrl+A**, release, then **X** to quit
 QEMU immediately. This is a forced stop, so prefer a clean shutdown.
 
@@ -101,6 +100,14 @@ VM disk traffic is capped at 40 MiB/s reads and 20 MiB/s writes.
 These limits apply to the running VM; image builds run through the host Nix daemon.
 Rebuilding the launcher preserves existing state. Update that VM from inside
 OpenBSD using system generations below.
+
+To start fresh, shut down the VM, then run these on the host from the directory
+where you launched it. This deletes the VM and all files saved inside it:
+
+```sh
+rm -rf openbsd-native-vm/
+nix run --refresh github:iamanaws/nix-openbsd#native-vm
+```
 
 ## Update the native system
 

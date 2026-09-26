@@ -88,6 +88,15 @@ in
         substituteInPlace meson.build \
           --replace-fail "nix_system_cpu + '-' + host_machine.system()" \
             "'${pkgs.stdenv.hostPlatform.system}'"
+        # Repeating the daemon's own keys needs no privilege and changes no trust.
+        substituteInPlace daemon.cc \
+          --replace-fail 'else if (setSubstituters(settings.getWorkerSettings().substituters))' \
+            'else if (name == settings.trustedPublicKeys.name &&
+                tokenizeString<StringSet>(value) == StringSet(
+                    settings.trustedPublicKeys.get().begin(),
+                    settings.trustedPublicKeys.get().end()))
+                ;
+            else if (setSubstituters(settings.getWorkerSettings().substituters))'
       '';
       patches = (old.patches or [ ]) ++ [
         (nixPatch "nix-openbsd-builder-pty.patch")
@@ -107,6 +116,12 @@ in
       '';
     });
     nix-cli = prev.nix-cli.overrideAttrs (old: {
+      postPatch = (old.postPatch or "") + ''
+        # OpenBSD/amd64 caps stacks at 32 MiB, including for root.
+        substituteInPlace main.cc \
+          --replace-fail 'nix::setStackSize(60 * 1024 * 1024);' \
+            'nix::setStackSize(32 * 1024 * 1024);'
+      '';
       env = (old.env or { }) // {
         NIX_CFLAGS_COMPILE_x86_64_unknown_openbsd =
           (old.env.NIX_CFLAGS_COMPILE_x86_64_unknown_openbsd or "")
