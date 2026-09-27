@@ -14,6 +14,13 @@ final: prev:
       });
       rc = openbsdPrev.rc.overrideAttrs (old: {
         postPatch = (old.postPatch or "") + ''
+          # rc.d prints service names without a newline; delimit the early
+          # NixBSD phases just like OpenBSD's other daemon groups.
+          substituteInPlace "$BSDSRCDIR/etc/rc" \
+            --replace-fail 'daemon_phase 10' $'echo -n "starting system services:"\ndaemon_phase 10' \
+            --replace-fail 'daemon_phase 20' $'daemon_phase 20\necho "."' \
+            --replace-fail "echo 'starting network'" "echo -n 'starting network:'" \
+            --replace-fail 'daemon_phase 30' $'daemon_phase 30\necho "."'
           # vmd is not installed unless its service is configured.
           substituteInPlace "$BSDSRCDIR/etc/rc" \
             --replace-fail 'if /etc/rc.d/vmd check > /dev/null; then' \
