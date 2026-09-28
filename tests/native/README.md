@@ -1,6 +1,6 @@
 # Native OpenBSD package test
 
-Run from `nixopenbsd`, with `nixbsd` beside it:
+Run from the project root, with `nixbsd` beside it:
 
 ```sh
 nix build --impure --max-jobs 1 --cores 8 --out-link result-native-test \
@@ -12,8 +12,8 @@ nix build --impure --max-jobs 1 --cores 8 --out-link result-native-test \
 
 The host supplies cross-built seed tools and sources to an OpenBSD 7.9 VM.
 The guest builds the native stdenv and test packages, using the
-[binary cache](../../README.md#binary-cache) when available.
-See the [stdenv status](../../notes/native-stdenv.md) for results and limitations.
+[binary cache](../../docs/vm.md#binary-cache) when available.
+See the [stdenv status](../../docs/status.md) for results and limitations.
 
 The runner imports recipes and tests after boot over a local connection.
 Rerun the build command after editing them. Changes to seed tools, preloaded

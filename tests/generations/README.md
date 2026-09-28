@@ -54,5 +54,6 @@ set init /nix/store/GENERATION/bin/activate-init-native
 boot /nix/store/GENERATION/kernel
 ```
 
-This changes that boot only. Once logged in, use `openbsd-system rollback N`
-to select the retained generation permanently.
+This changes that boot only. Once logged in, use
+`openbsd-rebuild boot --store-path /nix/var/nix/profiles/system-N-link`
+to select the retained configuration for future boots.

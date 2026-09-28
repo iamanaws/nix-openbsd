@@ -1,4 +1,4 @@
-# Sourced by openbsd-system; no changes happen until live_apply is called.
+# Sourced by the generation manager; no changes happen until live_apply is called.
 live_started=false
 live_done=false
 live_activated=false

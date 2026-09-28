@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -77,6 +78,20 @@ ln -sfn "system-$number-link" "$profile"
         self.assertEqual(self.profile.resolve(), self.a)
         self.assertIn(str(self.a), self.default.read_text())
         self.assertTrue(self.profile.with_name('system-2-link').exists())
+
+    def test_rebuild_boot_and_rollback(self):
+        rebuild = Path(__file__).parents[2] / 'modules/system/rebuild.sh'
+        self.executable('generation-manager', f'exec bash {shlex.quote(str(self.script))} "$@"')
+        for args, expected in ((['boot', '--store-path', str(self.b)], self.b),
+                               (['boot', '--rollback'], self.a)):
+            result = subprocess.run(['bash', str(rebuild), *args],
+                                    env=self.env | {'generation_manager': str(self.root / 'bin/generation-manager')},
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(self.profile.resolve(), expected)
+            self.assertIn(str(expected), self.default.read_text())
+            self.assertEqual((self.root / 'run/current-system').resolve(), self.a)
+        self.assertFalse((self.root / 'run/openbsd-system.lock').exists())
 
     def test_failed_boot_file_commit_restores_profile(self):
         old = self.default.read_text()

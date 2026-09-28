@@ -1,4 +1,14 @@
-# NixBSD integration gaps
+# Next steps and NixBSD integration
+
+The focus is native package builds and usable native systems. The cross-built
+demo remains a reference. OpenBSD integration fixes stay in this project until
+FreeBSD and OpenBSD compatibility has been tested for upstream changes.
+
+- Expand native package coverage and regression tests.
+- Extend live updates to more services and networking changes.
+- Extend network tests for IPv6, firewall policies, routing and VPNs.
+- Investigate build isolation on OpenBSD.
+- Upstream validated package fixes to Nixpkgs and system support to NixBSD.
 
 ## Live configuration switching
 

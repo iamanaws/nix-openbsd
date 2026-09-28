@@ -4,10 +4,9 @@ umask 022
 profile=/nix/var/nix/profiles/system
 boot=/boot/nixos
 
-die() { echo "openbsd-system: $*" >&2; exit 1; }
+die() { echo "openbsd-rebuild: $*" >&2; exit 1; }
 usage() {
-    echo "Usage: openbsd-system list | {boot|test|switch|dry-activate} SYSTEM | rollback [--live] [GENERATION]" >&2
-    exit 1
+    die "invalid generation operation; run openbsd-rebuild --help"
 }
 action=${1:-}
 shift || usage

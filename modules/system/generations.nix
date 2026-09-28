@@ -53,10 +53,11 @@ let
           pkgs.coreutils
         ]
       }:$PATH
+      generation_manager=${manager}
     ''
     + builtins.readFile ./rebuild.sh
   );
-  manager = pkgs.writeShellScriptBin "openbsd-system" (
+  manager = pkgs.writeShellScript "openbsd-generation-manager" (
     ''
       source ${live}
       export PATH=${
@@ -95,19 +96,15 @@ in
     );
   };
   config = {
-    environment.systemPackages = [
-      manager
-      rebuild
-    ];
+    environment.systemPackages = [ rebuild ];
     system.systemBuilderCommands = ''
       mkdir -p $out/bin
-      ln -s ${manager}/bin/openbsd-system $out/bin/openbsd-system
       ln -s ${metadata} $out/openbsd-system.json
       cat > $out/bin/switch-to-configuration <<EOF
       #!${pkgs.runtimeShell}
       test "\$#" = 1 || exit 1
       case "\$1" in boot|test|switch|dry-activate) ;; *) exit 1 ;; esac
-      exec ${manager}/bin/openbsd-system "\$1" "$out"
+      exec ${manager} "\$1" "$out"
       EOF
       chmod +x $out/bin/switch-to-configuration
     '';

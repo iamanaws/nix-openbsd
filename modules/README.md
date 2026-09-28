@@ -41,7 +41,7 @@ only applies on OpenBSD. The fixes remain here pending upstream compatibility te
 - ACME certificate issuance requires public access to the HTTP-01 challenge.
   Test against a staging authority before requesting real certificates.
 
-The native system supports [generation updates and rollback](../README.md#update-the-native-system).
+The native system supports [generation updates and rollback](../docs/configuration.md).
 HTTP and relayd can restart during live updates. Other services need an explicit
 `openbsd.system.services` entry with their configuration files and a read-only
 validation command. Network changes currently require a reboot.

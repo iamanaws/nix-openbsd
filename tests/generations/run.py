@@ -83,10 +83,10 @@ touch /root/generation-persistence
     phases = {
         'install': f"curl --noproxy '*' -fsS {url}/setup.sh -o /tmp/install.sh && bash /tmp/install.sh",
         'a': f'''test "$(readlink -f /run/current-system)" = {a}
-openbsd-system boot {b}
+openbsd-rebuild boot --store-path {b}
 test "$(readlink -f /run/current-system)" = {a}''',
         'b': f'''test "$(readlink -f /run/current-system)" = {b}
-openbsd-system rollback
+openbsd-rebuild boot --rollback
 test "$(readlink -f /nix/var/nix/profiles/system)" = {a}''',
         'rollback': f'''test "$(readlink -f /run/current-system)" = {a}
 test -f /root/generation-persistence
@@ -94,17 +94,17 @@ nix-store --query --roots {a} | grep /nix/var/nix/profiles/
 nix-store --query --roots {b} | grep /nix/var/nix/profiles/
 nix-store --gc
 nix-store --check-validity {a} {b}
-openbsd-system boot {b}''',
+openbsd-rebuild boot --store-path {b}''',
         'recovery': f'''test "$(readlink -f /run/current-system)" = {a}
 test "$(readlink -f /run/booted-system)" = {a}
 test "$(readlink -f /nix/var/nix/profiles/system)" = {b}
-openbsd-system rollback
+openbsd-rebuild boot --rollback
 test "$(readlink -f /nix/var/nix/profiles/system)" = {a}''',
     }
     if args.live_fixtures:
         fixtures = shlex.quote(str(args.live_fixtures))
         live_probe = f'''test "$(readlink -f /run/current-system)" = {a}
-manager={a}/bin/openbsd-system
+rebuild={a}/sw/bin/openbsd-rebuild
 ssh_process() {{ ps -ax -o pid=,comm= | awk '$2 == "sshd" {{ print $1 }}'; }}
 ssh_pid=$(ssh_process)
 test -n "$ssh_pid"
@@ -112,7 +112,7 @@ default=$(cat /boot/nixos/default.conf)
 {b}/bin/switch-to-configuration dry-activate
 test "$(readlink -f /run/current-system)" = {a}
 for failure in invalid failed-start failed-activation; do
-    if $manager switch {fixtures}/$failure; then echo "Unexpected success: $failure"; exit 1; fi
+    if $rebuild switch --store-path {fixtures}/$failure; then echo "Unexpected success: $failure"; exit 1; fi
     test "$(readlink -f /run/current-system)" = {a}
     test "$(readlink -f /nix/var/nix/profiles/system)" = {a}
     test "$(cat /boot/nixos/default.conf)" = "$default"
@@ -126,12 +126,12 @@ test "$(cat /boot/nixos/default.conf)" = "$default"
 /etc/rc.d/generation_probe check
 curl -fsS http://127.0.0.1:8080/ | grep 'generation B'
 test "$(/run/current-system/sw/bin/hello)" = 'Hello, world!'
-$manager test {a}
+$rebuild test --store-path {a}
 if {b}/etc/rc.d/generation_probe check; then echo 'Removed daemon still running'; exit 1; fi
 {b}/bin/switch-to-configuration switch
 test "$(readlink -f /run/current-system)" = {b}
 test "$(readlink -f /nix/var/nix/profiles/system)" = {b}
-$manager rollback --live
+$rebuild switch --rollback
 test "$(readlink -f /run/current-system)" = {a}
 test "$(readlink -f /nix/var/nix/profiles/system)" = {a}
 test "$(ssh_process)" = "$ssh_pid"

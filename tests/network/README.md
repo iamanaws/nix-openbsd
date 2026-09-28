@@ -1,6 +1,6 @@
 # Routing and VPN tests
 
-Run from the nixopenbsd root on x86_64 Linux with KVM:
+Run from the project root on x86_64 Linux with KVM:
 
 ```sh
 nix run --impure --max-jobs 1 --cores 1 --expr '
@@ -47,31 +47,15 @@ per guest. Each check has a 60-second timeout. The test stops only its own VMs.
 
 The test does not cover forwarding between separate client networks, IPv6,
 OSPF, RIP, IKEv1, certificate authentication, rekeying or reboot persistence.
-See the [integration gaps](../../notes/nixbsd-integration.md) for live
+See the [integration gaps](../../docs/roadmap.md) for live
 configuration switching.
 
-## Fixes found
+## Implementation notes
 
-The first runs found missing `/etc/protocols` and `/etc/services` files in
-NixBSD's OpenBSD image. The image now includes them.
+The fixtures use the [OpenBSD integration module](../../modules/system/openbsd.nix)
+for interface setup. The tests also exercise protocol/service databases,
+private key persistence and daemon process-title matching.
 
-In nixopenbsd, `iked` needed a `0600` configuration file, a local private key
-generated on first start, and chroot permissions that let its unprivileged
-CA process read the certificate directories. The directory modes follow
-[OpenBSD's directory definitions](https://github.com/openbsd/src/blob/master/etc/mtree/4.4BSD.dist).
-
-The service check also needed to match the daemon's `iked: parent` process
-title, as [OpenBSD's rc script](https://github.com/openbsd/src/blob/master/etc/rc.d/iked) does.
-
-Replacing the custom interface setup with networking options reproduced the
-missing static addresses and hostname. NixBSD configures addresses and the
-IPv4 default gateway before network services start. It writes `/etc/myname`
-and includes `hostname` in OpenBSD rc's early boot PATH. It maps the gateway
-metric to OpenBSD's route priority.
-DHCP skips interfaces with static IPv4 addresses unless `useDHCP = true`.
-FreeBSD's networking implementation is unchanged.
-
-The full test passed with declarative networking. The standalone NixBSD
-`openbsd-base` VM also passed root login, hostname, loopback and DHCP-address
-checks. FreeBSD's base VM and disk-image derivations match the baseline when
-evaluated on x86_64 Linux with documentation disabled.
+The iked module follows OpenBSD's
+[directory permissions](https://github.com/openbsd/src/blob/master/etc/mtree/4.4BSD.dist)
+and [rc process pattern](https://github.com/openbsd/src/blob/master/etc/rc.d/iked).

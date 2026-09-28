@@ -1,4 +1,4 @@
-"""Exercise the native development workflow in a fresh VM, then restart it."""
+"""Test native packages in a fresh VM, optionally including public system updates."""
 import argparse
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import functools
@@ -14,7 +14,10 @@ import subprocess
 import tempfile
 import threading
 import time
+
 from urllib.request import urlopen
+
+from public_workflow import prepare_public_workflow
 
 
 def output(*args):
@@ -26,27 +29,31 @@ def main():
     parser.add_argument('source')
     parser.add_argument('--keep', action='store_true', help='keep test disks')
     parser.add_argument('--timeout', type=int, default=3600, help='seconds per guest phase')
+    parser.add_argument('--public-ref', help='test a published flake without preloading sources')
+    parser.add_argument('--builders', help='host image builders; an empty string builds locally')
     args = parser.parse_args()
     work = Path(tempfile.mkdtemp(prefix='nixopenbsd-vm-test.'))
     print(f'Test files: {work}', flush=True)
-    source = f'path:{args.source}'
+    source = args.public_ref or f'path:{args.source}'
+    build_options = [] if args.builders is None else ['--builders', args.builders]
     subprocess.run(['nix', 'build', '--accept-flake-config', f'{source}#native-vm',
-                    '--cores', '2', '--max-jobs', '1', '-o', str(work / 'launcher')], check=True)
-    # Archive direct inputs without recursively fetching development-tool inputs.
-    roots = json.loads(output('nix', 'eval', '--impure', '--json', '--expr',
-        f'let f = builtins.getFlake {json.dumps(source)}; in '
-        '[ f.outPath f.inputs.nixbsd.outPath ] ++ '
-        'builtins.map (input: input.outPath) (builtins.attrValues f.inputs.nixbsd.inputs)'))
-    closure = output('nix-store', '--query', '--requisites', *roots).splitlines()
+                    '--cores', '2', '--max-jobs', '1', '-o', str(work / 'launcher'), *build_options], check=True)
     # Serve only test inputs, behind a random path on the loopback interface.
     public = work / 'public'
     token = secrets.token_hex(24)
     payload = public / token
     payload.mkdir(parents=True)
-    with (payload / 'sources.nar').open('wb') as stream:
-        subprocess.run(['nix-store', '--export', *closure], stdout=stream, check=True)
-    flake = shlex.quote('path:' + roots[0])
-    (payload / 'client.sh').write_text(f'''set -eu
+    if not args.public_ref:
+        # Archive direct inputs without recursively fetching development-tool inputs.
+        roots = json.loads(output('nix', 'eval', '--impure', '--json', '--expr',
+            f'let f = builtins.getFlake {json.dumps(source)}; in '
+            '[ f.outPath f.inputs.nixbsd.outPath ] ++ '
+            'builtins.map (input: input.outPath) (builtins.attrValues f.inputs.nixbsd.inputs)'))
+        closure = output('nix-store', '--query', '--requisites', *roots).splitlines()
+        with (payload / 'sources.nar').open('wb') as stream:
+            subprocess.run(['nix-store', '--export', *closure], stdout=stream, check=True)
+        flake = shlex.quote('path:' + roots[0])
+        (payload / 'client.sh').write_text(f'''set -eu
  test "$(id -u)" -ne 0
  mkdir -p "$HOME/development-test"
  cd "$HOME/development-test"
@@ -70,7 +77,11 @@ def main():
     server = ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(Handler, directory=str(public)))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = f'http://10.0.2.2:{server.server_port}/{token}'
-    (payload / 'probe.sh').write_text(f'''set -eu
+    if args.public_ref:
+        phases = prepare_public_workflow(payload, source, expected, url)
+    else:
+        phases = ('fresh', 'restart')
+        (payload / 'probe.sh').write_text(f'''set -eu
  test "$(readlink -f /run/current-system)" = {shlex.quote(expected)}
  mount | grep ' /boot/efi '
  # Service accounts must be locked, never silently given an empty password.
@@ -101,7 +112,7 @@ def main():
     }
     success = False
     try:
-        for phase in ('fresh', 'restart'):
+        for phase in phases:
             with (work / f'{phase}.log').open('wb', buffering=0) as log:
                 process = subprocess.Popen([str(work / 'launcher/bin/run-openbsd-native-vm')],
                     env=env, stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT)
@@ -142,7 +153,9 @@ def main():
                         expect(rb'root@')
                         if b'initial setsid() failed' in (work / f'{phase}.log').read_bytes():
                             raise RuntimeError(f'Init failed to reuse the activation session; see {phase}.log')
-                        if phase == 'fresh':
+                        if args.public_ref:
+                            probe = f"curl --noproxy '*' -fsS {url}/{phase}.sh -o /tmp/probe.sh && bash /tmp/probe.sh"
+                        elif phase == 'fresh':
                             probe = f"curl --noproxy '*' -fsS {url}/probe.sh -o /tmp/probe.sh && bash /tmp/probe.sh"
                         else:
                             probe = "test -f /root/persistence-check && /etc/rc.d/nix_daemon check && su -l bestie -c 'test -x development-test/result/bin/hello && development-test/result/bin/hello'"
@@ -150,9 +163,10 @@ def main():
                         status = expect(rb'\nOPENBSD_VM_DONE:(\d+)\r?\n').group(1)
                         if status != b'0':
                             raise RuntimeError(f'{phase} failed with status {status.decode()}; see {phase}.log')
-                        with urlopen(f'http://127.0.0.1:{http_port}/', timeout=10) as response:
-                            if b'NixBSD' not in response.read():
-                                raise RuntimeError('Unexpected HTTP response')
+                        if not args.public_ref or phase == 'fresh':
+                            with urlopen(f'http://127.0.0.1:{http_port}/', timeout=10) as response:
+                                if b'NixBSD' not in response.read():
+                                    raise RuntimeError('Unexpected HTTP response')
                         with socket.create_connection(('127.0.0.1', ssh_port), timeout=10) as ssh:
                             if not ssh.recv(256).startswith(b'SSH-2.0-'):
                                 raise RuntimeError('Missing SSH banner')
@@ -184,7 +198,7 @@ def main():
                                         b'WARNING: / was not properly unmounted'):
                             if warning in console:
                                 raise RuntimeError(f'{phase}: unexpected warning {warning!r}')
-                        print(f'PASS {phase}: guest checks, HTTP and SSH', flush=True)
+                        print(f'PASS {phase}: guest checks and SSH', flush=True)
                 finally:
                     if process.poll() is None:
                         # Try a clean shutdown before forcing a timed-out guest to exit.

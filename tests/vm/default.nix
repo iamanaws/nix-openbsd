@@ -6,6 +6,6 @@ pkgs.writeShellApplication {
     pkgs.nix.nix-cli
   ];
   text = ''
-    exec python3 ${./run.py} ${source} "$@"
+    exec python3 ${./.}/run.py ${source} "$@"
   '';
 }
