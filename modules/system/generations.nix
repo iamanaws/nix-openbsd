@@ -45,6 +45,17 @@ let
     }
   );
   live = pkgs.writeText "openbsd-live.sh" (builtins.readFile ./live.sh);
+  rebuild = pkgs.writeShellScriptBin "openbsd-rebuild" (
+    ''
+      export PATH=${
+        lib.makeBinPath [
+          config.nix.package
+          pkgs.coreutils
+        ]
+      }:$PATH
+    ''
+    + builtins.readFile ./rebuild.sh
+  );
   manager = pkgs.writeShellScriptBin "openbsd-system" (
     ''
       source ${live}
@@ -84,7 +95,10 @@ in
     );
   };
   config = {
-    environment.systemPackages = [ manager ];
+    environment.systemPackages = [
+      manager
+      rebuild
+    ];
     system.systemBuilderCommands = ''
       mkdir -p $out/bin
       ln -s ${manager}/bin/openbsd-system $out/bin/openbsd-system

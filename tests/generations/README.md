@@ -36,6 +36,12 @@ Local failure tests need Bash, jq, GNU coreutils and Python:
 python3 -m unittest discover -s tests/generations -p 'test_*.py'
 ```
 
+To also check the personal configuration, build the native-system template
+inside OpenBSD and pass its system path as `--personal-system`. This boots
+the template, checks its packages and DNS service, and exercises `openbsd-rebuild`
+against a local copy of the template and project inputs. The local tests cover
+build failure and permissions.
+
 ## Boot-console recovery
 
 Retained generations live under `/nix/var/nix/profiles/system-N-link` and have

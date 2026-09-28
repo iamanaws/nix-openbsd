@@ -32,6 +32,11 @@ The package workflow also passes as `bestie`: `nix build .#hello`,
 and the saved package after a clean restart. Flakes are enabled by default;
 the VM uses Cachix and the standard Nix cache.
 
+On 2026-09-28, the generation VM tests passed live updates, failure recovery,
+rollback, garbage collection and boot-console recovery. The personal configuration
+template booted successfully; `openbsd-rebuild` passed regular-user builds and
+root activation from its flake. All 15 local generation tests passed.
+
 ## Suite results
 
 These counts come from the recorded VM runs. A cached test run can reuse their outputs.
@@ -45,9 +50,6 @@ These counts come from the recorded VM runs. A cached test run can reuse their o
   OpenBSD's thread table.
 
 ## Limitations
-
-Boot prints warnings for unfinished base integration, including optional IPsec key
-generation, savecore and vi recovery.
 
 OpenBSD provides C-locale formatting and UTF-8 character conversion. Tests
 requiring regional locales or the absent `quick_exit` API report unsupported.

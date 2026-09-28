@@ -1,6 +1,7 @@
 """Boot A, boot B, roll back to A, and recover A through the boot console."""
 import argparse
 import functools
+import json
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import os
 from pathlib import Path
@@ -26,6 +27,9 @@ def main():
     parser.add_argument('--system-a', required=True)
     parser.add_argument('--system-b', required=True)
     parser.add_argument('--live-fixtures', type=Path, help='fixture bundle with invalid, failed-start and failed-activation systems')
+    parser.add_argument('--personal-system', type=Path, help='also boot the native configuration template')
+    parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[2],
+                        help='project source for the personal configuration test')
     parser.add_argument('--recovery-state', type=Path, help='rerun only console recovery on a preserved test disk')
     parser.add_argument('--keep', action='store_true')
     args = parser.parse_args()
@@ -34,6 +38,8 @@ def main():
         setattr(args, name, str(Path(getattr(args, name)).resolve(strict=True)))
     if args.live_fixtures:
         args.live_fixtures = args.live_fixtures.resolve(strict=True)
+    if args.personal_system:
+        args.personal_system = args.personal_system.resolve(strict=True)
     if args.recovery_state:
         args.recovery_state = args.recovery_state.resolve(strict=True)
     work = Path(tempfile.mkdtemp(prefix='nixopenbsd-generations.'))
@@ -45,6 +51,17 @@ def main():
     needed = closure(args.system_a) | closure(args.system_b)
     if args.live_fixtures:
         needed |= closure(str(args.live_fixtures))
+    if args.personal_system:
+        needed |= closure(str(args.personal_system))
+        source = 'path:' + str(args.source.resolve(strict=True))
+        source_roots = json.loads(subprocess.check_output([
+            'nix', 'eval', '--impure', '--json', '--expr',
+            f'let f = builtins.getFlake {json.dumps(source)}; in '
+            '[ f.outPath f.inputs.nixbsd.outPath ] ++ '
+            'builtins.map (input: input.outPath) (builtins.attrValues f.inputs.nixbsd.inputs)'
+        ], text=True))
+        for root in source_roots:
+            needed |= closure(root)
     paths = sorted(needed - closure(args.base_system))
     with (payload / 'systems.nar').open('wb') as stream:
         subprocess.run(['nix-store', '--export', *paths], stdout=stream, check=True)
@@ -124,6 +141,41 @@ echo LIVE_SWITCH_PASS
         phases['a'] = live_probe + phases['a']
     if args.recovery_state:
         phases = {'recovery': phases['recovery']}
+    if args.personal_system:
+        personal = shlex.quote(str(args.personal_system))
+        # Retain the template while the rollback phase exercises garbage collection.
+        with (payload / 'setup.sh').open('a') as stream:
+            stream.write(f'nix-store --add-root /root/personal-system --realise {personal}\n')
+            for index, root in enumerate(source_roots):
+                stream.write(f'nix-store --add-root /root/native-input-{index} --realise {shlex.quote(root)}\n')
+        source = shlex.quote(source_roots[0])
+        phases['recovery'] += f'''
+mkdir -p /root/my-openbsd
+cp {source}/templates/native-system/*.nix /root/my-openbsd/
+chmod u+w /root/my-openbsd/*.nix
+cd /root/my-openbsd
+nix flake lock --override-input nix-openbsd path:{source}
+openbsd-rebuild boot --flake .#my-openbsd
+test "$(readlink -f /nix/var/nix/profiles/system)" = {personal}
+'''
+        phases['personal'] = f'''
+test "$(readlink -f /run/current-system)" = {personal}
+test "$(hostname)" = my-openbsd
+test "$(hello)" = 'Hello, world!'
+/etc/rc.d/resolvd check
+test ! -e /etc/rc.d/httpd
+test ! -e /etc/rc.d/relayd
+mkdir -p /home/bestie/system-test
+cp /root/my-openbsd/*.nix /root/my-openbsd/flake.lock /home/bestie/system-test/
+chown -R bestie /home/bestie/system-test
+su -l bestie -c 'cd system-test && openbsd-rebuild build --flake .#my-openbsd'
+test "$(readlink -f /home/bestie/system-test/result-system)" = {personal}
+cd /root/my-openbsd
+openbsd-rebuild build --flake .#my-openbsd
+openbsd-rebuild dry-activate --flake .#my-openbsd
+openbsd-rebuild switch --flake .#my-openbsd
+echo PERSONAL_SYSTEM_PASS
+'''
     for name, body in phases.items():
         (payload / f'{name}.sh').write_text('set -eu\n' + body + '\n/etc/rc.d/nix_daemon check\n/etc/rc.d/sshd check\n')
 

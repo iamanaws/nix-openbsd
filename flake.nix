@@ -53,22 +53,22 @@
         inherit nativeNix;
         nixbsdSource = nixbsd.outPath;
       };
+      nativeModule = {
+        imports = [ ./modules/system/generations.nix ];
+        nix.package = lib.mkDefault nativeNix;
+        nixpkgs.pkgs = nativeSystemPackages;
+        nixpkgs.overlays = lib.mkForce [ ];
+        nixpkgs.buildPlatform = lib.mkForce "x86_64-openbsd";
+        boot.kernel.package = lib.mkForce (
+          nativeSystemPackages.openbsd.sys.override { baseConfig = "GENERIC.MP"; }
+        );
+        nix.settings = {
+          cores = 0; # Use the CPUs available inside the guest.
+          max-jobs = 1;
+        };
+      };
       openbsdNative = openbsdWebserver.extendModules {
-        modules = [
-          ./modules/system/generations.nix
-          {
-            nixpkgs.pkgs = nativeSystemPackages;
-            nixpkgs.overlays = lib.mkForce [ ];
-            nixpkgs.buildPlatform = lib.mkForce "x86_64-openbsd";
-            boot.kernel.package = lib.mkForce (
-              nativeSystemPackages.openbsd.sys.override { baseConfig = "GENERIC.MP"; }
-            );
-            nix.settings = {
-              cores = 0; # Use the CPUs available inside the guest.
-              max-jobs = 1;
-            };
-          }
-        ];
+        modules = [ nativeModule ];
       };
 
       nativeVM = import ./vm/native.nix {
@@ -91,53 +91,8 @@
         modules = [
           (
             { lib, pkgs, ... }:
-            {
-              imports = [
-                ./modules/security/acme-client.nix
-                ./modules/services/bgpd.nix
-                ./modules/services/cron.nix
-                ./modules/services/dhcpd.nix
-                ./modules/services/httpd.nix
-                ./modules/services/iked.nix
-                ./modules/services/ipsec.nix
-                ./modules/services/isakmpd.nix
-                ./modules/services/newsyslog.nix
-                ./modules/services/ntpd.nix
-                ./modules/services/ospfd.nix
-                ./modules/services/pf.nix
-                ./modules/services/pflogd.nix
-                ./modules/services/rad.nix
-                ./modules/services/relayd.nix
-                ./modules/services/resolvd.nix
-                ./modules/services/ripd.nix
-                ./modules/services/sensorsd.nix
-                ./modules/services/snmpd.nix
-                ./modules/services/syslogd.nix
-                ./modules/services/unwind.nix
-              ];
-
-              nixpkgs.overlays = [ (import ./overlays/openbsd.nix) ];
-              # Use the maintained caches; the inherited NixBSD cache no longer resolves.
-              nixbsd.enableExtraSubstituters = false;
+            lib.recursiveUpdate (import ./modules/profiles/common.nix { inherit lib pkgs; }) {
               nix.package = nativeNix;
-              nix.settings = {
-                experimental-features = [
-                  "nix-command"
-                  "flakes"
-                ];
-                substituters = lib.mkBefore [ "https://nix-openbsd.cachix.org" ];
-                trusted-public-keys = [
-                  "nix-openbsd.cachix.org-1:IbN25q8l3NyIq8L16AWaJ1MNTxZRiYdzO5eYFQv1J+4="
-                ];
-                fallback = true;
-              };
-              environment.systemPackages = [ pkgs.openbsd.netstat ];
-              fonts.fontconfig.enable = false;
-              systemd.tmpfiles.rules = [
-                "d /var/authpf 0700 root wheel - -"
-                "d /var/db 0755 root wheel - -"
-                "f /var/db/host.random 0600 root wheel - -"
-              ];
               networking.hostName = lib.mkForce "openbsd-webserver";
               system.stateVersion = "25.05";
 
@@ -261,6 +216,27 @@
       };
     in
     {
+      lib.mkNativeSystem =
+        {
+          modules,
+          specialArgs ? { },
+        }:
+        nixbsd.lib.nixbsdSystem {
+          inherit specialArgs;
+          modules = [
+            (nixbsd.outPath + "/configurations/openbsd-base")
+            ./modules/system/openbsd.nix
+            ./modules/profiles/common.nix
+            nativeModule
+            { system.stateVersion = "25.05"; }
+          ]
+          ++ modules;
+        };
+      templates.native-system = {
+        path = ./templates/native-system;
+        description = "A native OpenBSD configuration for the existing VM";
+      };
+
       nixosConfigurations.openbsd-webserver = openbsdWebserver;
       nixosConfigurations.openbsd-native = openbsdNative;
 

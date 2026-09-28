@@ -111,6 +111,43 @@ nix run --refresh github:iamanaws/nix-openbsd#native-vm
 
 ## Update the native system
 
+To make your own configuration inside the VM:
+
+```sh
+mkdir my-openbsd
+cd my-openbsd
+nix flake init -t github:iamanaws/nix-openbsd#native-system
+```
+
+Edit `configuration.nix` to choose packages and services. This template uses
+the native package set and the existing VM's disks and root/bestie accounts.
+It does not enable the web demo. Keep `flake.lock` with your configuration;
+run `nix flake update nix-openbsd` when you want to update its inputs.
+If you put the configuration in Git, add new files before building.
+
+Build and select it for the next boot, running activation as root:
+
+```sh
+nix build .#nixosConfigurations.my-openbsd.config.system.build.toplevel -o result-system
+./result-system/bin/switch-to-configuration boot
+shutdown -r now
+```
+
+After that first boot, use `openbsd-rebuild` from your configuration directory:
+
+```sh
+openbsd-rebuild build --flake .#my-openbsd
+# As root:
+openbsd-rebuild dry-activate --flake .#my-openbsd
+openbsd-rebuild switch --flake .#my-openbsd
+```
+
+The command builds into `result-system`, then activates only if the build
+succeeds. It also accepts `test` and `boot`. Use `boot` and reboot when a
+change cannot be applied live.
+
+### Update the reference demo
+
 From a nix-openbsd checkout inside OpenBSD (see [development](#develop-packages-inside-openbsd)),
 build the system, then run the activation commands as root:
 
@@ -133,6 +170,8 @@ shutdown -r now
 ```
 
 An older VM needs one reboot into the new system before it can switch live.
+
+### Rollback
 
 List generations or return to the previous one:
 

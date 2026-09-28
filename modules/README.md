@@ -5,6 +5,10 @@ These modules use NixBSD's `init.services` interface to generate OpenBSD
 [OpenBSD package overlay](../overlays/openbsd.nix). See [flake.nix](../flake.nix)
 for a complete demo configuration.
 
+For native VM configurations, use `lib.mkNativeSystem` from this flake, as in
+the [configuration template](../templates/native-system). It supplies the native
+packages, service options and generation manager; choose services in your module.
+
 [Service modules](services) cover HTTP, DHCP, DNS, NTP, PF, routing, VPNs,
 logging, SNMP and sensors. [ACME renewal](security/acme-client.nix) uses cron.
 The modules declare options, service users and runtime directories. They
