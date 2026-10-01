@@ -8,64 +8,63 @@ let
       inherit name;
     };
   tools = pkgs.stdenv.__bootPackages;
-  overrides = _: previous: {
-    python3 = pkgs.nativeTestPython.python;
-    python3Packages = pkgs.nativeTestPython.python.pkgs;
-    cmake = tools.cmakeMinimal;
-    ninja = tools.ninja.override {
-      python3 = tools.python3Minimal;
-      buildDocs = false;
-      re2c = tools.re2c.override { python3 = tools.python3Minimal; };
-    };
-    curl = pkgs.stdenv.openbsdBootstrap.curl;
-    doctest = previous.doctest.overrideAttrs (old: {
-      patches = (old.patches or [ ]) ++ [ ./doctest-openbsd.patch ];
-    });
-    toml11 = previous.toml11.overrideAttrs (old: {
-      patches = old.patches ++ [ ./toml11-openbsd-hexfloat.patch ];
-    });
-    boehmgc = previous.boehmgc.overrideAttrs (old: {
-      # Some test executables have no .data; define its start even when empty.
-      postConfigure =
-        builtins.replaceStrings
-          [ "__data_start = ADDR(.data);" ]
-          [ "SECTIONS { .data : { __data_start = .; *(.data .data.*) } } INSERT BEFORE .bss;" ]
-          old.postConfigure;
-    });
-    # TBB's OpenBSD tests fail; BLAKE3 also supports hashing without it.
-    libblake3 = previous.libblake3.override { useTBB = false; };
-    bmake = previous.bmake.overrideAttrs (old: {
-      postPatch = (old.postPatch or "") + ''
-        # OpenBSD supports junk filling (J), but not jemalloc's A option.
-        substituteInPlace unit-tests/Makefile \
-          --replace-fail 'MALLOC_OPTIONS="JA"' 'MALLOC_OPTIONS="J"'
-      '';
-    });
-    unzip = previous.unzip.overrideAttrs (old: {
-      postPatch = old.postPatch + ''
-        # OpenBSD uses the BSD4_4 time path and no longer ships this header.
-        substituteInPlace unix/unxcfg.h \
-          --replace-fail '#  include <sys/timeb.h>' ""
-      '';
-      # Its legacy configure probes rely on implicit function declarations.
-      env = old.env // {
-        NIX_CFLAGS_COMPILE = "-std=gnu89";
+  overrides =
+    _: previous:
+    (import ./bootstrap-build-tools.nix {
+      pkgs = tools;
+      python3 = pkgs.nativeTestPython.python;
+    })
+    // {
+      python3Packages = pkgs.nativeTestPython.python.pkgs;
+      curl = pkgs.stdenv.openbsdBootstrap.curl;
+      doctest = previous.doctest.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [ ./doctest-openbsd.patch ];
+      });
+      toml11 = previous.toml11.overrideAttrs (old: {
+        patches = old.patches ++ [ ./toml11-openbsd-hexfloat.patch ];
+      });
+      boehmgc = previous.boehmgc.overrideAttrs (old: {
+        # Some test executables have no .data; define its start even when empty.
+        postConfigure =
+          builtins.replaceStrings
+            [ "__data_start = ADDR(.data);" ]
+            [ "SECTIONS { .data : { __data_start = .; *(.data .data.*) } } INSERT BEFORE .bss;" ]
+            old.postConfigure;
+      });
+      # TBB's OpenBSD tests fail; BLAKE3 also supports hashing without it.
+      libblake3 = previous.libblake3.override { useTBB = false; };
+      bmake = previous.bmake.overrideAttrs (old: {
+        postPatch = (old.postPatch or "") + ''
+          # OpenBSD supports junk filling (J), but not jemalloc's A option.
+          substituteInPlace unit-tests/Makefile \
+            --replace-fail 'MALLOC_OPTIONS="JA"' 'MALLOC_OPTIONS="J"'
+        '';
+      });
+      unzip = previous.unzip.overrideAttrs (old: {
+        postPatch = old.postPatch + ''
+          # OpenBSD uses the BSD4_4 time path and no longer ships this header.
+          substituteInPlace unix/unxcfg.h \
+            --replace-fail '#  include <sys/timeb.h>' ""
+        '';
+        # Its legacy configure probes rely on implicit function declarations.
+        env = old.env // {
+          NIX_CFLAGS_COMPILE = "-std=gnu89";
+        };
+        doCheck = true;
+        checkTarget = "check";
+      });
+      boost-build = previous.boost-build.overrideAttrs (old: {
+        # The compiler wrapper exports WINDRES even on OpenBSD; B2 treats it as Windows.
+        env = (old.env or { }) // {
+          B2_DONT_EMBED_MANIFEST = "1";
+        };
+      });
+      # Meson's compiler tests pull in another Clang and OpenMP build.
+      meson = previous.meson.overrideAttrs {
+        doCheck = false;
+        doInstallCheck = false;
       };
-      doCheck = true;
-      checkTarget = "check";
-    });
-    boost-build = previous.boost-build.overrideAttrs (old: {
-      # The compiler wrapper exports WINDRES even on OpenBSD; B2 treats it as Windows.
-      env = (old.env or { }) // {
-        B2_DONT_EMBED_MANIFEST = "1";
-      };
-    });
-    # Meson's compiler tests pull in another Clang and OpenMP build.
-    meson = previous.meson.overrideAttrs {
-      doCheck = false;
-      doInstallCheck = false;
     };
-  };
   # Apply Nix's dependencies only after bootstrapping the tested stdenv.
   native = import pkgs.path {
     localSystem = pkgs.stdenv.hostPlatform;

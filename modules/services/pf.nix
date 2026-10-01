@@ -9,18 +9,16 @@ let
   cfg = config.services.pf;
   configPath = "/etc/pf.conf";
   pfctl = "${cfg.package}/bin/pfctl";
-  commonArgs = cfg.extraFlags ++ [ "-f" configPath ];
+  commonArgs = cfg.extraFlags ++ [
+    "-f"
+    configPath
+  ];
 in
 {
   options.services.pf = {
     enable = lib.mkEnableOption "OpenBSD packet filter rules";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.pfctl;
-      defaultText = lib.literalExpression "pkgs.openbsd.pfctl";
-      description = "The OpenBSD pfctl package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "pfctl" ] { };
 
     config = lib.mkOption {
       type = lib.types.lines;

@@ -14,12 +14,7 @@ in
   options.services.syslogd = {
     enable = lib.mkEnableOption "OpenBSD syslogd";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.syslogd;
-      defaultText = lib.literalExpression "pkgs.openbsd.syslogd";
-      description = "The OpenBSD syslogd package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "syslogd" ] { };
 
     clientPackage = lib.mkOption {
       type = lib.types.package;
@@ -66,7 +61,10 @@ in
 
     init.services.syslogd = {
       description = "OpenBSD system logging daemon";
-      dependencies = [ "FILESYSTEMS" ] ++ lib.optional (config.services.newsyslog.enable or false) "newsyslog-check";
+      dependencies = [
+        "FILESYSTEMS"
+      ]
+      ++ lib.optional (config.services.newsyslog.enable or false) "newsyslog-check";
       before = [ "SERVERS" ];
       startType = "forking";
       path = [ pkgs.coreutils ];

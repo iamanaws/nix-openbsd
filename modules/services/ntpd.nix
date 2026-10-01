@@ -14,12 +14,7 @@ in
   options.services.ntpd = {
     enable = lib.mkEnableOption "OpenBSD ntpd";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.ntpd;
-      defaultText = lib.literalExpression "pkgs.openbsd.ntpd";
-      description = "The OpenBSD ntpd package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "ntpd" ] { };
 
     config = lib.mkOption {
       type = lib.types.lines;

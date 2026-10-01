@@ -14,12 +14,7 @@ in
   options.services.rad = {
     enable = lib.mkEnableOption "OpenBSD rad";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.rad;
-      defaultText = lib.literalExpression "pkgs.openbsd.rad";
-      description = "The OpenBSD rad package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "rad" ] { };
 
     config = lib.mkOption {
       type = lib.types.lines;

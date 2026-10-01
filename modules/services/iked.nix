@@ -14,12 +14,7 @@ in
   options.services.iked = {
     enable = lib.mkEnableOption "OpenBSD iked";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.iked;
-      defaultText = lib.literalExpression "pkgs.openbsd.iked";
-      description = "The OpenBSD iked package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "iked" ] { };
 
     controlPackage = lib.mkOption {
       type = lib.types.package;

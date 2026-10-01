@@ -14,12 +14,7 @@ in
   options.services.ripd = {
     enable = lib.mkEnableOption "OpenBSD ripd";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.ripd;
-      defaultText = lib.literalExpression "pkgs.openbsd.ripd";
-      description = "The OpenBSD ripd package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "ripd" ] { };
 
     controlPackage = lib.mkOption {
       type = lib.types.package;

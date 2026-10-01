@@ -21,12 +21,7 @@ in
   options.services.dhcpd = {
     enable = lib.mkEnableOption "OpenBSD dhcpd";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.dhcpd;
-      defaultText = lib.literalExpression "pkgs.openbsd.dhcpd";
-      description = "The OpenBSD dhcpd package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "dhcpd" ] { };
 
     config = lib.mkOption {
       type = lib.types.lines;

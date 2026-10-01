@@ -4,16 +4,9 @@
   compiler-rt,
 }:
 let
-  buildTools = {
+  buildTools = (import ./bootstrap-build-tools.nix { inherit pkgs; }) // {
     # config.guess relies on OpenBSD's arch command, which is not in the seed.
     devExtraCmakeFlags = [ "-DLLVM_DEFAULT_TARGET_TRIPLE=${stdenv.hostPlatform.config}" ];
-    python3 = pkgs.python3Minimal;
-    cmake = pkgs.cmakeMinimal;
-    ninja = pkgs.ninja.override {
-      python3 = pkgs.python3Minimal;
-      buildDocs = false;
-      re2c = pkgs.re2c.override { python3 = pkgs.python3Minimal; };
-    };
   };
   # Do not link a runtime against its seed copy while rebuilding it.
   withoutCxx =

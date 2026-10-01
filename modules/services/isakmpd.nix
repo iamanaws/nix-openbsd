@@ -14,12 +14,7 @@ in
   options.services.isakmpd = {
     enable = lib.mkEnableOption "OpenBSD isakmpd";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.isakmpd;
-      defaultText = lib.literalExpression "pkgs.openbsd.isakmpd";
-      description = "The OpenBSD isakmpd package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "isakmpd" ] { };
 
     config = lib.mkOption {
       type = lib.types.lines;

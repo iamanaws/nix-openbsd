@@ -2,16 +2,14 @@
 let
   inherit (pkgs) lib;
   tools = pkgs.stdenv.__bootPackages;
-  buildTools = {
-    inherit python3;
-    python3Minimal = python3;
-    cmake = tools.cmakeMinimal;
-    ninja = tools.ninja.override {
-      python3 = tools.python3Minimal;
-      buildDocs = false;
-      re2c = tools.re2c.override { python3 = tools.python3Minimal; };
+  buildTools =
+    (import ./bootstrap-build-tools.nix {
+      pkgs = tools;
+      inherit python3;
+    })
+    // {
+      python3Minimal = python3;
     };
-  };
   llvmPackages = (pkgs.llvmPackages.override buildTools).overrideScope (
     final: previous: {
       # TableGen must use this native scope's build tools too.

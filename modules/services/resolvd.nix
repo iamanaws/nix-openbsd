@@ -13,12 +13,7 @@ in
   options.services.resolvd = {
     enable = lib.mkEnableOption "OpenBSD resolvd";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.resolvd;
-      defaultText = lib.literalExpression "pkgs.openbsd.resolvd";
-      description = "The OpenBSD resolvd package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "resolvd" ] { };
 
     config = lib.mkOption {
       type = lib.types.lines;

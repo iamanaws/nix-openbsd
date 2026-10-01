@@ -14,12 +14,7 @@ in
   options.services.ipsec = {
     enable = lib.mkEnableOption "OpenBSD IPsec policy loading";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.ipsecctl;
-      defaultText = lib.literalExpression "pkgs.openbsd.ipsecctl";
-      description = "The OpenBSD ipsecctl package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "ipsecctl" ] { };
 
     config = lib.mkOption {
       type = lib.types.lines;
@@ -27,10 +22,12 @@ in
     };
 
     ikeService = lib.mkOption {
-      type = lib.types.nullOr (lib.types.enum [
-        "iked"
-        "isakmpd"
-      ]);
+      type = lib.types.nullOr (
+        lib.types.enum [
+          "iked"
+          "isakmpd"
+        ]
+      );
       default = null;
       description = "IKE daemon that must start before policies are loaded.";
     };

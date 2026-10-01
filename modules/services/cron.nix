@@ -13,12 +13,7 @@ in
   options.services.cron = {
     enable = lib.mkEnableOption "OpenBSD cron";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.cron;
-      defaultText = lib.literalExpression "pkgs.openbsd.cron";
-      description = "The OpenBSD cron package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "cron" ] { };
 
     crontabPackage = lib.mkOption {
       type = lib.types.package;

@@ -13,12 +13,7 @@ in
   options.services.pflogd = {
     enable = lib.mkEnableOption "OpenBSD pflogd";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.pflogd;
-      defaultText = lib.literalExpression "pkgs.openbsd.pflogd";
-      description = "The OpenBSD pflogd package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "pflogd" ] { };
 
     interface = lib.mkOption {
       type = lib.types.str;

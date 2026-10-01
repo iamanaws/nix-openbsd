@@ -14,12 +14,7 @@ in
   options.services.relayd = {
     enable = lib.mkEnableOption "OpenBSD relayd";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.relayd;
-      defaultText = lib.literalExpression "pkgs.openbsd.relayd";
-      description = "The OpenBSD relayd package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "relayd" ] { };
 
     config = lib.mkOption {
       type = lib.types.lines;

@@ -14,12 +14,7 @@ in
   options.services.sensorsd = {
     enable = lib.mkEnableOption "OpenBSD sensorsd";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.sensorsd;
-      defaultText = lib.literalExpression "pkgs.openbsd.sensorsd";
-      description = "The OpenBSD sensorsd package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "sensorsd" ] { };
 
     config = lib.mkOption {
       type = lib.types.lines;

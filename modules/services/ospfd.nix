@@ -14,12 +14,7 @@ in
   options.services.ospfd = {
     enable = lib.mkEnableOption "OpenBSD ospfd";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.ospfd;
-      defaultText = lib.literalExpression "pkgs.openbsd.ospfd";
-      description = "The OpenBSD ospfd package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "ospfd" ] { };
 
     controlPackage = lib.mkOption {
       type = lib.types.package;

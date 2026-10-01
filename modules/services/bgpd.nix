@@ -14,12 +14,7 @@ in
   options.services.bgpd = {
     enable = lib.mkEnableOption "OpenBSD bgpd";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.bgpd;
-      defaultText = lib.literalExpression "pkgs.openbsd.bgpd";
-      description = "The OpenBSD bgpd package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "bgpd" ] { };
 
     controlPackage = lib.mkOption {
       type = lib.types.package;

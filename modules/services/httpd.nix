@@ -14,12 +14,7 @@ in
   options.services.httpd = {
     enable = lib.mkEnableOption "OpenBSD httpd";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.httpd;
-      defaultText = lib.literalExpression "pkgs.openbsd.httpd";
-      description = "The OpenBSD httpd package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "httpd" ] { };
 
     config = lib.mkOption {
       type = lib.types.lines;

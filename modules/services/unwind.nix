@@ -14,12 +14,7 @@ in
   options.services.unwind = {
     enable = lib.mkEnableOption "OpenBSD unwind";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.unwind;
-      defaultText = lib.literalExpression "pkgs.openbsd.unwind";
-      description = "The OpenBSD unwind package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "unwind" ] { };
 
     config = lib.mkOption {
       type = lib.types.lines;

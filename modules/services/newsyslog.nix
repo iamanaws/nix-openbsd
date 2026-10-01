@@ -14,12 +14,7 @@ in
   options.services.newsyslog = {
     enable = lib.mkEnableOption "OpenBSD newsyslog log rotation";
 
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.openbsd.newsyslog;
-      defaultText = lib.literalExpression "pkgs.openbsd.newsyslog";
-      description = "The OpenBSD newsyslog package to use.";
-    };
+    package = lib.mkPackageOption pkgs [ "openbsd" "newsyslog" ] { };
 
     config = lib.mkOption {
       type = lib.types.lines;
