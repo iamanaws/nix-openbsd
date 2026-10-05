@@ -1,0 +1,16 @@
+Subject: [PATCH] openbsd: create the parent directory for dev.db
+
+dev_mkdb needs /var/run/dev.db to be a file, not a directory.
+This changes only the OpenBSD rc wrapper.
+
+--- a/modules/system/boot/init/openbsd-rc.nix
++++ b/modules/system/boot/init/openbsd-rc.nix
+@@ -588,7 +588,7 @@
+         in
+         ''
+           export PATH="${lib.makeBinPath path}:$PATH"
+-          mkdir -p /var/run/dev.db   # make su work
++          mkdir -p /var/run   # dev_mkdb creates dev.db as a file
+           exec ${pkgs.oksh}/bin/oksh ${cfg.package}/etc/rc "$*"
+         '';
+       "rc.d/rc.subr".source = "${cfg.package}/etc/rc.d/rc.subr";

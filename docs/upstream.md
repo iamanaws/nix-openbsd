@@ -9,6 +9,10 @@ Destinations are proposed owners, not claims that a change is ready to merge.
 Unless evidence is linked below, current upstream status still needs checking.
 Removal decisions and their validation are recorded below.
 
+Three [NixBSD fixes prepared for review](../upstream/nixbsd/README.md) cover
+version substitution, dev.db creation and startup failure propagation. They
+include focused regression checks and are not applied by the flake.
+
 ## Where fixes belong
 
 | Change | Owner |
@@ -196,8 +200,8 @@ at present, even though their intended upstream is Nix.
 4. **Prepare small upstream fixes.** Start with package metadata/build fixes and
    isolated source bugs. Keep PTY, fork/thread behavior and activation transactions
    in separate reviews with their regression tests.
-5. **Simplify integration last.** Replace rc text rewriting and the global
-   replaceVarsWith override with properly scoped NixBSD changes. Keep FreeBSD
+5. **Simplify integration last.** Replace rc text rewriting and the scoped
+   version adapter with NixBSD fixes. Keep FreeBSD
    evaluation and OpenBSD runtime coverage before switching the dependency pin.
 
 Use existing Nixpkgs generic stdenv, wrappers, setup hooks and BSD package scopes.

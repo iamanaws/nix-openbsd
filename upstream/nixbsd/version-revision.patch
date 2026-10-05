@@ -1,0 +1,16 @@
+Subject: [PATCH] installer tools: substitute the configuration revision
+
+Pass configurationRevision to the shell-script substitution as well as JSON.
+A null revision keeps the existing unknown-revision behavior on both BSDs.
+
+--- a/modules/installer/tools/package.nix
++++ b/modules/installer/tools/package.nix
+@@ -83,7 +83,7 @@
+   nixos-version = makeProg {
+     name = "nixos-version";
+     src = ./nixos-version.sh;
+-    inherit runtimeShell;
++    inherit runtimeShell configurationRevision;
+     version = nixosVersion;
+     codeName = nixosCodeName;
+     revision = nixosRevision;

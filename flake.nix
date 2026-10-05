@@ -91,129 +91,127 @@
 
       openbsdWebserver = openbsdBase.extendModules {
         modules = [
-          (
-            { lib, pkgs, ... }:
-            lib.recursiveUpdate (import ./modules/profiles/common.nix { inherit lib pkgs; }) {
-              nix.package = nativeNix;
-              networking.hostName = lib.mkForce "openbsd-webserver";
-              system.stateVersion = "25.05";
+          ./modules/profiles/common.nix
+          ({ lib, pkgs, ... }: {
+            nix.package = nativeNix;
+            networking.hostName = lib.mkForce "openbsd-webserver";
+            system.stateVersion = "25.05";
 
-              services.cron.enable = true;
+            services.cron.enable = true;
 
-              services.newsyslog = {
-                enable = true;
-                config = ''
-                  /var/cron/log		root:wheel	600  3     10   *     Z
-                  /var/log/authlog	root:wheel	640  7     *    168   Z
-                  /var/log/daemon			640  5     300  *     Z
-                  /var/log/messages			644  5     300  *     Z
-                  /var/log/secure			600  7     *    168   Z
-                '';
-              };
+            services.newsyslog = {
+              enable = true;
+              config = ''
+                /var/cron/log		root:wheel	600  3     10   *     Z
+                /var/log/authlog	root:wheel	640  7     *    168   Z
+                /var/log/daemon			640  5     300  *     Z
+                /var/log/messages			644  5     300  *     Z
+                /var/log/secure			600  7     *    168   Z
+              '';
+            };
 
-              services.syslogd = {
-                enable = true;
-                config = ''
-                  *.notice;auth,authpriv,cron,ftp,kern,lpr,mail,user.none	/var/log/messages
-                  kern.debug;syslog,user.info				/var/log/messages
-                  auth.info						/var/log/authlog
-                  authpriv.debug					/var/log/secure
-                  cron.info						/var/cron/log
-                  daemon.info						/var/log/daemon
-                '';
-              };
+            services.syslogd = {
+              enable = true;
+              config = ''
+                *.notice;auth,authpriv,cron,ftp,kern,lpr,mail,user.none	/var/log/messages
+                kern.debug;syslog,user.info				/var/log/messages
+                auth.info						/var/log/authlog
+                authpriv.debug					/var/log/secure
+                cron.info						/var/cron/log
+                daemon.info						/var/log/daemon
+              '';
+            };
 
-              services.sensorsd.enable = true;
+            services.sensorsd.enable = true;
 
-              services.snmpd = {
-                enable = true;
-                config = ''
-                  # Localhost-only SNMPv2c demonstration.
-                  listen on 127.0.0.1 snmpv2c
-                  read-only community public
-                  system contact "nixbsd-demo"
-                  system location "qemu"
-                '';
-              };
+            services.snmpd = {
+              enable = true;
+              config = ''
+                # Localhost-only SNMPv2c demonstration.
+                listen on 127.0.0.1 snmpv2c
+                read-only community public
+                system contact "nixbsd-demo"
+                system location "qemu"
+              '';
+            };
 
-              services.ntpd = {
-                enable = true;
-                config = ''
-                  servers pool.ntp.org
-                '';
-              };
+            services.ntpd = {
+              enable = true;
+              config = ''
+                servers pool.ntp.org
+              '';
+            };
 
-              services.resolvd = {
-                enable = true;
-                config = ''
-                  nameserver 10.0.2.3
-                '';
-              };
+            services.resolvd = {
+              enable = true;
+              config = ''
+                nameserver 10.0.2.3
+              '';
+            };
 
-              services.pf = {
-                enable = true;
-                config = ''
-                  set skip on lo
-                  block return
-                  pass
-                '';
-              };
+            services.pf = {
+              enable = true;
+              config = ''
+                set skip on lo
+                block return
+                pass
+              '';
+            };
 
-              services.httpd = {
-                enable = true;
-                documentRoot = ./www;
-                config = ''
-                  server "default" {
-                    listen on 127.0.0.1 port 8080
-                    root "/htdocs"
-                    log style combined
+            services.httpd = {
+              enable = true;
+              documentRoot = ./www;
+              config = ''
+                server "default" {
+                  listen on 127.0.0.1 port 8080
+                  root "/htdocs"
+                  log style combined
+                }
+              '';
+            };
+
+            services.relayd = {
+              enable = true;
+              config = ''
+                table <webserver> { 127.0.0.1 }
+
+                http protocol "http" {
+                  match request header append "X-Forwarded-For" value "$REMOTE_ADDR"
+                }
+
+                relay "www" {
+                  listen on 0.0.0.0 port 80
+                  protocol "http"
+                  forward to <webserver> port 8080 check http "/" code 200
+                }
+              '';
+            };
+
+            virtualisation.vmVariant = {
+              virtualisation = {
+                graphics = false;
+                memorySize = 1024;
+                forwardPorts = [
+                  {
+                    from = "host";
+                    host = {
+                      address = "127.0.0.1";
+                      port = 8080;
+                    };
+                    guest.port = 80;
                   }
-                '';
-              };
-
-              services.relayd = {
-                enable = true;
-                config = ''
-                  table <webserver> { 127.0.0.1 }
-
-                  http protocol "http" {
-                    match request header append "X-Forwarded-For" value "$REMOTE_ADDR"
+                  {
+                    from = "host";
+                    host = {
+                      address = "127.0.0.1";
+                      port = 2222;
+                    };
+                    guest.port = 22;
                   }
-
-                  relay "www" {
-                    listen on 0.0.0.0 port 80
-                    protocol "http"
-                    forward to <webserver> port 8080 check http "/" code 200
-                  }
-                '';
+                ];
               };
-
-              virtualisation.vmVariant = {
-                virtualisation = {
-                  graphics = false;
-                  memorySize = 1024;
-                  forwardPorts = [
-                    {
-                      from = "host";
-                      host = {
-                        address = "127.0.0.1";
-                        port = 8080;
-                      };
-                      guest.port = 80;
-                    }
-                    {
-                      from = "host";
-                      host = {
-                        address = "127.0.0.1";
-                        port = 2222;
-                      };
-                      guest.port = 22;
-                    }
-                  ];
-                };
-              };
-            }
-          )
+            };
+          })
         ];
       };
     in
@@ -223,6 +221,7 @@
           modules,
           specialArgs ? { },
         }:
+        # Import the base module without inheriting the named base's hostname.
         nixbsd.lib.nixbsdSystem {
           inherit specialArgs;
           modules = [

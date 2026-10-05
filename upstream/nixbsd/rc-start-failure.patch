@@ -1,0 +1,16 @@
+Subject: [PATCH] openbsd: propagate daemon startup failures
+
+Return a failed rc_exec status before running postStart. Otherwise a
+successful postStart can hide a failed daemon start. FreeBSD is unchanged.
+
+--- a/modules/system/boot/init/portable/openbsd.nix
++++ b/modules/system/boot/init/portable/openbsd.nix
+@@ -25,7 +25,7 @@
+           null
+         else
+           ''
+-            rc_exec "''${daemon} ''${daemon_flags}"
++            rc_exec "''${daemon} ''${daemon_flags}" || return $?
+             ${cfg.postStart}
+           '';
+       rc_stop =
