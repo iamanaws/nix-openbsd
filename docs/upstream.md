@@ -92,7 +92,8 @@ implementation is not a replacement for OpenBSD rc and boot handling.
   [adapter](../overlays/nixbsd.nix) selects upstream static PIE, bootloader and
   rc/kernel patches instead of the pinned NixBSD overrides. Base assertions,
   native/demo evaluation, and cross-built seed, kernel, bootloader, rc and makefs
-  builds pass. Native rebuild and VM validation are in progress.
+  builds pass. The refreshed native stdenv, LLVM tests, driver tests and toolchain
+  checks passed on 2026-10-05. Full-system VM validation with this pin remains pending.
 
 ## Local patch files
 
@@ -164,9 +165,9 @@ checks and dependency overrides when updating a package.
 | [nix-runtime-overrides.nix](../pkgs/openbsd/nix-runtime-overrides.nix) | PTY, build-user and atfork patches imported from NixBSD; terminal fallback patch plus stack and trusted-key edits inline. | Runtime changes to Nix. Share patch selection with cross packaging; test signed-cache trust and failed builders. |
 | [native-nix.nix](../pkgs/openbsd/native-nix.nix) dependency scope | Boehm linker script, bmake, unzip, Boost flags, BLAKE3 without TBB, Meson CPU detection and disabled Meson checks. | Nixpkgs / individual projects; keep test exclusions distinct from correctness fixes. |
 | [native-system-packages.nix](../pkgs/openbsd/native-system-packages.nix) | Kernel compiler/linker selection, LibreSSL's arch dependency, jq timezone tests, Git expectations, Python splicing and disabled documentation. | Recipe changes to Nixpkgs. Remove only after native kernel/package tests. |
-| `native-system-packages.nix` version workaround | Overrides all replaceVarsWith calls to repair nixos-version. | Fix the NixBSD version module; remove the broad helper override. |
+| [modules/system/nixpkgs.nix](../modules/system/nixpkgs.nix) version workaround | Supply the missing configurationRevision substitution only to nixos-version. | NixBSD installer-tools recipe; remove the adapter when its replacements include the revision. |
 | [overlays/openbsd.nix](../overlays/openbsd.nix) | Reboot UID, init session handling, rc boot edits and syslogd's executable path. | Split OpenBSD source defects from Nix store / NixBSD boot adaptations. Keep shutdown and service-control tests. |
-| [modules/system/openbsd.nix](../modules/system/openbsd.nix) | Password defaults, activation ordering, PF defaults, mount helpers, dev.db, DHCP checks, MTU/IPv6 and rc_start errors. | NixBSD modules, with scoped platform conditions. Retain local fixes until the pin contains tested equivalents. |
+| [modules/system/openbsd.nix](../modules/system/openbsd.nix) | Password defaults, activation ordering, PF defaults, mount helpers, dev.db, DHCP checks, MTU/IPv6 and rc_start errors. | NixBSD modules, with scoped platform conditions. The rc wrapper has no hook for the dev.db fix; retain its substitution until the module creates only /var/run. |
 | [service modules](../modules/services) | Package options plus daemon-specific rc behavior. | NixBSD. Standard package options use mkPackageOption; keep daemon-specific users, checks, process patterns and chroots explicit. |
 | [generation manager](../modules/system/generations.nix) | Native boot selection, transactions, live-service policy and rollback. | Keep locally for now; eventual NixBSD backend. Preserve locking, GC roots, failure recovery and boot-console recovery. |
 | [vm/native.nix](../vm/native.nix) | EFI disklabel, Nix database initialization, image assembly and launcher policy. | General image support to NixBSD / Nixpkgs; resource limits and demo policy can stay local. |

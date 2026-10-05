@@ -64,17 +64,6 @@ import base.path {
               --replace-fail 'TZ=Etc/GMT+7' 'TZ=GMT7'
           '';
         };
-        # NixBSD passes the revision in JSON but omits the shell-script replacement.
-        replaceVarsWith =
-          args:
-          prev.replaceVarsWith (
-            args
-            // prev.lib.optionalAttrs (args.name or "" == "nixos-version") {
-              replacements = args.replacements // {
-                configurationRevision = (builtins.fromJSON args.replacements.json).configurationRevision or null;
-              };
-            }
-          );
         # New Python modules must inherit the tested interpreter's platform metadata.
         python3 = prev.python3.override {
           self = final.python3;
