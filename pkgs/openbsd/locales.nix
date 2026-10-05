@@ -3,6 +3,7 @@
   stdenv,
   byacc,
   flex,
+  openbsd,
   source,
   version,
 }:
@@ -15,24 +16,22 @@ stdenv.mkDerivation {
   nativeBuildInputs = [
     byacc
     flex
-  ];
+  ]
+  ++ lib.optionals stdenv.hostPlatform.isLinux [ openbsd.compatHook ];
   strictDeps = true;
   unpackPhase = ''
     runHook preUnpack
     mkdir source
     cp "$src/usr.bin/mklocale/"{yacc.y,lex.l,ldef.h} source/
-    chmod u+w source/yacc.y
     sourceRoot=source
     runHook postUnpack
   '';
-  patches = [ ./mklocale-pledge.patch ];
   dontConfigure = true;
 
   # The generator includes OpenBSD's private rune-format headers.
   env.NIX_CFLAGS_COMPILE = lib.optionalString (!stdenv.hostPlatform.isOpenBSD) (toString [
     "-D__BEGIN_HIDDEN_DECLS="
     "-D__END_HIDDEN_DECLS="
-    "-D__packed=__attribute__((__packed__))"
   ]);
 
   buildPhase = ''

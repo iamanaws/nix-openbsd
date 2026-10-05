@@ -116,7 +116,13 @@ import nixpkgs {
                     pkgs = final;
                     libc = final.openbsd.libc;
                   };
-                  rsync = prev.rsync.override { python3 = final.python3Minimal; };
+                  rsync = prev.rsync.override {
+                    python3 = final.python3Minimal.overrideAttrs (old: {
+                      # Rsync's tests need ctypes. Use the previous stage to avoid a libc cycle.
+                      buildInputs = old.buildInputs ++ [ prevStage.libffi ];
+                      allowedReferences = old.allowedReferences ++ [ prevStage.libffi ];
+                    });
+                  };
                   stdenvNoLibc = prev.stdenvNoLibc.override {
                     cc = prev.stdenvNoLibc.cc.override (old: {
                       # libc and libexecinfo both link against the compiler builtins.

@@ -1,0 +1,14 @@
+Give the --update test's equal-age files identical timestamps. Two touch()
+calls can cross a clock tick, making the destination appear newer.
+
+--- a/testsuite/exclude_test.py
++++ b/testsuite/exclude_test.py
+@@ -139,6 +139,8 @@
+ (up2 / 'src-newness').touch()
+ (up1 / 'same-newness').touch()
+ (up2 / 'same-newness').touch()
++same_time = (up1 / 'same-newness').stat()
++os.utime(up2 / 'same-newness', ns=(same_time.st_atime_ns, same_time.st_mtime_ns))
+ (up1 / 'extra-src').touch()
+ (up2 / 'extra-dest').touch()
+ 

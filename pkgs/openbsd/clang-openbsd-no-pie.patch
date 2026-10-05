@@ -1,0 +1,68 @@
+[Driver][OpenBSD] Use -no-pie instead of -nopie (#220464)
+https://github.com/llvm/llvm-project/commit/a2171756dd5d690faf30bafe63810d1dc6cdb342
+
+--- a/lib/Driver/ToolChains/OpenBSD.cpp
++++ b/lib/Driver/ToolChains/OpenBSD.cpp
+@@ -163,7 +163,7 @@ void openbsd::Linker::ConstructJob(Compilation &C, const JobAction &JA,
+   if (Pie || StaticPie)
+     CmdArgs.push_back("-pie");
+   if (Nopie || Profiling)
+-    CmdArgs.push_back("-nopie");
++    CmdArgs.push_back("-no-pie");
+ 
+   if (Triple.isLoongArch64() || Triple.isRISCV64()) {
+     CmdArgs.push_back("-X");
+
+--- a/test/Driver/openbsd.c
++++ b/test/Driver/openbsd.c
+@@ -4,11 +4,11 @@
+ // CHECK-LD-STATIC-EH: "-cc1" "-triple" "i686-pc-openbsd"
+ // CHECK-LD-STATIC-EH: ld{{.*}}" "{{.*}}" "--eh-frame-hdr" "-Bstatic"
+ 
+-// Check for profiling variants of libraries when linking and -nopie
++// Check for profiling variants of libraries when linking and -no-pie
+ // RUN: %clang --target=i686-pc-openbsd -pg -pthread -### %s 2>&1 \
+ // RUN:   | FileCheck --check-prefix=CHECK-PG %s
+ // CHECK-PG: "-cc1" "-triple" "i686-pc-openbsd"
+-// CHECK-PG: ld{{.*}}" "-e" "__start" "--eh-frame-hdr" "-dynamic-linker" "{{.*}}ld.so" "-nopie" "-o" "a.out" "{{.*}}gcrt0.o" "{{.*}}crtbegin.o" "{{.*}}.o" "-lcompiler_rt" "-lpthread_p" "-lc_p" "-lcompiler_rt" "{{.*}}crtend.o"
++// CHECK-PG: ld{{.*}}" "-e" "__start" "--eh-frame-hdr" "-dynamic-linker" "{{.*}}ld.so" "-no-pie" "-o" "a.out" "{{.*}}gcrt0.o" "{{.*}}crtbegin.o" "{{.*}}.o" "-lcompiler_rt" "-lpthread_p" "-lc_p" "-lcompiler_rt" "{{.*}}crtend.o"
+ 
+ // Check for variants of crt* when creating shared libs
+ // RUN: %clang --target=i686-pc-openbsd -pthread -shared -### %s 2>&1 \
+@@ -102,12 +102,12 @@
+ // RUN: %clang --target=i686-pc-openbsd -fno-pie -static -nopie -### %s 2>&1 \
+ // RUN:   | FileCheck -check-prefix=CHECK-NOPIE %s
+ // CHECK-PIE: "{{.*}}crt0.o"
+-// CHECK-PIE-NOT: "-nopie"
++// CHECK-PIE-NOT: "-no-pie"
+ // CHECK-PIE-FLAG: "-pie"
+ // CHECK-STATIC-PIE: "-pie"
+ // CHECK-STATIC-PIE: "{{.*}}rcrt0.o"
+-// CHECK-STATIC-PIE-NOT: "-nopie"
+-// CHECK-NOPIE: "-nopie" "{{.*}}crt0.o"
++// CHECK-STATIC-PIE-NOT: "-no-pie"
++// CHECK-NOPIE: "-no-pie" "{{.*}}crt0.o"
+ 
+ // Check ARM float ABI
+ // RUN: %clang --target=arm-unknown-openbsd -### -c %s 2>&1 \
+
+--- a/test/Driver/pic.c
++++ b/test/Driver/pic.c
+@@ -29,7 +29,7 @@
+ // CHECK-PIE-LD: "Scrt1.o" "crti.o" "crtbeginS.o"
+ // CHECK-PIE-LD: "crtendS.o" "crtn.o"
+ //
+-// CHECK-NOPIE-LD: "-nopie"
++// CHECK-NOPIE-LD: "-no-pie"
+ //
+ // CHECK-DYNAMIC-NO-PIC-32: "-mrelocation-model" "dynamic-no-pic"
+ // CHECK-DYNAMIC-NO-PIC-32-NOT: "-pic-level"
+@@ -264,7 +264,7 @@
+ // RUN: %clang -c %s -target i386-pc-openbsd -fno-pie -### 2>&1 \
+ // RUN:   | FileCheck %s --check-prefix=CHECK-NO-PIC
+ //
+-// On OpenBSD, -nopie needs to be passed through to the linker.
++// On OpenBSD, -no-pie needs to be passed through to the linker.
+ // RUN: %clang %s -target i386-pc-openbsd -nopie -### 2>&1 \
+ // RUN:   | FileCheck %s --check-prefix=CHECK-NOPIE-LD
+ // Try with the alias

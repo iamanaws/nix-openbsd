@@ -1,0 +1,15 @@
+OpenBSD has ptsname(), but not ptsname_r(). Reuse the mutex-protected
+fallback so concurrent callers copy the name before releasing the lock.
+Upstream: Nix src/libutil/terminal.cc. Apply from src/libutil.
+
+--- a/terminal.cc
++++ b/terminal.cc
+@@ -194,7 +194,7 @@
+ #ifndef _WIN32
+ std::string getPtsName(int fd)
+ {
+-#  ifdef __APPLE__
++#  if defined(__APPLE__) || defined(__OpenBSD__)
+     static std::mutex ptsnameMutex;
+     // macOS doesn't have ptsname_r, use mutex-protected ptsname
+     std::lock_guard<std::mutex> lock(ptsnameMutex);

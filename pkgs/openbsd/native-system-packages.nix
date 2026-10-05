@@ -9,7 +9,9 @@ import base.path {
     (
       final: prev:
       let
-        integration = import (nixbsdSource + "/overlays/openbsd.nix") final prev;
+        integration = prev.lib.composeExtensions (import (
+          nixbsdSource + "/overlays/openbsd.nix"
+        )) (import ../../overlays/nixbsd.nix) final prev;
       in
       {
         # Keep the tested native libraries; reuse NixBSD's boot and login fixes.
@@ -25,29 +27,19 @@ import base.path {
                 platforms = prev.lib.platforms.openbsd;
               };
             });
-            sys = (openbsdPrev.sys.override {
-              # The upstream kernel recipe hardcodes Clang 18; use our tested compiler.
-              buildPackages = final.buildPackages // {
-                llvmPackages_18.clangNoLibc = (final.mkStdenvNoLibs final.stdenv).cc;
-              };
-            }).overrideAttrs (old: {
-              # The kernel needs OpenBSD's linker features, provided by our native LLD.
-              preBuild = old.preBuild + ''
-                ln -sf ${final.stdenv.cc.bintools.bintools}/bin/ld.lld "$TMP/bin/ld"
-              '';
-              # Clang 21 checks that this logger uses the kernel's printf dialect.
-              postPatch = (old.postPatch or "") + ''
-                substituteInPlace sys/net/pipex_local.h \
-                  --replace-fail '__format__(__printf__,3,4)' '__format__(__kprintf__,3,4)'
-                # Only the address is used as a sleep identifier, but Clang 21 warns.
-                substituteInPlace sys/scsi/scsi_base.c \
-                  --replace-fail $'scsi_delay(struct scsi_xfer *xs, int seconds)\n{\n\tint ret;' \
-                    $'scsi_delay(struct scsi_xfer *xs, int seconds)\n{\n\tint ret = 0;'
-                # The sensor's first write must select its configuration register.
-                substituteInPlace sys/dev/i2c/ad741x.c \
-                  --replace-fail 'u_int8_t cmd, reg;' 'u_int8_t cmd = AD741X_CONFIG, reg;'
-              '';
-            });
+            sys =
+              (openbsdPrev.sys.override {
+                # Keep our tested compiler when the upstream recipe changes its LLVM pin.
+                overrideCC = stdenv: _: final.overrideCC stdenv (final.mkStdenvNoLibs final.stdenv).cc;
+              }).overrideAttrs
+                (old: {
+                  # The kernel needs OpenBSD's linker features, provided by our native LLD.
+                  preBuild = old.preBuild + ''
+                    ln -sf ${final.stdenv.cc.bintools.bintools}/bin/ld.lld "$TMP/bin/ld"
+                  '';
+                  # OpenBSD's upstream fixes for newer Clang diagnostics and sensor writes.
+                  patches = (old.patches or [ ]) ++ [ ./kernel-clang.patch ];
+                });
           }
         );
         nix = nativeNix;
@@ -60,13 +52,8 @@ import base.path {
           '';
         });
         libressl = prev.libressl.overrideAttrs (old: {
-          # CMake's native OpenBSD probe returns an empty CPU in the build environment.
-          postPatch = (old.postPatch or "") + ''
-            substituteInPlace CMakeLists.txt \
-              --replace-fail 'project(LibreSSL LANGUAGES C ASM)' \
-                'project(LibreSSL LANGUAGES C ASM)
-            set(CMAKE_SYSTEM_PROCESSOR "${final.stdenv.hostPlatform.parsed.cpu.name}")'
-          '';
+          # CMake detects OpenBSD's target architecture with arch -s.
+          nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ final.buildPackages.openbsd.arch ];
         });
         jq = prev.jq.overrideAttrs {
           # OpenBSD rejects TZ files outside /usr/share/zoneinfo; use equivalent rules.
@@ -102,9 +89,7 @@ import base.path {
         python3Packages = final.python3.pkgs;
         flock = (prev.flock.override { ronn = null; }).overrideAttrs (old: {
           # Skip man-page generation, which otherwise pulls Ruby into the bootstrap.
-          postPatch = (old.postPatch or "") + ''
-            substituteInPlace Makefile.am --replace-fail 'man_MANS = man/flock.1' 'man_MANS ='
-          '';
+          makeFlags = (old.makeFlags or [ ]) ++ [ "man_MANS=" ];
         });
       }
     )

@@ -1,0 +1,72 @@
+use __kprintf__ not __printf__ for format attributes
+https://github.com/openbsd/src/commit/2f70c1a437bcc2bff242b351d3336b6d7ac1a877
+
+--- a/sys/net/pipex_local.h
++++ b/sys/net/pipex_local.h
+@@ -468,7 +468,7 @@ int                   pipex_ccp_output (struct pipex_session *, int, int);
+ 
+ struct mbuf           *adjust_tcp_mss (struct mbuf *, int);
+ struct mbuf           *ip_is_idle_packet (struct mbuf *, int *);
+-void                  pipex_session_log (struct pipex_session *, int, const char *, ...)  __attribute__((__format__(__printf__,3,4)));
++void                  pipex_session_log (struct pipex_session *, int, const char *, ...)  __attribute__((__format__(__kprintf__,3,4)));
+ uint32_t              pipex_sockaddr_hash_key(struct sockaddr *);
+ int                   pipex_sockaddr_compar_addr(struct sockaddr *, struct sockaddr *);
+ void                  pipex_timer_start (void);
+
+--- a/sys/net/trunklacp.c
++++ b/sys/net/trunklacp.c
+@@ -176,7 +176,7 @@ const char	*lacp_format_systemid(const struct lacp_systemid *, char *,
+ const char	*lacp_format_portid(const struct lacp_portid *, char *,
+ 		    size_t);
+ void		lacp_dprintf(const struct lacp_port *, const char *, ...)
+-		    __attribute__((__format__(__printf__, 2, 3)));
++		    __attribute__((__format__(__kprintf__, 2, 3)));
+ #define	LACP_DPRINTF(a)	lacp_dprintf a
+ #else
+ #define LACP_DPRINTF(a) /* nothing */
+
+Use &nowake as ident in tsleep_nsec call instead of using a stack variable
+https://github.com/openbsd/src/commit/3c019fcac636f960f981bb0cf7e92433c3c50874
+
+--- a/sys/scsi/scsi_base.c
++++ b/sys/scsi/scsi_base.c
+@@ -1618,7 +1618,8 @@ scsi_delay(struct scsi_xfer *xs, int seconds)
+ 		return EIO;
+ 	}
+ 
+-	ret = tsleep_nsec(&ret, PRIBIO|PCATCH, "scbusy", SEC_TO_NSEC(seconds));
++	ret = tsleep_nsec(&nowake, PRIBIO|PCATCH, "scbusy",
++	    SEC_TO_NSEC(seconds));
+ 
+ 	/* Signal == abort xs. */
+ 	if (ret == ERESTART || ret == EINTR)
+
+make sure the command is set to config when writing config register bits
+https://github.com/openbsd/src/commit/9f06b4d0de89448d55447db96bc04231453a7d12
+
+--- a/sys/dev/i2c/ad741x.c
++++ b/sys/dev/i2c/ad741x.c
+@@ -164,6 +164,7 @@ adc_refresh(void *arg)
+ 
+ 	iic_acquire_bus(sc->sc_tag, 0);
+ 
++	cmd = AD741X_CONFIG;
+ 	reg = (sc->sc_config & AD741X_CONFMASK) | (0 << 5);
+ 	if (iic_exec(sc->sc_tag, I2C_OP_WRITE_WITH_STOP,
+ 	    sc->sc_addr, &cmd, sizeof cmd, &reg, sizeof reg, 0))
+@@ -180,6 +181,7 @@ adc_refresh(void *arg)
+ 		goto done;
+ 
+ 	if (sc->sc_chip == 7418) {
++		cmd = AD741X_CONFIG;
+ 		reg = (reg & AD741X_CONFMASK) | (4 << 5);
+ 		if (iic_exec(sc->sc_tag, I2C_OP_WRITE_WITH_STOP,
+ 		    sc->sc_addr, &cmd, sizeof cmd, &reg, sizeof reg, 0))
+@@ -194,6 +196,7 @@ adc_refresh(void *arg)
+ 	}
+ 
+ 	for (i = 0; i < 4; i++) {
++		cmd = AD741X_CONFIG;
+ 		reg = (reg & AD741X_CONFMASK) | (i << 5);
+ 		if (iic_exec(sc->sc_tag, I2C_OP_WRITE_WITH_STOP,
+ 		    sc->sc_addr, &cmd, sizeof cmd, &reg, sizeof reg, 0))

@@ -35,10 +35,13 @@ let
         ];
       });
       libclang = (previous.libclang.override { enableClangToolsExtra = false; }).overrideAttrs (old: {
+        patches = old.patches ++ [
+          ./clang-openbsd-static-pie.patch
+          ./clang-openbsd-no-pie.patch
+        ];
         cmakeFlags = old.cmakeFlags ++ [ "-DLLVM_PARALLEL_LINK_JOBS=1" ];
       });
       lld = previous.lld.overrideAttrs (old: {
-        patches = old.patches ++ [ ./lld-openbsd-nopie.patch ];
         cmakeFlags = old.cmakeFlags ++ [ "-DLLVM_PARALLEL_LINK_JOBS=1" ];
       });
     }

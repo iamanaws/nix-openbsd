@@ -5,12 +5,7 @@
 let
   flake = builtins.getFlake flakeRef;
   inherit (flake.inputs.nixbsd.inputs.nixpkgs) lib;
-  base = flake.inputs.nixbsd.nixosConfigurations.openbsd-base.extendModules {
-    modules = [
-      ../../modules/system/openbsd.nix
-      { nixpkgs.buildPlatform = "x86_64-linux"; }
-    ];
-  };
+  base = flake.nixosConfigurations.openbsd-base;
   network = base.extendModules {
     modules = [
       {

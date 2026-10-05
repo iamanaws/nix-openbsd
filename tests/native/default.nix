@@ -5,6 +5,7 @@ let
   system = nixbsd.nixosConfigurations.openbsd-base.extendModules {
     modules = [
       ../../modules/system/openbsd.nix
+      (import ../../modules/system/nixpkgs.nix { inherit nixbsd; })
       ({ lib, pkgs, ... }: {
         nixpkgs.buildPlatform = "x86_64-linux";
         # The BSD image builder creates a temporary partition but reads the store copy.

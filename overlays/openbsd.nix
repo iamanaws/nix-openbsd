@@ -52,6 +52,7 @@ final: prev:
         '';
       });
       acme-client = openbsdFinal.callPackage ../pkgs/openbsd/acme-client.nix { };
+      arch = openbsdFinal.callPackage ../pkgs/openbsd/arch.nix { };
       arp = openbsdFinal.callPackage ../pkgs/openbsd/arp.nix { };
       bgpctl = openbsdFinal.callPackage ../pkgs/openbsd/bgpctl.nix { };
       bgpd = openbsdFinal.callPackage ../pkgs/openbsd/bgpd.nix { };

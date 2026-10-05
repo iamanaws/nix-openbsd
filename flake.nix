@@ -10,6 +10,7 @@
 
   inputs = {
     nixbsd.url = "github:iamanaws/nixbsd/openbsd";
+    nixbsd.inputs.nixpkgs.url = "github:NixOS/nixpkgs/8e56e26b262bdca13c4bff7002c7c88b23b2a5ce";
   };
 
   outputs =
@@ -81,6 +82,7 @@
       openbsdBase = nixbsd.nixosConfigurations.openbsd-base.extendModules {
         modules = [
           ./modules/system/openbsd.nix
+          (import ./modules/system/nixpkgs.nix { inherit nixbsd; })
           {
             nixpkgs.buildPlatform = system;
           }
@@ -226,6 +228,7 @@
           modules = [
             (nixbsd.outPath + "/configurations/openbsd-base")
             ./modules/system/openbsd.nix
+            (import ./modules/system/nixpkgs.nix { inherit nixbsd; })
             ./modules/profiles/common.nix
             nativeModule
             { system.stateVersion = "25.05"; }
@@ -237,6 +240,7 @@
         description = "A native OpenBSD configuration for the existing VM";
       };
 
+      nixosConfigurations.openbsd-base = openbsdBase;
       nixosConfigurations.openbsd-webserver = openbsdWebserver;
       nixosConfigurations.openbsd-native = openbsdNative;
 

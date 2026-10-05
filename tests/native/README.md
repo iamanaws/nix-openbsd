@@ -53,3 +53,66 @@ Root and `bestie` request builds through the daemon. The test checks:
 - Libagentx shared-library and static-archive consumers, including store
   references and RPATH.
 - Nixpkgs' hello, zlib and pigz recipes, plus local-file fetching.
+
+## Focused runtime probes
+
+These manual probes run inside OpenBSD/amd64 without rebuilding Nix. Set `CXX`
+to the native compiler, `LIBCXX` and `NIX_UTIL` to its libc++ and Nix utility
+library outputs, and `MESON` to the Meson output. Use the native Python matching
+Meson's Python version.
+
+```sh
+"$CXX" -std=c++20 -pthread tests/native/nix-ptsname.cc \
+  -L"$LIBCXX/lib" -Wl,-rpath,"$LIBCXX/lib" \
+  -L"$NIX_UTIL/lib" -Wl,-rpath,"$NIX_UTIL/lib" \
+  -lnixutil -lutil -o /tmp/nix-ptsname
+/tmp/nix-ptsname
+PYTHONPATH=$(echo "$MESON"/lib/python*/site-packages) python3 tests/native/meson-cpu.py
+```
+
+The PTY probe tests the installed library, including concurrent lookups and an
+invalid descriptor. The CPU probe fails with unpatched Meson 1.10.2; it is a
+reproducer for the detection bug tracked in the [upstream inventory](../../docs/upstream.md).
+These probes are separate from the full `--nix` runner.
+
+For the libc++abi futex fix, set `LLVM_SRC` to the LLVM 21.1.8 source tree with
+`libcxxabi-openbsd-futex.patch` applied. Reuse the upstream guard tests with:
+
+```sh
+"$CXX" -std=c++17 -pthread \
+  -I"$LLVM_SRC/libcxxabi/test" -I"$LLVM_SRC/libcxxabi/include" \
+  -I"$LLVM_SRC/libcxx/src" -I"$LLVM_SRC/libcxx/test/support" \
+  tests/native/libcxxabi-futex.cc \
+  -L"$LIBCXX/lib" -Wl,-rpath,"$LIBCXX/lib" -o /tmp/libcxxabi-futex
+/tmp/libcxxabi-futex
+```
+
+This tests the source implementation, explicitly selecting futex guards.
+It covers waiting, aborted and completed initialization with 32- and 64-bit
+guards, using reduced concurrency and ten repetitions instead of the full stress
+suite. A 60-second alarm bounds hangs.
+
+Check the libc++ header fixes against the compiler's installed headers with:
+
+```sh
+CXX="$CXX" LIBCXX="$LIBCXX" sh tests/native/libcxx-headers.sh
+```
+
+This checks C++17/20, both C/C++ header orders, `_XOPEN_SOURCE` 500/600/700,
+`_POSIX_C_SOURCE` 200112/200809, and Clang header modules with default feature
+macros. It also checks that feature macros and wide-character overloads remain
+intact, then runs locale parsing and multibyte conversion checks.
+
+Test LLVM's child waits with `LLVM_DEV` and `LLVM_LIB` set to its development
+and library outputs:
+
+```sh
+"$CXX" -std=c++17 -pthread tests/native/llvm-wait.cc -I"$LLVM_DEV/include" \
+  -L"$LIBCXX/lib" -Wl,-rpath,"$LIBCXX/lib" \
+  -L"$LLVM_LIB/lib" -Wl,-rpath,"$LLVM_LIB/lib" -lLLVM -o /tmp/llvm-wait
+timeout 30 /tmp/llvm-wait
+```
+
+This checks exit status, polling, concurrent timeouts, child reaping and caller
+alarm preservation. It requires LLVM rebuilt with the updated timeout patch;
+the previously built library fails the child-ownership check.

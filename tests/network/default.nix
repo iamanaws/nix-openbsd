@@ -5,7 +5,7 @@ let
     let
       local = toString number;
       remote = toString (3 - number);
-      system = flake.inputs.nixbsd.nixosConfigurations.openbsd-base.extendModules {
+      system = flake.nixosConfigurations.openbsd-base.extendModules {
         modules = [
           ../../modules/system/openbsd.nix
           ({ lib, pkgs, ... }: {

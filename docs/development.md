@@ -18,7 +18,7 @@ Use `legacyPackages.x86_64-openbsd` for custom derivations.
 
 [Package recipes](../pkgs/openbsd) contain the stdenv, toolchain and OpenBSD
 utilities. The [overlay](../overlays/openbsd.nix) adds OpenBSD packages to
-Nixpkgs. The flake pins a custom NixBSD branch and inherits its Nixpkgs pin.
+Nixpkgs. The flake pins NixBSD and Nixpkgs separately.
 Package coverage remains experimental; see [status](status.md)
 and [tests](testing.md).
 

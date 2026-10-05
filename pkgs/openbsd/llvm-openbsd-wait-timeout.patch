@@ -71,7 +71,7 @@
    do {
      WaitResult.Pid = sys::wait4(ChildPid, &status, WaitPidOptions, &Info);
    } while (WaitUntilTerminates && WaitResult.Pid == -1 && errno == EINTR);
-@@ -429,8 +456,10 @@
+@@ -429,13 +456,24 @@
          kill(PI.Pid, SIGKILL);
  
          // Turn off the alarm and restore the signal handler
@@ -81,8 +81,22 @@
 +#endif
  
          // Wait for child to die
++#ifdef __OpenBSD__
++        // Reap only our child, even if another child has already exited.
++        pid_t ReapedPid;
++        do {
++          ReapedPid = waitpid(ChildPid, &status, 0);
++        } while (ReapedPid == -1 && errno == EINTR);
++        if (ReapedPid != ChildPid)
++#else
          // FIXME This could grab some other child process out from another
-@@ -450,11 +479,13 @@
+         // waiting thread and then leave a zombie anyway.
+         if (wait(&status) != ChildPid)
++#endif
+           MakeErrMsg(ErrMsg, "Child timed out but wouldn't die");
+         else
+           MakeErrMsg(ErrMsg, "Child timed out", 0);
+@@ -450,11 +488,13 @@
      }
    }
  

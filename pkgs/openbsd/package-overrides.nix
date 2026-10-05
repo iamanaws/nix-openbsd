@@ -1,5 +1,12 @@
 # Package fixes shared by the native OpenBSD bootstrap stages.
 final: prev: {
+  rsync = prev.rsync.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./rsync-exclude-timestamps.patch ];
+  });
+  cmakeMinimal = prev.cmakeMinimal.overrideAttrs (old: {
+    # Bundled libarchive needs iconv, which OpenBSD's libc does not provide.
+    buildInputs = (old.buildInputs or [ ]) ++ [ final.libiconv ];
+  });
   # Avoid libfido2's Linux udev hook in the bootstrap CVS fetcher.
   fetchcvs = prev.fetchcvs.override {
     openssh = final.openssh.override { withFIDO = false; };
@@ -74,17 +81,17 @@ final: prev: {
     patches = (old.patches or [ ]) ++ [ ./libffi-openbsd-closures.patch ];
   });
   # Expect's package scope uses tcl-8_6 directly, bypassing the tcl alias.
-  tcl-8_6 = prev.tcl-8_6.override {
-    extraPatch = ''
-      # LLD needs unversioned shared-library names; keep Tcl's stub names consistent.
-      substituteInPlace unix/configure \
+  tcl-8_6 = prev.tcl-8_6.overrideAttrs (old: {
+    postPatch = (old.postPatch or "") + ''
+      # Patch the macros: autoreconf regenerates configure. LLD needs unversioned names.
+      substituteInPlace unix/tcl.m4 \
         --replace-fail "SHARED_LIB_SUFFIX='\''${TCL_TRIM_DOTS}.so\''${SHLIB_VERSION}'" \
           "SHARED_LIB_SUFFIX='\''${VERSION}.so'" \
         --replace-fail 'TCL_LIB_VERSIONS_OK=nodots' 'TCL_LIB_VERSIONS_OK=ok' \
         --replace-fail "UNSHARED_LIB_SUFFIX='\''${TCL_TRIM_DOTS}.a'" \
           "UNSHARED_LIB_SUFFIX='\''${VERSION}.a'"
     '';
-  };
+  });
   expect = prev.expect.overrideAttrs (old: {
     postPatch = (old.postPatch or "") + ''
       # OpenBSD declares ioctl in sys/ioctl.h and openpty in util.h.
@@ -120,9 +127,14 @@ final: prev: {
   });
   findutils = prev.findutils.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ./findutils-test-gnulib.patch ];
-    prePatch = (old.prePatch or "") + ''
-      (cd gl; patch -p1 < ${./gnulib-openbsd-fseeko.patch})
-    '';
+    # Parallel filesystem tests have hung on OpenBSD inode locks.
+    enableParallelChecking = false;
+  });
+  zlib = prev.zlib.overrideAttrs (old: {
+    # The shared-library probe uses zlib's full version script: madler/zlib#960.
+    env = (old.env or { }) // {
+      NIX_LDFLAGS = (old.env.NIX_LDFLAGS or "") + " --undefined-version";
+    };
   });
   gnutar = prev.gnutar.overrideAttrs (old: {
     prePatch = (old.prePatch or "") + ''

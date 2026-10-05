@@ -21,15 +21,23 @@
       "$CC" --version
       "$LD" --version
       printf 'int main(void) { return 0; }\n' > nopie.c
-      # OpenBSD's Clang driver sends -nopie to LLD for -no-pie.
+      # Both driver spellings must work with upstream LLD's -no-pie option.
       "$CC" -no-pie nopie.c -o nopie
       "$READELF" -h nopie | grep 'Type:.*EXEC'
       ./nopie
-      "$CC" -Wl,-nopie nopie.c -o linker-nopie
+      "$CC" -nopie nopie.c -o driver-nopie
+      "$READELF" -h driver-nopie | grep 'Type:.*EXEC'
+      ./driver-nopie
+      "$CC" -Wl,-no-pie nopie.c -o linker-nopie
       "$READELF" -h linker-nopie | grep 'Type:.*EXEC'
       ./linker-nopie
+      "$CXX" -std=c++17 -pthread ${./llvm-wait.cc} \
+        -I${lib.getDev toolchain.llvm}/include \
+        -L${lib.getLib toolchain.llvm}/lib -Wl,-rpath,${lib.getLib toolchain.llvm}/lib \
+        -lLLVM -o llvm-wait
+      timeout 30 ./llvm-wait
     '';
     installPhase = old.installPhase + ''
-      cp nopie linker-nopie "$out/bin/"
+      cp nopie driver-nopie linker-nopie llvm-wait "$out/bin/"
     '';
   })

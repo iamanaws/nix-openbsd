@@ -1,12 +1,5 @@
 { pkgs, nixbsdSource }:
 let
-  # Copy individual patches so checkout metadata cannot change Nix's derivation.
-  nixPatch =
-    name:
-    builtins.path {
-      path = nixbsdSource + "/overlays/${name}";
-      inherit name;
-    };
   tools = pkgs.stdenv.__bootPackages;
   overrides =
     _: previous:
@@ -60,10 +53,11 @@ let
         };
       });
       # Meson's compiler tests pull in another Clang and OpenMP build.
-      meson = previous.meson.overrideAttrs {
+      meson = previous.meson.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [ ./meson-openbsd-cpu.patch ];
         doCheck = false;
         doInstallCheck = false;
-      };
+      });
     };
   # Apply Nix's dependencies only after bootstrapping the tested stdenv.
   native = import pkgs.path {
@@ -80,53 +74,8 @@ let
 in
 # Use the same runtime fixes as the Nix daemon in the test VM.
 (native.nix.overrideScope (
-  _: prev: {
-    nix-store = (prev.nix-store.override { withAWS = false; }).overrideAttrs (old: {
-      postPatch = (old.postPatch or "") + ''
-        # Meson detects OpenBSD's CPU model string instead of its architecture.
-        substituteInPlace meson.build \
-          --replace-fail "nix_system_cpu + '-' + host_machine.system()" \
-            "'${pkgs.stdenv.hostPlatform.system}'"
-        # Repeating the daemon's own keys needs no privilege and changes no trust.
-        substituteInPlace daemon.cc \
-          --replace-fail 'else if (setSubstituters(settings.getWorkerSettings().substituters))' \
-            'else if (name == settings.trustedPublicKeys.name &&
-                tokenizeString<StringSet>(value) == StringSet(
-                    settings.trustedPublicKeys.get().begin(),
-                    settings.trustedPublicKeys.get().end()))
-                ;
-            else if (setSubstituters(settings.getWorkerSettings().substituters))'
-      '';
-      patches = (old.patches or [ ]) ++ [
-        (nixPatch "nix-openbsd-builder-pty.patch")
-        (nixPatch "nix-openbsd-build-users.patch")
-      ];
-    });
-    nix-main = prev.nix-main.overrideAttrs (old: {
-      patches = (old.patches or [ ]) ++ [
-        (nixPatch "nix-openbsd-atfork.patch")
-      ];
-    });
-    nix-util = prev.nix-util.overrideAttrs (old: {
-      postPatch = (old.postPatch or "") + ''
-        substituteInPlace terminal.cc \
-          --replace-fail '#  ifdef __APPLE__' \
-            '#  if defined(__APPLE__) || defined(__OpenBSD__)'
-      '';
-    });
-    nix-cli = prev.nix-cli.overrideAttrs (old: {
-      postPatch = (old.postPatch or "") + ''
-        # OpenBSD/amd64 caps stacks at 32 MiB, including for root.
-        substituteInPlace main.cc \
-          --replace-fail 'nix::setStackSize(60 * 1024 * 1024);' \
-            'nix::setStackSize(32 * 1024 * 1024);'
-      '';
-      env = (old.env or { }) // {
-        NIX_CFLAGS_COMPILE_x86_64_unknown_openbsd =
-          (old.env.NIX_CFLAGS_COMPILE_x86_64_unknown_openbsd or "")
-          + " -DBOOST_STACKTRACE_GNU_SOURCE_NOT_REQUIRED";
-      };
-    });
+  import ./nix-runtime-overrides.nix {
+    inherit nixbsdSource;
   }
 )).nix-cli.overrideAttrs
   (old: {
