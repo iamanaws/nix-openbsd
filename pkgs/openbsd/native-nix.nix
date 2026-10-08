@@ -2,13 +2,18 @@
 let
   tools = pkgs.stdenv.__bootPackages;
   overrides =
-    _: previous:
+    final: previous:
     (import ./bootstrap-build-tools.nix {
       pkgs = tools;
       python3 = pkgs.nativeTestPython.python;
     })
     // {
       python3Packages = pkgs.nativeTestPython.python.pkgs;
+      openbsd = previous.openbsd.overrideScope (
+        openbsdFinal: _: {
+          uname = openbsdFinal.callPackage ./uname.nix { };
+        }
+      );
       curl = pkgs.stdenv.openbsdBootstrap.curl;
       doctest = previous.doctest.overrideAttrs (old: {
         patches = (old.patches or [ ]) ++ [ ./doctest-openbsd.patch ];
@@ -54,7 +59,14 @@ let
       });
       # Meson's compiler tests pull in another Clang and OpenMP build.
       meson = previous.meson.overrideAttrs (old: {
-        patches = (old.patches or [ ]) ++ [ ./meson-openbsd-cpu.patch ];
+        postFixup = (old.postFixup or "") + ''
+          # Python's processor() runs uname -p; GNU uname returns a CPU model on OpenBSD.
+          # Keep this a Python entry point: Meson also invokes it through Python.
+          substituteInPlace "$out/bin/meson" \
+            --replace-fail 'from mesonbuild.mesonmain import main' \
+              'import os; os.environ["PATH"] = "${final.openbsd.uname}/bin" + os.pathsep + os.environ.get("PATH", "")
+          from mesonbuild.mesonmain import main'
+        '';
         doCheck = false;
         doInstallCheck = false;
       });

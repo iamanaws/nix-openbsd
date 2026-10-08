@@ -58,8 +58,8 @@ Root and `bestie` request builds through the daemon. The test checks:
 
 These manual probes run inside OpenBSD/amd64 without rebuilding Nix. Set `CXX`
 to the native compiler, `LIBCXX` and `NIX_UTIL` to its libc++ and Nix utility
-library outputs, and `MESON` to the Meson output. Use the native Python matching
-Meson's Python version.
+library outputs, and `MESON` to the Meson output. Put the native C compiler and
+Ninja on `PATH` and use the native Python matching Meson's Python version.
 
 ```sh
 "$CXX" -std=c++20 -pthread tests/native/nix-ptsname.cc \
@@ -67,13 +67,25 @@ Meson's Python version.
   -L"$NIX_UTIL/lib" -Wl,-rpath,"$NIX_UTIL/lib" \
   -lnixutil -lutil -o /tmp/nix-ptsname
 /tmp/nix-ptsname
-PYTHONPATH=$(echo "$MESON"/lib/python*/site-packages) python3 tests/native/meson-cpu.py
+python3 tests/native/meson-cpu.py "$MESON/bin/meson"
 ```
 
 The PTY probe tests the installed library, including concurrent lookups and an
-invalid descriptor. The CPU probe fails with unpatched Meson 1.10.2; it is a
-reproducer for the detection bug tracked in the [upstream inventory](../../docs/upstream.md).
+invalid descriptor. The Meson probe checks CPU detection, compiles and runs a C
+program, and reconfigures through Python. Start with GNU coreutils on `PATH` to
+check that Meson's launcher selects OpenBSD's `uname`.
 These probes are separate from the full `--nix` runner.
+
+Check the installed libc's `difftime` across negative timestamps, zero and
+32-/53-/64-bit boundaries with the native C compiler:
+
+```sh
+"$CC" -std=c11 tests/native/difftime.c -o /tmp/difftime
+/tmp/difftime
+```
+
+The probe checks 289 pairs and requires signed 64-bit `time_t` and at least
+64 bits of `long double` precision, as provided on OpenBSD/amd64.
 
 For the libc++abi futex fix, set `LLVM_SRC` to the LLVM 21.1.8 source tree with
 `libcxxabi-openbsd-futex.patch` applied. Reuse the upstream guard tests with:
