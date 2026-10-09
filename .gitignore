@@ -1,3 +1,5 @@
 /result*
 /*.qcow2
 /*-efi-vars.fd
+__pycache__/
+*.py[cod]

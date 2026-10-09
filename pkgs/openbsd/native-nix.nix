@@ -15,6 +15,14 @@ let
         }
       );
       curl = pkgs.stdenv.openbsdBootstrap.curl;
+      icu = previous.icu.overrideAttrs (old: {
+        # Match OpenBSD ports: the generated data library fails ICU's format checks.
+        configureFlags = (old.configureFlags or [ ]) ++ [ "--with-data-packaging=archive" ];
+        # ICU's native-archive rule writes its file list before creating this directory.
+        preBuild = (old.preBuild or "") + ''
+          mkdir -p data/out/tmp
+        '';
+      });
       doctest = previous.doctest.overrideAttrs (old: {
         patches = (old.patches or [ ]) ++ [ ./doctest-openbsd.patch ];
       });

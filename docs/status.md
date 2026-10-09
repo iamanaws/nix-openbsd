@@ -17,7 +17,8 @@ bootstrap seed outputs. The EFI loader remains cross-built.
 - Published revision `3787d66`: fresh-VM package fetching, a forced native hello
   build, personal configuration builds, live switching and rollback across reboots.
 
-The public workflow and all 15 local generation tests passed on 2026-09-28.
+The public workflow passed on 2026-09-28. The refreshed native system passed
+the generation VM suite on 2026-10-09; all 18 local generation tests also pass.
 See the [testing guide](testing.md) for commands and suite coverage.
 
 ## Suite results
