@@ -37,11 +37,10 @@ def main():
     parser.add_argument('flake', help='prefer a published, revision-pinned flake reference')
     parser.add_argument('--report', help='write the full JSON availability report')
     args = parser.parse_args()
-    roots = {}
-    for name in ('native-system', 'native-nix', 'hello', 'jq', 'curl', 'git'):
-        roots[name] = subprocess.check_output([
-            'nix', 'eval', '--accept-flake-config', '--raw',
-            f'{args.flake}#packages.x86_64-openbsd.{name}.outPath'], text=True).strip()
+    roots = json.loads(subprocess.check_output([
+        'nix', 'eval', '--accept-flake-config', '--json',
+        f'{args.flake}#packages.x86_64-openbsd', '--apply',
+        'packages: builtins.mapAttrs (_: package: package.outPath) packages'], text=True))
     pending = set(roots.values())
     locations = {}
     with ThreadPoolExecutor(max_workers=8) as pool:

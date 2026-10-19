@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.16)
+project(openbsd_package_checks LANGUAGES C CXX)
+
+find_package(PkgConfig REQUIRED)
+find_package(fmt CONFIG REQUIRED)
+pkg_check_modules(sqlite REQUIRED IMPORTED_TARGET sqlite3)
+pkg_check_modules(event REQUIRED IMPORTED_TARGET libevent libevent_pthreads)
+
+add_executable(sqlite-consumer sqlite.c)
+target_link_libraries(sqlite-consumer PRIVATE PkgConfig::sqlite)
+add_executable(event-consumer event.c)
+target_link_libraries(event-consumer PRIVATE PkgConfig::event)
+add_executable(fmt-consumer fmt.cc)
+target_compile_features(fmt-consumer PRIVATE cxx_std_17)
+target_link_libraries(fmt-consumer PRIVATE fmt::fmt)

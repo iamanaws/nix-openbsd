@@ -1,0 +1,21 @@
+OpenBSD's getaddrinfo rejects a symbolic service under AI_NUMERICSERV with
+EAI_SERVICE. Accept that result in this regression test, while still checking
+that no address was returned. This patch is only used by the test derivation.
+
+https://github.com/openbsd/src/blob/master/lib/libc/asr/getaddrinfo_async.c
+
+--- a/test/regress_util.c
++++ b/test/regress_util.c
+@@ -1111,7 +1111,12 @@ test_evutil_getaddrinfo(void *arg)
+ 	hints.ai_socktype = SOCK_STREAM;
+ 	hints.ai_flags = EVUTIL_AI_NUMERICSERV;
+ 	r = evutil_getaddrinfo("1.2.3.4", "http", &hints, &ai);
++#ifdef __OpenBSD__
++	tt_assert(r == EVUTIL_EAI_NONAME || r == EVUTIL_EAI_SERVICE);
++#else
+ 	tt_int_op(r,==,EVUTIL_EAI_NONAME);
++#endif
++	tt_ptr_op(ai, ==, NULL);
+ 
+ 	/* Try symbolic service names */
+ 	memset(&hints, 0, sizeof(hints));

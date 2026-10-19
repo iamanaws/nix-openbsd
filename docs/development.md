@@ -12,9 +12,21 @@ nix run .#hello
 nix run .#jq -- -n '1 + 1'
 ```
 
-The flake exposes `hello`, `jq`, `curl` and `git`. Builds use cached outputs
-when available. `nix develop` provides the native compiler environment.
+Builds use cached outputs when available. `nix develop` provides the native
+compiler environment.
 Use `legacyPackages.x86_64-openbsd` for custom derivations.
+
+For example, inside OpenBSD:
+
+```sh
+nix run .#sqlite -- :memory: 'select sqlite_version();'
+nix run .#tmux -- -V
+nix run .#python-cffi -- -c 'from cffi import FFI; print(FFI().sizeof("void *"))'
+```
+
+`python-cffi` includes setuptools for extension builds. Use `nix develop` for
+the compiler. Use CFFI's [`extern "Python"` callbacks](https://cffi.readthedocs.io/en/stable/using.html#extern-python-new-style-callbacks);
+legacy `ffi.callback()` requires memory permissions that OpenBSD rejects.
 
 [Package recipes](../pkgs/openbsd) contain the stdenv, toolchain and OpenBSD
 utilities. The [overlay](../overlays/openbsd.nix) adds OpenBSD packages to
@@ -29,6 +41,9 @@ Run `nix build .#TARGET` from the checkout.
 | Target | Build environment | Output |
 | --- | --- | --- |
 | `hello`, `jq`, `curl`, `git` | OpenBSD | Native packages. |
+| `sqlite`, `tmux` | OpenBSD | Database CLI and terminal multiplexer. |
+| `libevent`, `fmt` | OpenBSD | C event library and C++ formatting library. |
+| `python-cffi` | OpenBSD | Python with CFFI. |
 | `native-nix` | OpenBSD | Native Nix CLI and daemon. |
 | `native-system` | OpenBSD | Native reference system and SMP kernel. |
 | `native-vm` | Linux | Native VM launcher and image. |

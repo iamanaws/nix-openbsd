@@ -27,6 +27,29 @@ assemble the image locally with one job and two cores.
 Logs remain in the printed directory. Successful test disks are removed;
 add `--keep` after `--` to retain them. Failed runs keep their disks.
 
+## Native package checks
+
+Inside OpenBSD, run the package consumer tests with:
+
+```sh
+nix build -L .#checks.x86_64-openbsd.packages
+```
+
+This builds C/C++ consumers with CMake and pkg-config, checks SQLite
+transactions and locking, starts a private tmux server, and compiles a Python
+CFFI extension with a callback. It requires a non-root Nix builder and rejects
+runtime dependencies on the bootstrap seeds.
+
+Run libevent's upstream suite and CFFI's upstream `extern "Python"` tests with:
+
+```sh
+nix build -L .#checks.x86_64-openbsd.libevent .#checks.x86_64-openbsd.cffi-callbacks
+```
+
+fmt's package build also runs its upstream tests.
+The libevent check uses test-only patches for OpenBSD resolver behavior and
+avoids public DNS in its blocking lookup failure test.
+
 ## Other suites
 
 | Suite | Coverage |

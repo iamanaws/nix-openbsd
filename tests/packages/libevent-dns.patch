@@ -1,0 +1,48 @@
+Keep the blocking resolver failure local instead of querying public DNS.
+The asynchronous cases still use the test's own DNS server.
+
+OpenBSD resolves localhost without opening a file, so descriptor exhaustion
+fails at socket creation and leaves the DNS error unset. Check that result
+on OpenBSD; the existing assertion still requires a connection error.
+
+This patch is only used by the test derivation.
+
+--- a/test/regress_dns.c
++++ b/test/regress_dns.c
+@@ -1319,9 +1319,9 @@ test_bufferevent_connect_hostname(void *arg)
+ 	 * can't resolve localhost to 127.0.0.1 */
+ 	tt_assert(!bufferevent_socket_connect_hostname(be[3], NULL, AF_INET,
+ 		"localhost", listener_port));
+-	/* Use the blocking resolver with a nonexistent hostname. */
++	/* An invalid hostname fails without depending on an external resolver. */
+ 	tt_assert(!bufferevent_socket_connect_hostname(be[4], NULL, AF_INET,
+-		"nonesuch.nowhere.example.com", 80));
++		"nonesuch/invalid", 80));
+ 	{
+ 		/* The blocking resolver will use the system nameserver, which
+ 		 * might tell us anything.  (Yes, some twits even pretend that
+@@ -1332,7 +1332,7 @@ test_bufferevent_connect_hostname(void *arg)
+ 		hints.ai_socktype = SOCK_STREAM;
+ 		hints.ai_protocol = IPPROTO_TCP;
+ 		expect_err = evutil_getaddrinfo(
+-			"nonesuch.nowhere.example.com", "80", &hints, &ai);
++			"nonesuch/invalid", "80", &hints, &ai);
+ 	}
+ 	/* Launch an async resolve that will fail. */
+ 	tt_assert(!bufferevent_socket_connect_hostname(be[0], dns, AF_INET,
+@@ -1363,11 +1363,15 @@ test_bufferevent_connect_hostname(void *arg)
+ 	tt_int_op(be_outcome[2].what, ==, !emfile ? BEV_EVENT_CONNECTED : BEV_EVENT_ERROR);
+ 	tt_int_op(be_outcome[2].dnserr, ==, 0);
+ 	tt_int_op(be_outcome[3].what, ==, !emfile ? BEV_EVENT_CONNECTED : BEV_EVENT_ERROR);
++#ifdef __OpenBSD__
++	tt_int_op(be_outcome[3].dnserr, ==, 0);
++#else
+ 	if (!emfile) {
+ 		tt_int_op(be_outcome[3].dnserr, ==, 0);
+ 	} else {
+ 		tt_int_op(be_outcome[3].dnserr, !=, 0);
+ 	}
++#endif
+ 	if (expect_err) {
+ 		tt_int_op(be_outcome[4].what, ==, BEV_EVENT_ERROR);
+ 		tt_int_op(be_outcome[4].dnserr, ==, expect_err);
