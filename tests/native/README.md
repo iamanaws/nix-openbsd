@@ -110,21 +110,33 @@ Check the libc++ header fixes against the compiler's installed headers with:
 CXX="$CXX" LIBCXX="$LIBCXX" sh tests/native/libcxx-headers.sh
 ```
 
-This checks C++17/20, both C/C++ header orders, `_XOPEN_SOURCE` 500/600/700,
+This checks C++17/20, C headers first, `<cuchar>` first, `_XOPEN_SOURCE` 500/600/700,
 `_POSIX_C_SOURCE` 200112/200809, and Clang header modules with default feature
 macros. It also checks that feature macros and wide-character overloads remain
 intact, then runs locale parsing and multibyte conversion checks.
 
-Test LLVM's child waits with `LLVM_DEV` and `LLVM_LIB` set to its development
-and library outputs:
+To compare configured upstream headers, set `LIBCXX_HEADERS` to their include
+directory and `LIBCXX_COMPILE_ONLY=1` to check compilation without linking them
+to a different runtime. The focused probe also checks the frozen C++03 module:
 
 ```sh
-"$CXX" -std=c++17 -pthread tests/native/llvm-wait.cc -I"$LLVM_DEV/include" \
-  -L"$LIBCXX/lib" -Wl,-rpath,"$LIBCXX/lib" \
-  -L"$LLVM_LIB/lib" -Wl,-rpath,"$LLVM_LIB/lib" -lLLVM -o /tmp/llvm-wait
-timeout 30 /tmp/llvm-wait
+python3 tests/upstream/llvm-mbstate.py "$LIBCXX_HEADERS" --cxx "$CXX"
 ```
 
-This checks exit status, polling, concurrent timeouts, child reaping and caller
-alarm preservation. It requires LLVM rebuilt with the updated timeout patch;
-the previously built library fails the child-ownership check.
+Test LLVM's child waits and interpreter with `LLVM_DEV` and `LLVM_LIB` set to
+its development and library outputs:
+
+```sh
+for probe in llvm-wait llvm-roundeven; do
+  "$CXX" -std=c++17 -pthread "tests/native/$probe.cc" -I"$LLVM_DEV/include" \
+    -L"$LIBCXX/lib" -Wl,-rpath,"$LIBCXX/lib" \
+    -L"$LLVM_LIB/lib" -Wl,-rpath,"$LLVM_LIB/lib" -lLLVM -o "/tmp/$probe"
+done
+timeout 30 /tmp/llvm-wait
+/tmp/llvm-roundeven "$LLVM_SRC/llvm/test/ExecutionEngine/Interpreter/roundeven.ll"
+```
+
+The wait probe checks exit status, polling, concurrent timeouts, child reaping
+and caller alarm preservation. The interpreter probe runs the patched
+`roundeven.ll` regression under all four host rounding modes and checks that
+the interpreter preserves the mode. Both require the corresponding LLVM patches.

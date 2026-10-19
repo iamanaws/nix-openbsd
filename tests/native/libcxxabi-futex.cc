@@ -1,5 +1,7 @@
 // Reuse LLVM's guard tests, selecting futexes explicitly: the default guard
 // implementation uses a mutex and would not exercise the OpenBSD futex fix.
+#include <cstdint>
+
 #define main upstream_guard_test_main
 #include "guard_threaded_test.pass.cpp"
 #undef main

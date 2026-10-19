@@ -4,8 +4,13 @@
 #include <wchar.h>
 #endif
 
+#ifdef UCHAR_HEADER_FIRST
+#include <cuchar>
+#endif
+
 #include <cassert>
 #include <cwchar>
+#include <cuchar>
 #include <locale>
 #include <sstream>
 #include <type_traits>
