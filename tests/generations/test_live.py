@@ -32,6 +32,7 @@ echo '{system.name}' "$1" >> {self.events}
 case "$1" in
     check) test -f {self.running} ;;
     start) test ! -f {system}/fail-start && touch {self.running} ;;
+    reload) test ! -f {system}/fail-reload ;;
     stop) rm {self.running} 2>/dev/null || true ;;
 esac
 ''')
@@ -95,6 +96,58 @@ test ! -f {system}/fail-activate
         meta.write_text(json.dumps(content))
         self.run_manager('switch', self.b, success=False)
         self.assertEqual(self.events.read_text(), '')
+
+    def enable_reload(self):
+        for system in (self.a, self.b):
+            meta = system / 'openbsd-system.json'
+            content = json.loads(meta.read_text())
+            # The daemon script stays the same; only app.conf changes.
+            content['services']['app'].update(script='unchanged-rc-script', reload=True)
+            meta.write_text(json.dumps(content))
+
+    def test_configuration_reload_keeps_service_running(self):
+        self.enable_reload()
+        self.run_manager('switch', self.b)
+        events = self.events.read_text()
+        self.assertIn('b reload', events)
+        self.assertNotIn('stop', events)
+        self.assertNotIn('start', events)
+        self.assertTrue(self.running.exists())
+        self.assertEqual(self.profile.resolve(), self.b)
+
+    def test_failed_reload_restores_configuration_without_restart(self):
+        self.enable_reload()
+        (self.b / 'fail-reload').touch()
+        self.run_manager('switch', self.b, success=False)
+        events = self.events.read_text()
+        self.assertIn('b reload', events)
+        self.assertIn('a reload', events)
+        self.assertNotIn('stop', events)
+        self.assertNotIn('start', events)
+        self.assertTrue(self.running.exists())
+        self.assertEqual(self.profile.resolve(), self.a)
+        self.assertEqual((self.root / 'run/current-system').resolve(), self.a)
+
+    def test_changed_daemon_still_restarts(self):
+        self.enable_reload()
+        meta = self.b / 'openbsd-system.json'
+        content = json.loads(meta.read_text())
+        content['services']['app']['flags'] = '--changed'
+        meta.write_text(json.dumps(content))
+        self.run_manager('switch', self.b)
+        events = self.events.read_text()
+        self.assertIn('a stop', events)
+        self.assertIn('b start', events)
+        self.assertNotIn('reload', events)
+
+    def test_configuration_reload_keeps_stopped_service_stopped(self):
+        self.enable_reload()
+        self.running.unlink()
+        self.run_manager('switch', self.b)
+        events = self.events.read_text()
+        self.assertNotIn('reload', events)
+        self.assertNotIn('start', events)
+        self.assertFalse(self.running.exists())
 
 
 if __name__ == '__main__':

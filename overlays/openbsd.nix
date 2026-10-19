@@ -58,6 +58,7 @@ final: prev:
       bgpctl = openbsdFinal.callPackage ../pkgs/openbsd/bgpctl.nix { };
       bgpd = openbsdFinal.callPackage ../pkgs/openbsd/bgpd.nix { };
       cron = openbsdFinal.callPackage ../pkgs/openbsd/cron.nix { };
+      cronctl = openbsdFinal.callPackage ../pkgs/openbsd/cronctl.nix { };
       crontab = openbsdFinal.callPackage ../pkgs/openbsd/crontab.nix { };
       dhcpd = openbsdFinal.callPackage ../pkgs/openbsd/dhcpd.nix { };
       doas = openbsdFinal.callPackage ../pkgs/openbsd/doas.nix { };

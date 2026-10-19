@@ -15,6 +15,19 @@ in
 
     package = lib.mkPackageOption pkgs [ "openbsd" "cron" ] { };
 
+    controlPackage = lib.mkPackageOption pkgs [ "openbsd" "cronctl" ] {
+      nullable = true;
+      default =
+        if pkgs.openbsd ? cronctl then
+          [
+            "openbsd"
+            "cronctl"
+          ]
+        else
+          null;
+      extraDescription = "Set to null to use cron's automatic reload without pre-activation validation.";
+    };
+
     crontabPackage = lib.mkOption {
       type = lib.types.package;
       default = pkgs.openbsd.crontab;
@@ -37,6 +50,8 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    # Cron rejects symlinks and compares mtimes, which are fixed in the store.
+    environment.etc."crontab".mode = "0600";
     environment.etc."crontab".text = ''
       SHELL=/bin/sh
       PATH=/run/current-system/sw/bin:/bin:/usr/bin
@@ -47,9 +62,22 @@ in
     environment.systemPackages = [
       cfg.package
       cfg.crontabPackage
-    ];
+    ]
+    ++ lib.optional (cfg.controlPackage != null) cfg.controlPackage;
 
     users.groups.crontab.gid = 66;
+
+    # Keep cron running so configuration updates do not rerun @reboot jobs.
+    openbsd.rc.services.cron.hooks.rc_reload =
+      if cfg.controlPackage != null then
+        ''
+          ${cfg.controlPackage}/bin/cronctl reload
+        ''
+      else
+        ''
+          # Cron notices the changed crontab at its next minute check.
+          :
+        '';
 
     systemd.tmpfiles.rules = [
       "d /var/cron 0555 root wheel - -"

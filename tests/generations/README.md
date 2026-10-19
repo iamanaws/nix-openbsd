@@ -5,6 +5,10 @@ garbage collection and recovery through the boot console. The live fixtures
 also check package updates, HTTP content, adding/removing a daemon, unchanged
 SSH processes, invalid configurations and recovery after activation or service
 startup fails.
+Cron checks cover schedule validation, SQLite writes as a locked service account,
+reload failure recovery and rollback without restarting cron or rerunning `@reboot` jobs.
+Building the fixtures with `withCronctl = false` tests automatic reload without
+the helper; parser checks and the injected reload failure are omitted in that mode.
 
 Build the fixtures inside OpenBSD from the repository root:
 
@@ -28,6 +32,7 @@ python3 tests/generations/run.py \
 absent from the base closure and keeps the VM's disk I/O limits. Logs remain
 in the printed directory. Successful test disks are removed unless `--keep`
 is passed.
+Add `--live-only` with `--live-fixtures` to run installation and live-update checks only.
 Use `--recovery-state DIR/state` to repeat only console recovery on a preserved disk.
 
 Local failure tests need Bash, jq, GNU coreutils and Python:

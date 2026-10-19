@@ -1,8 +1,45 @@
-{ flake }:
+{
+  flake,
+  withCronctl ? true,
+}:
 let
-  base = flake.nixosConfigurations.openbsd-native;
+  base = flake.nixosConfigurations.openbsd-native.extendModules {
+    modules = [ cron ];
+  };
   pkgs = base.pkgs;
   system = modules: (base.extendModules { inherit modules; }).config.system.build.toplevel;
+  job =
+    name:
+    pkgs.writeShellScript "cron-job-${name}" ''
+      set -eu
+      umask 077
+      test "$(id -un)" = daemon
+      ${pkgs.sqlite}/bin/sqlite3 /var/lib/cron-test/jobs.db \
+        "create table if not exists runs (generation text, uid integer); insert into runs values ('${name}', $(id -u));"
+    '';
+  cron = { lib, pkgs, ... }: {
+    environment.systemPackages = [ pkgs.sqlite ];
+    services.cron = {
+      enable = true;
+      systemCronJobs = lib.mkBefore [
+        ''MAILTO=""''
+        "@reboot daemon ${pkgs.coreutils}/bin/echo boot >> /var/lib/cron-test/boots"
+      ];
+    }
+    // lib.optionalAttrs (!withCronctl) { controlPackage = null; };
+    init.services.cron.preStart = lib.mkBefore ''
+      ${pkgs.coreutils}/bin/install -d -m 0700 -o daemon -g daemon /var/lib/cron-test
+    '';
+    # Fail one reload so recovery can reload the previous configuration.
+    openbsd.rc.services.cron.hooks.rc_reload = lib.mkIf withCronctl (
+      lib.mkBefore ''
+        if [ -f /run/cron-fail-reload ]; then
+          rm /run/cron-fail-reload
+          return 1
+        fi
+      ''
+    );
+  };
   changed = { lib, pkgs, ... }: {
     environment.systemPackages = [ pkgs.hello ];
     services.httpd.documentRoot = lib.mkForce (pkgs.writeTextDir "index.html" "NixBSD generation B\n");
@@ -18,8 +55,14 @@ let
     openbsd.system.services.generation_probe = { };
   };
   systems = {
-    a = base.config.system.build.toplevel;
-    b = system [ changed ];
+    a = system [ { services.cron.systemCronJobs = [ "* * * * * daemon ${job "a"}" ]; } ];
+    b = system [
+      changed
+      { services.cron.systemCronJobs = [ "* * * * * daemon ${job "b"}" ]; }
+    ];
+    invalid-cron = system [
+      { services.cron.systemCronJobs = [ "60 * * * * daemon true" ]; }
+    ];
     invalid = system [
       ({ lib, ... }: {
         services.httpd.config = lib.mkForce "this is not an httpd configuration";

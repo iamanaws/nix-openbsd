@@ -53,9 +53,15 @@ All actions except `build` require root.
 | `switch` | Apply changes and select them for future boots. |
 | `boot` | Select the next boot configuration without changing the running system. |
 
-Packages, HTTP and relayd support live updates. Other services can opt in through
+Packages, HTTP, relayd and cron schedules support live updates. Cron validates
+the new crontab and reloads it without restarting the daemon or rerunning
+`@reboot` jobs. Other services can opt in through
 `openbsd.system.services`. Kernel, filesystem, networking and unhandled service
 changes require `boot` followed by a reboot.
+
+Set `services.cron.controlPackage = null` to omit `cronctl`. Cron then detects
+schedule changes and rollback at its next minute check, without pre-activation
+validation. This is also the default when `pkgs.openbsd.cronctl` is absent.
 
 To update the reference demo instead, run `nix build .#native-system` from a
 [project checkout](development.md), then run

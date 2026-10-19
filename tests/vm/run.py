@@ -46,11 +46,10 @@ def main():
     payload = public / token
     payload.mkdir(parents=True)
     if not args.public_ref:
-        # Archive direct inputs without recursively fetching development-tool inputs.
+        # Supply the checkout and NixBSD; fetch their locked inputs normally.
         roots = json.loads(output('nix', 'eval', '--impure', '--json', '--expr',
             f'let f = builtins.getFlake {json.dumps(source)}; in '
-            '[ f.outPath f.inputs.nixbsd.outPath ] ++ '
-            'builtins.map (input: input.outPath) (builtins.attrValues f.inputs.nixbsd.inputs)'))
+            '[ f.outPath f.inputs.nixbsd.outPath ]'))
         closure = output('nix-store', '--query', '--requisites', *roots).splitlines()
         with (payload / 'sources.nar').open('wb') as stream:
             subprocess.run(['nix-store', '--export', *closure], stdout=stream, check=True)

@@ -2,7 +2,7 @@
 live_started=false
 live_done=false
 live_activated=false
-declare -a live_changed=() live_was_running=() live_start=()
+declare -a live_changed=() live_was_running=() live_start=() live_reload=()
 
 live_prepare() {
     old=$(readlink -f /run/current-system)
@@ -42,6 +42,13 @@ live_prepare() {
         fi
         if test -x "$old/etc/rc.d/$name" && "$old/etc/rc.d/$name" check >/dev/null 2>&1; then
             live_was_running+=("$name")
+            # Reload only when the daemon definition itself is unchanged.
+            if jq -e -s --arg name "$name" '
+              .[1].services[$name].reload == true and
+              .[0].services[$name] == .[1].services[$name]
+            ' "$old_meta" "$new_meta" >/dev/null; then
+                live_reload+=("$name")
+            fi
         fi
         if test -x "$target/etc/rc.d/$name"; then
             # New services start; previously stopped services stay stopped.
@@ -68,7 +75,7 @@ live_apply() {
     mapfile -t order < <(service_order "$old")
     for ((i=${#order[@]}-1; i>=0; i--)); do
         name=${order[i]}
-        if [[ " ${live_was_running[*]} " == *" $name "* ]]; then
+        if [[ " ${live_was_running[*]} " == *" $name "* && " ${live_reload[*]} " != *" $name "* ]]; then
             "$old/etc/rc.d/$name" stop || return $?
             if "$old/etc/rc.d/$name" check >/dev/null 2>&1; then
                 echo "$name did not stop" >&2
@@ -81,7 +88,11 @@ live_apply() {
     NIXOS_ACTION=$action "$target/activate" || return $?
     while IFS= read -r name; do
         if [[ " ${live_start[*]} " == *" $name "* ]]; then
-            "$target/etc/rc.d/$name" start || return $?
+            if [[ " ${live_reload[*]} " == *" $name "* ]]; then
+                "$target/etc/rc.d/$name" reload || return $?
+            else
+                "$target/etc/rc.d/$name" start || return $?
+            fi
             "$target/etc/rc.d/$name" check || return $?
         fi
     done < <(service_order "$target")
@@ -95,7 +106,7 @@ live_recover() {
         mapfile -t order < <(service_order "$target")
         for ((i=${#order[@]}-1; i>=0; i--)); do
             name=${order[i]}
-            if [[ " ${live_start[*]} " == *" $name "* ]]; then
+            if [[ " ${live_start[*]} " == *" $name "* && " ${live_reload[*]} " != *" $name "* ]]; then
                 "$target/etc/rc.d/$name" stop || failed=1
             fi
         done
@@ -103,7 +114,11 @@ live_recover() {
     fi
     while IFS= read -r name; do
         if [[ " ${live_was_running[*]} " == *" $name "* ]]; then
-            "$old/etc/rc.d/$name" start || failed=1
+            if [[ " ${live_reload[*]} " == *" $name "* ]]; then
+                "$old/etc/rc.d/$name" reload || failed=1
+            else
+                "$old/etc/rc.d/$name" start || failed=1
+            fi
             "$old/etc/rc.d/$name" check || failed=1
         fi
     done < <(service_order "$old")

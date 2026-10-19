@@ -46,6 +46,13 @@ in pkgs.hello.overrideAttrs (old: {
  cd my-openbsd
  nix flake init --accept-flake-config -t {ref}#native-system
  nix flake lock --override-input nix-openbsd {ref}
+ drv=$(nix eval --raw .#nixosConfigurations.my-openbsd.config.system.build.toplevel.drvPath)
+ nix-store --realise --dry-run "$drv" > build-plan.log 2>&1
+ if grep -Eq '/nix/store/[^ ]*-(llvm|clang|compiler-rt|libcxx|libcxxabi|libunwind|gnum4|coreutils|perl)-[0-9.]+[.]drv$' build-plan.log; then
+   cat build-plan.log
+   echo 'Configuration build needs uncached build tools' >&2
+   exit 1
+ fi
  openbsd-rebuild build --flake .#my-openbsd
  readlink -f result-system > ../personal-system
  echo PUBLIC_USER_WORKFLOW_PASS

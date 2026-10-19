@@ -17,6 +17,15 @@ let
       check = "${config.services.relayd.package}/bin/relayd -n -f \"$target/etc/relayd.conf\"";
     };
   }
+  // lib.optionalAttrs (config.services.cron.enable or false) {
+    cron = {
+      files = [ "crontab" ];
+      check = lib.optionalString (
+        config.services.cron.controlPackage != null
+      ) "${config.services.cron.controlPackage}/bin/cronctl check \"$target/etc/crontab\"";
+      reload = true;
+    };
+  }
   // cfg.services;
   metadata = pkgs.writeText "openbsd-system.json" (
     builtins.toJSON {
@@ -26,14 +35,17 @@ let
       );
       services = lib.mapAttrs' (
         _: service:
-        lib.nameValuePair service.name {
-          inherit (service) name before after;
-          script = toString config.environment.etc."rc.d/${service.name}".source;
-          flags = config.openbsd.rc.conf."${service.name}_flags" or "";
-          live = builtins.hasAttr service.name policies;
-          files = policies.${service.name}.files or [ ];
-          check = policies.${service.name}.check or "";
-        }
+        lib.nameValuePair service.name (
+          {
+            inherit (service) name before after;
+            script = toString config.environment.etc."rc.d/${service.name}".source;
+            flags = config.openbsd.rc.conf."${service.name}_flags" or "";
+            live = builtins.hasAttr service.name policies;
+            files = policies.${service.name}.files or [ ];
+            check = policies.${service.name}.check or "";
+          }
+          // lib.optionalAttrs (policies.${service.name}.reload or false) { reload = true; }
+        )
       ) services;
       # These settings affect boot or connectivity and are not live-switchable yet.
       boot = {
@@ -91,6 +103,11 @@ in
             type = lib.types.lines;
             default = "";
             description = "Read-only configuration check; $target is the new system store path.";
+          };
+          reload = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = "Reload through rc.d when only configuration files change.";
           };
         };
       }

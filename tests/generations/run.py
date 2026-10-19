@@ -27,12 +27,15 @@ def main():
     parser.add_argument('--system-a', required=True)
     parser.add_argument('--system-b', required=True)
     parser.add_argument('--live-fixtures', type=Path, help='fixture bundle with invalid, failed-start and failed-activation systems')
+    parser.add_argument('--live-only', action='store_true', help='test only installation and live updates')
     parser.add_argument('--personal-system', type=Path, help='also boot the native configuration template')
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[2],
                         help='project source for the personal configuration test')
     parser.add_argument('--recovery-state', type=Path, help='rerun only console recovery on a preserved test disk')
     parser.add_argument('--keep', action='store_true')
     args = parser.parse_args()
+    if args.live_only and (not args.live_fixtures or args.personal_system or args.recovery_state):
+        parser.error('--live-only requires --live-fixtures and excludes personal/recovery tests')
     args.launcher = args.launcher.resolve(strict=True)
     for name in ('base_system', 'system_a', 'system_b'):
         setattr(args, name, str(Path(getattr(args, name)).resolve(strict=True)))
@@ -103,15 +106,50 @@ test "$(readlink -f /nix/var/nix/profiles/system)" = {a}''',
     }
     if args.live_fixtures:
         fixtures = shlex.quote(str(args.live_fixtures))
+        shutil.copyfile(Path(__file__).with_name('cron-check.sh'), payload / 'cron-check.sh')
+        metadata = json.loads((Path(args.system_a) / 'openbsd-system.json').read_text())
+        with_cronctl = bool(metadata['services']['cron']['check'])
+        cron_check = (f'''curl --noproxy '*' -fsS {url}/cron-check.sh -o /tmp/cron-check.sh
+bash /tmp/cron-check.sh''' if with_cronctl else
+                      'if command -v cronctl; then echo "Unexpected cronctl"; exit 1; fi')
+        reload_failure = f'''touch /run/cron-fail-reload
+if {b}/bin/switch-to-configuration test; then echo 'Unexpected reload success'; exit 1; fi
+test "$(readlink -f /run/current-system)" = {a}
+test "$(readlink -f /nix/var/nix/profiles/system)" = {a}
+test "$(cat /boot/nixos/default.conf)" = "$default"
+test "$(cron_process)" = "$cron_pid"
+test "$(cat /var/lib/cron-test/boots)" = "$cron_boots"
+''' if with_cronctl else ''
         live_probe = f'''test "$(readlink -f /run/current-system)" = {a}
+trap 'status=$?; trap - ERR; tail -n 20 /var/cron/log >&2 || true; ls -ld /var/lib/cron-test >&2 || true; exit "$status"' ERR
 rebuild={a}/sw/bin/openbsd-rebuild
 ssh_process() {{ ps -ax -o pid=,comm= | awk '$2 == "sshd" {{ print $1 }}'; }}
 ssh_pid=$(ssh_process)
 test -n "$ssh_pid"
+cron_process() {{ ps -ax -o pid=,ppid=,comm= | awk '$2 == 1 && $3 == "cron" {{ print $1 }}'; }}
+cron_pid=$(cron_process)
+test -n "$cron_pid"
+cron_boots=$(cat /var/lib/cron-test/boots)
+test "$cron_boots" = boot
+test ! -L /etc/crontab
+test "$(stat -c %a /etc/crontab)" = 600
+{cron_check}
+cron_wait() {{
+    # Automatic reload happens after scheduling, so the first job can need another tick.
+    deadline=$((SECONDS + {90 if with_cronctl else 150}))
+    while ! sqlite3 -readonly /var/lib/cron-test/jobs.db "select generation from runs where generation = '$1';" 2>/dev/null | grep -q "$1"; do
+        test "$SECONDS" -lt "$deadline" || {{ echo "Cron job $1 did not run"; return 1; }}
+        sleep 1
+    done
+    test "$(cron_process)" = "$cron_pid"
+    test "$(cat /var/lib/cron-test/boots)" = "$cron_boots"
+    test "$(sqlite3 /var/lib/cron-test/jobs.db 'select distinct uid from runs;')" = "$(id -u daemon)"
+}}
+cron_wait a
 default=$(cat /boot/nixos/default.conf)
 {b}/bin/switch-to-configuration dry-activate
 test "$(readlink -f /run/current-system)" = {a}
-for failure in invalid failed-start failed-activation; do
+for failure in invalid {'invalid-cron' if with_cronctl else ''} failed-start failed-activation; do
     if $rebuild switch --store-path {fixtures}/$failure; then echo "Unexpected success: $failure"; exit 1; fi
     test "$(readlink -f /run/current-system)" = {a}
     test "$(readlink -f /nix/var/nix/profiles/system)" = {a}
@@ -119,6 +157,7 @@ for failure in invalid failed-start failed-activation; do
     /etc/rc.d/httpd check
     curl -fsS http://127.0.0.1:8080/ | grep NixBSD
 done
+{reload_failure}
 {b}/bin/switch-to-configuration test
 test "$(readlink -f /run/current-system)" = {b}
 test "$(readlink -f /nix/var/nix/profiles/system)" = {a}
@@ -126,6 +165,7 @@ test "$(cat /boot/nixos/default.conf)" = "$default"
 /etc/rc.d/generation_probe check
 curl -fsS http://127.0.0.1:8080/ | grep 'generation B'
 test "$(/run/current-system/sw/bin/hello)" = 'Hello, world!'
+cron_wait b
 $rebuild test --store-path {a}
 if {b}/etc/rc.d/generation_probe check; then echo 'Removed daemon still running'; exit 1; fi
 {b}/bin/switch-to-configuration switch
@@ -135,10 +175,15 @@ $rebuild switch --rollback
 test "$(readlink -f /run/current-system)" = {a}
 test "$(readlink -f /nix/var/nix/profiles/system)" = {a}
 test "$(ssh_process)" = "$ssh_pid"
+sqlite3 /var/lib/cron-test/jobs.db "delete from runs where generation = 'a';"
+cron_wait a
+test "$(sqlite3 /var/lib/cron-test/jobs.db \"select count(*) from runs where generation = 'b';\")" -gt 0
 for root in /nix/var/nix/gcroots/openbsd-system.*; do test ! -d "$root"; done
 echo LIVE_SWITCH_PASS
 '''
         phases['a'] = live_probe + phases['a']
+        if args.live_only:
+            phases = {'install': phases['install'], 'a': live_probe}
     if args.recovery_state:
         phases = {'recovery': phases['recovery']}
     if args.personal_system:
@@ -253,7 +298,9 @@ echo PERSONAL_SYSTEM_PASS
                             process.terminate()
                             process.wait(timeout=30)
         success = True
-        print('RECOVERY_PASS' if args.recovery_state else 'GENERATIONS_PASS', flush=True)
+        result = ('RECOVERY_PASS' if args.recovery_state else
+                  'LIVE_GENERATIONS_PASS' if args.live_only else 'GENERATIONS_PASS')
+        print(result, flush=True)
     finally:
         server.shutdown()
         server.server_close()
