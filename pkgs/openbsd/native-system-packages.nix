@@ -21,6 +21,8 @@ import base.path {
         });
         openbsd = integration.openbsd.overrideScope (
           openbsdFinal: openbsdPrev: {
+            # Updating runtime Python must not invalidate the BSD source trees through rsync.
+            mkDerivation = openbsdPrev.mkDerivation.override { rsync = base.rsync; };
             boot-config = (openbsdPrev.boot-config.override { compatHook = null; }).overrideAttrs (old: {
               # Native OpenBSD supplies the libc interfaces emulated by the Linux hook.
               meta = old.meta // {
@@ -40,6 +42,11 @@ import base.path {
                   # OpenBSD's upstream fixes for newer Clang diagnostics and sensor writes.
                   patches = (old.patches or [ ]) ++ [ ./kernel-clang.patch ];
                 });
+          }
+        );
+        netbsd = prev.netbsd.overrideScope (
+          _: netbsdPrev: {
+            mkDerivation = netbsdPrev.mkDerivation.override { rsync = base.rsync; };
           }
         );
         nix = nativeNix;
@@ -64,17 +71,29 @@ import base.path {
               --replace-fail 'TZ=Etc/GMT+7' 'TZ=GMT7'
           '';
         };
-        # New Python modules must inherit the tested interpreter's platform metadata.
-        python3 = prev.python3.override {
-          self = final.python3;
-          __splices = prev.lib.genAttrs [
-            "pythonOnBuildForBuild"
-            "pythonOnBuildForHost"
-            "pythonOnBuildForTarget"
-            "pythonOnHostForHost"
-            "pythonOnTargetForTarget"
-          ] (_: final.python3);
-        };
+        python3 =
+          (prev.python3Minimal.override {
+            self = final.python3;
+            packageOverrides = import ./python-package-overrides.nix;
+            __splices = prev.lib.genAttrs [
+              "pythonOnBuildForBuild"
+              "pythonOnBuildForHost"
+              "pythonOnBuildForTarget"
+              "pythonOnHostForHost"
+              "pythonOnTargetForTarget"
+            ] (_: final.python3);
+          }).overrideAttrs
+            (old: {
+              # Python packages need compression and ctypes, built with the final stdenv.
+              buildInputs = old.buildInputs ++ [
+                final.zlib
+                final.libffi
+              ];
+              allowedReferences = old.allowedReferences ++ [
+                final.zlib
+                final.libffi
+              ];
+            });
         python3Packages = final.python3.pkgs;
         flock = (prev.flock.override { ronn = null; }).overrideAttrs (old: {
           # Skip man-page generation, which otherwise pulls Ruby into the bootstrap.

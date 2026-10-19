@@ -1,12 +1,11 @@
 {
   pkgs,
   bootstrap,
-  python,
 }:
 {
   packages = import ./consumer.nix {
     inherit pkgs;
-    python = python.withPackages (ps: [
+    python = pkgs.python3.withPackages (ps: [
       ps.cffi
       ps.setuptools
     ]);
@@ -34,7 +33,7 @@
       patchShebangs test/check-dumpevents.py
     '';
   });
-  cffi-callbacks = python.pkgs.cffi.overridePythonAttrs {
+  cffi-callbacks = pkgs.python3Packages.cffi.overridePythonAttrs {
     doCheck = true;
     # Legacy ffi.callback() needs writable executable memory, rejected by OpenBSD.
     enabledTestPaths = [ "testing/cffi1/test_recompiler.py" ];

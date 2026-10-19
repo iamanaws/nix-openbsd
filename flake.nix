@@ -54,11 +54,6 @@
         inherit nativeNix;
         nixbsdSource = nixbsd.outPath;
       };
-      # Runtime Python uses the final stdenv; keep the existing build tools stable.
-      nativePython =
-        (import ./pkgs/openbsd/native-test-python.nix {
-          pkgs = nativeSystemPackages;
-        }).python;
       nativeModule = {
         imports = [ ./modules/system/generations.nix ];
         nix.package = lib.mkDefault nativeNix;
@@ -280,9 +275,10 @@
           tmux
           libevent
           fmt
+          python3
           ;
         git = nativeSystemPackages.gitMinimal;
-        python-cffi = nativePython.withPackages (ps: [
+        python-cffi = nativeSystemPackages.python3.withPackages (ps: [
           ps.cffi
           ps.setuptools
         ]);
@@ -291,7 +287,6 @@
       checks.x86_64-openbsd = import ./tests/packages {
         pkgs = nativeSystemPackages;
         bootstrap = seedMetadata;
-        python = nativePython;
       };
 
       packages.${system} = {

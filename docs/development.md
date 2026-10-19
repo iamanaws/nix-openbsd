@@ -21,10 +21,12 @@ For example, inside OpenBSD:
 ```sh
 nix run .#sqlite -- :memory: 'select sqlite_version();'
 nix run .#tmux -- -V
+nix run .#python3 -- -c 'import ctypes, zlib; print(ctypes.sizeof(ctypes.c_void_p))'
 nix run .#python-cffi -- -c 'from cffi import FFI; print(FFI().sizeof("void *"))'
 ```
 
-`python-cffi` includes setuptools for extension builds. Use `nix develop` for
+`python3` includes zlib and ctypes; SSL and sqlite3 are not yet enabled.
+`python-cffi` adds CFFI and setuptools for extension builds. Use `nix develop` for
 the compiler. Use CFFI's [`extern "Python"` callbacks](https://cffi.readthedocs.io/en/stable/using.html#extern-python-new-style-callbacks);
 legacy `ffi.callback()` requires memory permissions that OpenBSD rejects.
 
@@ -43,7 +45,7 @@ Run `nix build .#TARGET` from the checkout.
 | `hello`, `jq`, `curl`, `git` | OpenBSD | Native packages. |
 | `sqlite`, `tmux` | OpenBSD | Database CLI and terminal multiplexer. |
 | `libevent`, `fmt` | OpenBSD | C event library and C++ formatting library. |
-| `python-cffi` | OpenBSD | Python with CFFI. |
+| `python3`, `python-cffi` | OpenBSD | Python, or Python with CFFI and setuptools. |
 | `native-nix` | OpenBSD | Native Nix CLI and daemon. |
 | `native-system` | OpenBSD | Native reference system and SMP kernel. |
 | `native-vm` | Linux | Native VM launcher and image. |
