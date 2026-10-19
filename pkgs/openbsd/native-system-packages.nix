@@ -74,6 +74,8 @@ import base.path {
         python3 =
           (prev.python3Minimal.override {
             self = final.python3;
+            withOpenssl = true;
+            withSqlite = true;
             packageOverrides = import ./python-package-overrides.nix;
             __splices = prev.lib.genAttrs [
               "pythonOnBuildForBuild"
@@ -84,15 +86,19 @@ import base.path {
             ] (_: final.python3);
           }).overrideAttrs
             (old: {
-              # Python packages need compression and ctypes, built with the final stdenv.
+              # Keep compression and ctypes alongside the optional standard-library modules.
               buildInputs = old.buildInputs ++ [
                 final.zlib
                 final.libffi
               ];
-              allowedReferences = old.allowedReferences ++ [
-                final.zlib
-                final.libffi
-              ];
+              allowedReferences =
+                old.allowedReferences
+                ++ map prev.lib.getLib [
+                  final.zlib
+                  final.libffi
+                  final.openssl
+                  final.sqlite
+                ];
             });
         python3Packages = final.python3.pkgs;
         flock = (prev.flock.override { ronn = null; }).overrideAttrs (old: {

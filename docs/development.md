@@ -21,11 +21,11 @@ For example, inside OpenBSD:
 ```sh
 nix run .#sqlite -- :memory: 'select sqlite_version();'
 nix run .#tmux -- -V
-nix run .#python3 -- -c 'import ctypes, zlib; print(ctypes.sizeof(ctypes.c_void_p))'
+nix run .#python3 -- -c 'import sqlite3, ssl; print(sqlite3.sqlite_version, ssl.OPENSSL_VERSION)'
 nix run .#python-cffi -- -c 'from cffi import FFI; print(FFI().sizeof("void *"))'
 ```
 
-`python3` includes zlib and ctypes; SSL and sqlite3 are not yet enabled.
+`python3` includes zlib, ctypes, SSL and SQLite.
 `python-cffi` adds CFFI and setuptools for extension builds. Use `nix develop` for
 the compiler. Use CFFI's [`extern "Python"` callbacks](https://cffi.readthedocs.io/en/stable/using.html#extern-python-new-style-callbacks);
 legacy `ffi.callback()` requires memory permissions that OpenBSD rejects.

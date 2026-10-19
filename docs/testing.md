@@ -36,8 +36,9 @@ nix build -L .#checks.x86_64-openbsd.packages
 ```
 
 This builds C/C++ consumers with CMake and pkg-config, checks SQLite
-transactions and locking, starts a private tmux server, and compiles a Python
-CFFI extension with a callback. It requires a non-root Nix builder and rejects
+transactions and locking, starts a private tmux server, and checks Python's
+SQLite, TLS certificate verification and CFFI extension callbacks.
+It requires a non-root Nix builder and rejects
 runtime dependencies on the bootstrap seeds.
 
 Run libevent's upstream suite and CFFI's upstream `extern "Python"` tests with:

@@ -15,6 +15,7 @@ pkgs.stdenv.mkDerivation {
     sqlite
     tmux
     python
+    openssl
   ];
   buildInputs = with pkgs; [
     sqlite
@@ -33,6 +34,7 @@ pkgs.stdenv.mkDerivation {
     ./event-consumer
     ./fmt-consumer
     timeout 30 bash ../tmux.sh
+    python3 ../python-stdlib.py
     python3 ../cffi-consumer.py
     runHook postCheck
   '';
