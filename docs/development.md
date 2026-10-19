@@ -20,6 +20,7 @@ For example, inside OpenBSD:
 
 ```sh
 nix run .#sqlite -- :memory: 'select sqlite_version();'
+nix run .#sqlite-utils -- memory 'select 1 + 1 as result'
 nix run .#tmux -- -V
 nix run .#python3 -- -c 'import sqlite3, ssl; print(sqlite3.sqlite_version, ssl.OPENSSL_VERSION)'
 nix run .#python-cffi -- -c 'from cffi import FFI; print(FFI().sizeof("void *"))'
@@ -44,6 +45,7 @@ Run `nix build .#TARGET` from the checkout.
 | --- | --- | --- |
 | `hello`, `jq`, `curl`, `git` | OpenBSD | Native packages. |
 | `sqlite`, `tmux` | OpenBSD | Database CLI and terminal multiplexer. |
+| `sqlite-utils` | OpenBSD | Import, query and export SQLite data with Python. |
 | `libevent`, `fmt` | OpenBSD | C event library and C++ formatting library. |
 | `python3`, `python-cffi` | OpenBSD | Python, or Python with CFFI and setuptools. |
 | `native-nix` | OpenBSD | Native Nix CLI and daemon. |

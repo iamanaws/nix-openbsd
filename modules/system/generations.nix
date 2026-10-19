@@ -68,6 +68,7 @@ let
           pkgs.gnugrep
           pkgs.findutils
           pkgs.jq
+          pkgs.less
         ]
       }
     ''

@@ -21,6 +21,20 @@
       ) (builtins.attrValues bootstrap)
     );
   };
+  sqlite-utils =
+    pkgs.runCommand "openbsd-sqlite-utils-checks"
+      {
+        nativeBuildInputs = [
+          pkgs.python3
+          pkgs.sqlite-utils
+        ];
+      }
+      ''
+        export HOME="$TMPDIR/home"
+        mkdir -p "$HOME"
+        python3 ${./sqlite-utils.py}
+        touch "$out"
+      '';
   # Keep upstream test adjustments separate from the cached package recipes.
   libevent = pkgs.libevent.overrideAttrs (old: {
     doCheck = true;

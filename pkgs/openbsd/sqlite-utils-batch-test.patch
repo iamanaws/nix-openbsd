@@ -1,0 +1,14 @@
+diff --git a/tests/test_cli_bulk.py b/tests/test_cli_bulk.py
+--- a/tests/test_cli_bulk.py
++++ b/tests/test_cli_bulk.py
+@@ -101,7 +101,9 @@ def test_cli_bulk_batch_size(test_db_and_path):
+     # Writing another should trigger a commit:
+     proc.stdin.write(b'{"id": 4, "name": "Four"}\n\n')
+     proc.stdin.flush()
+-    time.sleep(1)
++    deadline = time.monotonic() + 30
++    while db.table("example").count != 4 and time.monotonic() < deadline:
++        time.sleep(0.05)
+     assert db.table("example").count == 4
+ 
+     proc.stdin.close()

@@ -10,6 +10,13 @@ nix run .#test-native-vm
 
 This checks regular-user package commands, services, HTTP, SSH and persistent
 state across a restart. It supplies the checkout's sources to a fresh guest.
+It also checks Python HTTPS and sqlite-utils cache downloads and data imports.
+
+To include native builds, a personal configuration, live switching and rollback:
+
+```sh
+nix run .#test-native-vm -- --system-workflow
+```
 
 To test a published commit without preloading sources or build outputs:
 
@@ -33,11 +40,13 @@ Inside OpenBSD, run the package consumer tests with:
 
 ```sh
 nix build -L .#checks.x86_64-openbsd.packages
+nix build -L .#checks.x86_64-openbsd.sqlite-utils
 ```
 
 This builds C/C++ consumers with CMake and pkg-config, checks SQLite
 transactions and locking, starts a private tmux server, and checks Python's
 SQLite, TLS certificate verification and CFFI extension callbacks.
+The sqlite-utils check covers JSON/CSV imports, queries, exports and persistence.
 It requires a non-root Nix builder and rejects
 runtime dependencies on the bootstrap seeds.
 
@@ -62,3 +71,11 @@ avoids public DNS in its blocking lookup failure test.
 
 Run the base checks with `bash tests/base/run.sh --max-jobs 1 --cores 8`.
 See [validation results and limitations](status.md) for what has passed.
+
+Check cache availability, including the bootstrap outputs needed during evaluation:
+
+```sh
+python3 tests/cache/check.py path:"$PWD" --bootstrap
+```
+
+This checks metadata; the VM test verifies actual downloads.

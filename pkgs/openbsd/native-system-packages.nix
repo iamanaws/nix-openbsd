@@ -21,6 +21,8 @@ import base.path {
         });
         openbsd = integration.openbsd.overrideScope (
           openbsdFinal: openbsdPrev: {
+            mklocale = openbsdFinal.callPackage ./mklocale.nix { };
+            localeData = openbsdFinal.callPackage ./locale-data.nix { };
             # Updating runtime Python must not invalidate the BSD source trees through rsync.
             mkDerivation = openbsdPrev.mkDerivation.override { rsync = base.rsync; };
             boot-config = (openbsdPrev.boot-config.override { compatHook = null; }).overrideAttrs (old: {

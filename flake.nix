@@ -55,7 +55,10 @@
         nixbsdSource = nixbsd.outPath;
       };
       nativeModule = {
-        imports = [ ./modules/system/generations.nix ];
+        imports = [
+          ./modules/system/generations.nix
+          ./modules/system/locale.nix
+        ];
         nix.package = lib.mkDefault nativeNix;
         nixpkgs.pkgs = nativeSystemPackages;
         nixpkgs.overlays = lib.mkForce [ ];
@@ -272,6 +275,7 @@
           jq
           curl
           sqlite
+          sqlite-utils
           tmux
           libevent
           fmt

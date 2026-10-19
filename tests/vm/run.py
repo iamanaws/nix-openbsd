@@ -30,6 +30,8 @@ def main():
     parser.add_argument('--keep', action='store_true', help='keep test disks')
     parser.add_argument('--timeout', type=int, default=3600, help='seconds per guest phase')
     parser.add_argument('--public-ref', help='test a published flake without preloading sources')
+    parser.add_argument('--system-workflow', action='store_true',
+                        help='also test native builds, switching and rollback from this checkout')
     parser.add_argument('--builders', help='host image builders; an empty string builds locally')
     args = parser.parse_args()
     work = Path(tempfile.mkdtemp(prefix='nixopenbsd-vm-test.'))
@@ -53,6 +55,12 @@ def main():
         with (payload / 'sources.nar').open('wb') as stream:
             subprocess.run(['nix-store', '--export', *closure], stdout=stream, check=True)
         flake = shlex.quote('path:' + roots[0])
+        package_checks = f'''
+ nix run --accept-flake-config {flake}#sqlite-utils -- --version
+ nix run --accept-flake-config {flake}#python3 -- -c 'import locale, sqlite3, ssl, sys, urllib.request; assert locale.getencoding().lower() == "utf-8", locale.getencoding(); assert sys.stdout.encoding.lower() == "utf-8", sys.stdout.encoding; assert sqlite3.sqlite_version; request = urllib.request.Request("https://nix-openbsd.cachix.org/nix-cache-info", headers={{"User-Agent": "nix-openbsd-vm-test/1.0"}}); assert urllib.request.urlopen(request, timeout=30).status == 200'
+ nix shell --accept-flake-config {flake}#python3 {flake}#sqlite-utils -c python3 /tmp/sqlite-utils.py
+'''
+        shutil.copyfile(Path(args.source) / 'tests/packages/sqlite-utils.py', payload / 'sqlite-utils.py')
         (payload / 'client.sh').write_text(f'''set -eu
  test "$(id -u)" -ne 0
  mkdir -p "$HOME/development-test"
@@ -66,6 +74,7 @@ def main():
  # Regular users must still be unable to add or replace the daemon's signing keys.
  nix-store --realise "$(readlink -f result)" --option trusted-public-keys untrusted-test-key 2> rejected-key.log
  grep -q 'restricted setting' rejected-key.log
+{package_checks}
  echo USER_PACKAGE_PASS
 ''')
     expected = output('nix', 'eval', '--raw', f'{source}#native-system.outPath')
@@ -81,8 +90,15 @@ def main():
         phases = prepare_public_workflow(payload, source, expected, url)
     else:
         phases = ('fresh', 'restart')
-        (payload / 'probe.sh').write_text(f'''set -eu
+        sqlite_utils = output('nix', 'eval', '--raw',
+                              f'{source}#packages.x86_64-openbsd.sqlite-utils.outPath')
+        setup = f'''set -eu
  test "$(readlink -f /run/current-system)" = {shlex.quote(expected)}
+ # Require a cache download rather than a package preloaded in the image.
+ if nix-store --check-validity {shlex.quote(sqlite_utils)} 2>/dev/null; then
+   echo 'sqlite-utils was unexpectedly preloaded'
+   exit 1
+ fi
  mount | grep ' /boot/efi '
  # Service accounts must be locked, never silently given an empty password.
  awk -F: '$1 == "daemon" {{ if ($2 != "*") exit 1; found=1 }} END {{ if (!found) exit 1 }}' /etc/master.passwd
@@ -96,9 +112,17 @@ def main():
  rm /tmp/sources.nar
  curl --noproxy '*' -fsS {url}/client.sh -o /tmp/client.sh
  chmod 755 /tmp/client.sh
+ curl --noproxy '*' -fsS {url}/sqlite-utils.py -o /tmp/sqlite-utils.py
+'''
+        (payload / 'probe.sh').write_text(setup + '''
  su -l bestie -c 'bash /tmp/client.sh'
  touch /root/persistence-check
 ''')
+        if args.system_workflow:
+            phases = prepare_public_workflow(payload, 'path:' + roots[0], expected, url,
+                                             package_checks)
+            fresh = payload / 'fresh.sh'
+            fresh.write_text(setup + fresh.read_text())
 
     def free_port():
         with socket.socket() as sock:
@@ -153,7 +177,7 @@ def main():
                         expect(rb'root@')
                         if b'initial setsid() failed' in (work / f'{phase}.log').read_bytes():
                             raise RuntimeError(f'Init failed to reuse the activation session; see {phase}.log')
-                        if args.public_ref:
+                        if args.public_ref or args.system_workflow:
                             probe = f"curl --noproxy '*' -fsS {url}/{phase}.sh -o /tmp/probe.sh && bash /tmp/probe.sh"
                         elif phase == 'fresh':
                             probe = f"curl --noproxy '*' -fsS {url}/probe.sh -o /tmp/probe.sh && bash /tmp/probe.sh"
@@ -163,7 +187,7 @@ def main():
                         status = expect(rb'\nOPENBSD_VM_DONE:(\d+)\r?\n').group(1)
                         if status != b'0':
                             raise RuntimeError(f'{phase} failed with status {status.decode()}; see {phase}.log')
-                        if not args.public_ref or phase == 'fresh':
+                        if (not args.public_ref and not args.system_workflow) or phase == 'fresh':
                             with urlopen(f'http://127.0.0.1:{http_port}/', timeout=10) as response:
                                 if b'NixBSD' not in response.read():
                                     raise RuntimeError('Unexpected HTTP response')
@@ -195,6 +219,7 @@ def main():
                                         b'openssl: generating iked ECDSA keys... failed',
                                         b'savecore: not found', b'vi.recover: not found',
                                         b'No such process',
+                                        b'less: command not found',
                                         b'WARNING: / was not properly unmounted'):
                             if warning in console:
                                 raise RuntimeError(f'{phase}: unexpected warning {warning!r}')

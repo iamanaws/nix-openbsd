@@ -9,7 +9,9 @@ bootstrap seed outputs. The EFI loader remains cross-built.
 - Native toolchain and package tests through the Nix daemon, requested by root
   and a regular user, with non-root builders.
 - SQLite transactions and locking, tmux sessions, libevent and fmt consumers,
-  and Python CFFI extension builds with `extern "Python"` callbacks.
+  Python TLS and SQLite, and CFFI extension builds with `extern "Python"` callbacks.
+- sqlite-utils JSON/CSV imports, queries, exports and persistence as a regular user.
+- Native UTF-8 locale data, including Unicode in Python subprocesses and CSV output.
 - Native Nix 2.34.8: signed cache downloads, store verification, daemon restart
   and garbage collection.
 - Native VM: boot, clean restart, persistent state, EFI mounting, services,
@@ -22,7 +24,10 @@ bootstrap seed outputs. The EFI loader remains cross-built.
 The public workflow passed on 2026-09-28. The refreshed native system passed
 the generation VM suite on 2026-10-09; all 18 local generation tests also pass.
 See the [testing guide](testing.md) for commands and suite coverage.
-The native package batch and signed cache downloads passed on 2026-10-19.
+On 2026-10-19, native package checks and signed cache downloads passed.
+The current checkout also passed package use, personal configuration builds,
+live switching and rollback across reboots. That VM run resumed on the same
+disk after missing cache outputs were uploaded.
 
 ## Suite results
 
@@ -33,6 +38,8 @@ These counts come from the recorded VM runs. A cached test run can reuse their o
 - libffi has 1,750 passes. fmt passes 21 test groups; CFFI passes the ten
   selected upstream `extern "Python"` tests. libevent's suite passes with the
   [test-only adjustments](../tests/packages/default.nix).
+- sqlite-utils passes 1,458 upstream tests, with 16 skipped. Two Hypothesis test
+  modules are excluded because native Rust is unavailable.
 - libc++abi has 58 passes and 22 unsupported tests.
 - libc++ has 9,948 passes, 782 unsupported tests and 49 expected failures.
   This includes all 393 header-visibility tests after the OpenBSD declaration fix.

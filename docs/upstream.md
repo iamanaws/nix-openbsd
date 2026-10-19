@@ -35,6 +35,7 @@ pass without it. See [native probes](../tests/native/README.md#focused-runtime-p
 | `doctest-openbsd.patch` | Identify OpenBSD in platform tests. | Candidate: doctest. |
 | `toml11-openbsd-hexfloat.patch` | Parse hex floats with strtof/strtod. | Candidate: toml11; separately investigate OpenBSD sscanf behavior. |
 | `psutil-openbsd-no-swap.patch` | Handle a system with no swap devices. | Candidate: psutil; compare current implementation before submitting. |
+| `sqlite-utils-batch-test.patch` | Wait for a batch commit in the subprocess test. | Test timing adjustment; remove when sqlite-utils uses bounded waiting instead of a one-second sleep. |
 | [libcxx-openbsd-test-features.patch](../tests/native/libcxx-openbsd-test-features.patch) | Report unsupported locale, quick_exit and thread-limit tests. | Split into three LLVM test changes. Preserve C/UTF-8 coverage when excluding regional formatting; avoid making missing quick_exit silently acceptable on platforms that promise it. |
 
 ## LLVM review

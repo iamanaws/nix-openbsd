@@ -4,7 +4,7 @@ import secrets
 import shlex
 
 
-def prepare_public_workflow(payload, source, expected, url):
+def prepare_public_workflow(payload, source, expected, url, package_checks=''):
     ref = shlex.quote(source)
     # A unique output cannot already be in the image or a previous test's cache.
     nonce = secrets.token_hex(12)
@@ -33,6 +33,7 @@ in pkgs.hello.overrideAttrs (old: {
  test "$(hello/bin/hello)" = 'Hello, world!'
  test "$(nix run --accept-flake-config {ref}#hello)" = 'Hello, world!'
  test "$(nix run --accept-flake-config {ref}#jq -- -n '1 + 1')" = 2
+{package_checks}
  curl --noproxy '*' -fsS {url}/native-build.nix -o native-build.nix
  test "$(nix eval --impure --raw --file native-build.nix system)" = x86_64-openbsd
  nix build --accept-flake-config --impure --file native-build.nix -L -o native-hello

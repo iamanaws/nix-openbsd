@@ -1,4 +1,4 @@
-"""Check public runtime closure availability without consulting the local store.
+"""Check runtime and optional bootstrap cache availability.
 
 Run with Python 3 and Nix on PATH. This checks narinfo availability, not NAR
 downloads or signatures; the fresh VM test exercises actual substitution.
@@ -36,12 +36,24 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('flake', help='prefer a published, revision-pinned flake reference')
     parser.add_argument('--report', help='write the full JSON availability report')
+    parser.add_argument('--bootstrap', action='store_true',
+                        help='also check the seed outputs required during evaluation')
     args = parser.parse_args()
     roots = json.loads(subprocess.check_output([
         'nix', 'eval', '--accept-flake-config', '--json',
         f'{args.flake}#packages.x86_64-openbsd', '--apply',
         'packages: builtins.mapAttrs (_: package: package.outPath) packages'], text=True))
-    pending = set(roots.values())
+    bootstrap = {}
+    if args.bootstrap:
+        seeds = json.loads(subprocess.check_output([
+            'nix', 'eval', '--accept-flake-config', '--impure', '--json', '--expr',
+            f'let f = builtins.getFlake {json.dumps(args.flake)}; in '
+            'import (f.outPath + "/pkgs/openbsd/native-bootstrap.nix") '
+            '{ pkgs = f.nixosConfigurations.openbsd-base.pkgs; }'], text=True))
+        bootstrap = {f'{name}.{output}': value for name, seed in seeds.items()
+                     for output, value in seed.items()
+                     if isinstance(value, str) and value.startswith('/nix/store/')}
+    pending = set(roots.values()) | set(bootstrap.values())
     locations = {}
     with ThreadPoolExecutor(max_workers=8) as pool:
         while pending:
@@ -53,12 +65,16 @@ def main():
             pending.difference_update(locations)
     missing = sorted(path for path, cache in locations.items() if cache is None)
     report = dict(flake=args.flake, roots=roots, locations=locations, missing=missing)
+    if args.bootstrap:
+        report['bootstrap'] = bootstrap
     if args.report:
         with open(args.report, 'w') as stream:
             json.dump(report, stream, indent=2)
             stream.write('\n')
     for name, path in roots.items():
         print(f'{name}: {locations[path] or "MISSING"} ({path})')
+    if args.bootstrap:
+        print(f'{len(set(bootstrap.values()))} bootstrap outputs checked')
     for cache in CACHES:
         print(f'{cache}: {sum(value == cache for value in locations.values())} paths')
     for path in missing:
