@@ -5,6 +5,8 @@ garbage collection and recovery through the boot console. The live fixtures
 also check package updates, HTTP content, adding/removing a daemon, unchanged
 SSH processes, invalid configurations and recovery after activation or service
 startup fails.
+Directory checks cover ownership, permissions, drift repair, preserved contents
+and recovery when a path cannot be created.
 Cron checks cover schedule validation, SQLite writes as a locked service account,
 reload failure recovery and rollback without restarting cron or rerunning `@reboot` jobs.
 Building the fixtures with `withCronctl = false` tests automatic reload without

@@ -11,6 +11,7 @@ let
   rad = "${cfg.package}/bin/rad";
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.rad = {
     enable = lib.mkEnableOption "OpenBSD rad";
 
@@ -41,7 +42,10 @@ in
     };
     users.groups._rad.gid = 94;
 
-    systemd.tmpfiles.rules = [ "d /var/empty 0555 root root - -" ];
+    services.tempfiles.directories = {
+      "/var/empty".mode = "0555";
+      "/var/run" = { };
+    };
 
     init.services.rad = {
       description = "OpenBSD router advertisement daemon";
@@ -56,8 +60,6 @@ in
       ]
       ++ cfg.extraFlags;
       preStart = ''
-        mkdir -p /var/empty /var/run
-        chmod 0555 /var/empty
         rm -f /var/run/rad.sock
         ${rad} -n -f ${configPath}
       '';

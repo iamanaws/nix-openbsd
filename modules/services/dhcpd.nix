@@ -18,6 +18,7 @@ let
   ];
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.dhcpd = {
     enable = lib.mkEnableOption "OpenBSD dhcpd";
 
@@ -54,11 +55,10 @@ in
     };
     users.groups._dhcp.gid = 77;
 
-    systemd.tmpfiles.rules = [
-      "d /var/empty 0555 root root - -"
-      "d /var/db 0755 root wheel - -"
-      "f ${leasePath} 0640 root _dhcp - -"
-    ];
+    services.tempfiles.directories = {
+      "/var/empty".mode = "0555";
+      "/var/db" = { };
+    };
 
     init.services.dhcpd = {
       description = "OpenBSD DHCP daemon";
@@ -68,7 +68,6 @@ in
       path = [ pkgs.coreutils ];
       startCommand = [ dhcpd ] ++ commonArgs ++ cfg.extraFlags ++ cfg.interfaces;
       preStart = ''
-        mkdir -p /var/empty /var/db
         touch ${leasePath}
         chown root:_dhcp ${leasePath}
         chmod 0640 ${leasePath}

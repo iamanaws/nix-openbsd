@@ -40,9 +40,8 @@
   };
   environment.systemPackages = [ pkgs.openbsd.netstat ];
   fonts.fontconfig.enable = false;
-  systemd.tmpfiles.rules = [
-    "d /var/authpf 0700 root wheel - -"
-    "d /var/db 0755 root wheel - -"
-    "f /var/db/host.random 0600 root wheel - -"
-  ];
+  services.tempfiles.directories = {
+    "/var/authpf".mode = "0700";
+    "/var/db" = { };
+  };
 }

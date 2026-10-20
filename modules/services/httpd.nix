@@ -11,6 +11,7 @@ let
   httpd = "${cfg.package}/bin/httpd";
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.httpd = {
     enable = lib.mkEnableOption "OpenBSD httpd";
 
@@ -46,11 +47,14 @@ in
     };
     users.groups.www.gid = 67;
 
-    systemd.tmpfiles.rules = [
-      "d /var/www 0755 root root - -"
-      "d /var/www/htdocs 0755 root root - -"
-      "d /var/www/logs 0755 www www - -"
-    ];
+    services.tempfiles.directories = {
+      "/var/www" = { };
+      "/var/www/htdocs".group = "www";
+      "/var/www/logs" = {
+        user = "www";
+        group = "www";
+      };
+    };
 
     init.services.httpd = {
       description = "OpenBSD HTTP daemon";
@@ -70,11 +74,10 @@ in
       preStart = ''
         ifconfig lo0 inet 127.0.0.1 netmask 255.0.0.0 up
         rm -rf /var/www/htdocs
-        mkdir -p /var/www/htdocs /var/www/logs
+        mkdir /var/www/htdocs
         cp -R ${cfg.documentRoot}/. /var/www/htdocs/
         chown -R root:www /var/www/htdocs
         chmod -R u=rwX,go=rX /var/www/htdocs
-        chown www:www /var/www/logs
         ${httpd} -n -f ${configPath}
       '';
     };

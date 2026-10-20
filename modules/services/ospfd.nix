@@ -11,6 +11,7 @@ let
   ospfd = "${cfg.package}/bin/ospfd";
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.ospfd = {
     enable = lib.mkEnableOption "OpenBSD ospfd";
 
@@ -54,10 +55,10 @@ in
     };
     users.groups._ospfd.gid = 85;
 
-    systemd.tmpfiles.rules = [
-      "d /var/empty 0555 root root - -"
-      "d /var/run 0755 root wheel - -"
-    ];
+    services.tempfiles.directories = {
+      "/var/empty".mode = "0555";
+      "/var/run" = { };
+    };
 
     init.services.ospfd = {
       description = "OpenBSD OSPF daemon";
@@ -72,9 +73,6 @@ in
       ]
       ++ cfg.extraFlags;
       preStart = ''
-        mkdir -p /var/empty /var/run
-        chown root:wheel /var/empty /var/run
-        chmod 0555 /var/empty
         rm -f /var/run/ospfd.sock*
         ${ospfd} -n -f ${configPath} ${lib.escapeShellArgs cfg.extraFlags}
       '';

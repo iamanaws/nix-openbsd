@@ -68,6 +68,23 @@ To update the reference demo instead, run `nix build .#native-system` from a
 `openbsd-rebuild ACTION --store-path ./result` as root, using an activation action
 from the table. An older VM needs one boot into the new system before live switching.
 
+## Service directories
+
+Declare directories in your configuration:
+
+```nix
+services.tempfiles.directories."/var/lib/my-service" = {
+  mode = "0750";
+  user = "my-service";
+  group = "my-service";
+};
+```
+
+Define the user and group through `users.users` and `users.groups`.
+Directories default to `0755`, owned by `root:wheel`. Boot, live activation and
+rollback apply their ownership and permissions without changing existing contents.
+Removing a declaration leaves its directory and data in place.
+
 ## Rollback
 
 As root, list generations or return to the previous one:

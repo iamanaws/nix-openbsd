@@ -11,6 +11,7 @@ let
   ntpd = "${cfg.package}/bin/ntpd";
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.ntpd = {
     enable = lib.mkEnableOption "OpenBSD ntpd";
 
@@ -43,11 +44,11 @@ in
     };
     users.groups._ntp.gid = 83;
 
-    systemd.tmpfiles.rules = [
-      "d /var/empty 0555 root root - -"
-      "d /var/db 0755 root wheel - -"
-      "d /var/run 0755 root wheel - -"
-    ];
+    services.tempfiles.directories = {
+      "/var/empty".mode = "0555";
+      "/var/db" = { };
+      "/var/run" = { };
+    };
 
     init.services.ntpd = {
       description = "OpenBSD network time daemon";
@@ -62,9 +63,6 @@ in
       ]
       ++ cfg.extraFlags;
       preStart = ''
-        mkdir -p /var/empty /var/db /var/run
-        chown root:wheel /var/empty /var/db /var/run
-        chmod 0555 /var/empty
         rm -f /var/run/ntpd.sock
         ${ntpd} -n -f ${configPath}
       '';

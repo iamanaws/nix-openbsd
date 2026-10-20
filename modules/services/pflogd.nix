@@ -10,6 +10,7 @@ let
   pflogd = "${cfg.package}/bin/pflogd";
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.pflogd = {
     enable = lib.mkEnableOption "OpenBSD pflogd";
 
@@ -49,10 +50,10 @@ in
     };
     users.groups._pflogd.gid = 74;
 
-    systemd.tmpfiles.rules = [
-      "d /var/empty 0555 root root - -"
-      "f ${cfg.logFile} 0600 root wheel - -"
-    ];
+    services.tempfiles.directories = {
+      "/var/empty".mode = "0555";
+      "${builtins.dirOf cfg.logFile}" = { };
+    };
 
     openbsd.rc.services.pflogd.shellVariables.pexp = "pflogd: \\[priv\\]";
 
@@ -71,7 +72,6 @@ in
       ]
       ++ cfg.extraFlags;
       preStart = ''
-        mkdir -p /var/empty "$(dirname ${lib.escapeShellArg cfg.logFile})"
         touch ${lib.escapeShellArg cfg.logFile}
         chmod 0600 ${lib.escapeShellArg cfg.logFile}
       '';

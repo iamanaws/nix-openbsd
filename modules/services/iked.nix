@@ -11,6 +11,7 @@ let
   iked = "${cfg.package}/bin/iked";
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.iked = {
     enable = lib.mkEnableOption "OpenBSD iked";
 
@@ -55,17 +56,18 @@ in
     };
     users.groups._iked.gid = 101;
 
-    systemd.tmpfiles.rules = [
-      "d /var/empty 0555 root root - -"
-      "d /var/run 0755 root wheel - -"
-      "d /etc/iked 0755 root wheel - -"
-      "d /etc/iked/ca 0755 root wheel - -"
-      "d /etc/iked/certs 0755 root wheel - -"
-      "d /etc/iked/crls 0755 root wheel - -"
-      "d /etc/iked/ocsp 0755 root wheel - -"
-      "d /etc/iked/private 0700 root wheel - -"
-      "d /etc/iked/pubkeys 0755 root wheel - -"
-    ];
+    services.tempfiles.directories = {
+      "/var/empty".mode = "0555";
+      "/var/run" = { };
+      # The unprivileged CA process must traverse its chroot.
+      "/etc/iked" = { };
+      "/etc/iked/ca" = { };
+      "/etc/iked/certs" = { };
+      "/etc/iked/crls" = { };
+      "/etc/iked/ocsp" = { };
+      "/etc/iked/private".mode = "0700";
+      "/etc/iked/pubkeys" = { };
+    };
 
     # iked replaces its command line with a process title after starting.
     openbsd.rc.services.iked.shellVariables.pexp = "iked: parent.*";
@@ -83,11 +85,6 @@ in
       ]
       ++ cfg.extraFlags;
       preStart = ''
-        mkdir -p /var/empty /var/run /etc/iked/{ca,certs,crls,ocsp,private,pubkeys}
-        chown root:wheel /etc/iked /etc/iked/{ca,certs,crls,ocsp,private,pubkeys}
-        chmod 0700 /etc/iked/private
-        # The unprivileged CA process must traverse its /etc/iked chroot.
-        chmod 0755 /etc/iked /etc/iked/{ca,certs,crls,ocsp,pubkeys}
         # iked loads a local private key even with pre-shared-key authentication.
         if [ ! -f /etc/iked/private/local.key ]; then
           (umask 077; ${lib.getExe' pkgs.libressl "openssl"} ecparam \

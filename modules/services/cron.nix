@@ -10,6 +10,7 @@ let
   cron = "${cfg.package}/bin/cron";
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.cron = {
     enable = lib.mkEnableOption "OpenBSD cron";
 
@@ -79,11 +80,18 @@ in
           :
         '';
 
-    systemd.tmpfiles.rules = [
-      "d /var/cron 0555 root wheel - -"
-      "d /var/cron/atjobs 1770 root crontab - -"
-      "d /var/cron/tabs 1730 root crontab - -"
-    ];
+    services.tempfiles.directories = {
+      "/var/cron".mode = "0555";
+      "/var/cron/atjobs" = {
+        mode = "1770";
+        group = "crontab";
+      };
+      "/var/cron/tabs" = {
+        mode = "1730";
+        group = "crontab";
+      };
+      "/var/run" = { };
+    };
 
     init.services.cron = {
       description = "OpenBSD cron daemon";
@@ -93,12 +101,6 @@ in
       path = [ pkgs.coreutils ];
       startCommand = [ cron ] ++ cfg.extraFlags;
       preStart = ''
-        mkdir -p /var/cron/atjobs /var/cron/tabs /var/run
-        chown root:wheel /var/cron
-        chmod 0555 /var/cron
-        chown root:crontab /var/cron/atjobs /var/cron/tabs
-        chmod 1770 /var/cron/atjobs
-        chmod 1730 /var/cron/tabs
         rm -f /var/run/cron.sock
       '';
     };

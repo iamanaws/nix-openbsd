@@ -11,6 +11,7 @@ let
   isakmpd = "${cfg.package}/bin/isakmpd";
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.isakmpd = {
     enable = lib.mkEnableOption "OpenBSD isakmpd";
 
@@ -50,17 +51,17 @@ in
     };
     users.groups._isakmpd.gid = 68;
 
-    systemd.tmpfiles.rules = [
-      "d /var/empty 0555 root root - -"
-      "d /var/run 0755 root wheel - -"
-      "d /etc/isakmpd 0700 root wheel - -"
-      "d /etc/isakmpd/ca 0755 root wheel - -"
-      "d /etc/isakmpd/certs 0755 root wheel - -"
-      "d /etc/isakmpd/crls 0755 root wheel - -"
-      "d /etc/isakmpd/keynote 0700 root wheel - -"
-      "d /etc/isakmpd/private 0700 root wheel - -"
-      "d /etc/isakmpd/pubkeys 0755 root wheel - -"
-    ];
+    services.tempfiles.directories = {
+      "/var/empty".mode = "0555";
+      "/var/run" = { };
+      "/etc/isakmpd".mode = "0700";
+      "/etc/isakmpd/ca" = { };
+      "/etc/isakmpd/certs" = { };
+      "/etc/isakmpd/crls" = { };
+      "/etc/isakmpd/keynote".mode = "0700";
+      "/etc/isakmpd/private".mode = "0700";
+      "/etc/isakmpd/pubkeys" = { };
+    };
 
     openbsd.rc.services.isakmpd.shellVariables.pexp = "isakmpd: monitor \\[priv\\]";
 
@@ -79,12 +80,6 @@ in
       ++ lib.optional cfg.disablePolicyChecks "-K"
       ++ cfg.extraFlags;
       preStart = ''
-        mkdir -p /var/empty /var/run \
-          /etc/isakmpd/{ca,certs,crls,keynote,private,pubkeys}
-        chown root:wheel /etc/isakmpd \
-          /etc/isakmpd/{ca,certs,crls,keynote,private,pubkeys}
-        chmod 0700 /etc/isakmpd /etc/isakmpd/keynote /etc/isakmpd/private
-        chmod 0755 /etc/isakmpd/{ca,certs,crls,pubkeys}
         rm -f /var/run/isakmpd.{fifo,pcap,pid,report,result}
       '';
     };

@@ -11,6 +11,7 @@ let
   sensorsd = "${cfg.package}/bin/sensorsd";
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.sensorsd = {
     enable = lib.mkEnableOption "OpenBSD sensorsd";
 
@@ -32,6 +33,7 @@ in
   config = lib.mkIf cfg.enable {
     environment.etc."sensorsd.conf".text = cfg.config;
     environment.systemPackages = [ cfg.package ];
+    services.tempfiles.directories."/var/run" = { };
 
     init.services.sensorsd = {
       description = "OpenBSD hardware sensors daemon";
@@ -40,10 +42,6 @@ in
       startType = "forking";
       path = [ pkgs.coreutils ];
       startCommand = [ sensorsd ] ++ cfg.extraFlags;
-      preStart = ''
-        mkdir -p /var/run
-        chown root:wheel /var/run
-      '';
     };
   };
 }

@@ -27,9 +27,18 @@ let
       ];
     }
     // lib.optionalAttrs (!withCronctl) { controlPackage = null; };
-    init.services.cron.preStart = lib.mkBefore ''
-      ${pkgs.coreutils}/bin/install -d -m 0700 -o daemon -g daemon /var/lib/cron-test
-    '';
+    services.tempfiles.directories = {
+      "/var/lib/cron-test" = {
+        mode = "0700";
+        user = "daemon";
+        group = "daemon";
+      };
+      "/var/lib/directory-test" = {
+        mode = "0700";
+        user = "daemon";
+        group = "daemon";
+      };
+    };
     # Fail one reload so recovery can reload the previous configuration.
     openbsd.rc.services.cron.hooks.rc_reload = lib.mkIf withCronctl (
       lib.mkBefore ''
@@ -41,6 +50,14 @@ let
     );
   };
   changed = { lib, pkgs, ... }: {
+    services.tempfiles.directories = {
+      "/var/lib/directory-test" = {
+        mode = lib.mkForce "0750";
+        user = lib.mkForce "root";
+        group = lib.mkForce "wheel";
+      };
+      "/var/lib/directory-test/new" = { };
+    };
     environment.systemPackages = [ pkgs.hello ];
     services.httpd.documentRoot = lib.mkForce (pkgs.writeTextDir "index.html" "NixBSD generation B\n");
     init.services.generation_probe = {
@@ -79,6 +96,10 @@ let
       {
         system.activationScripts.generationFailure.text = "false";
       }
+    ];
+    failed-directories = system [
+      changed
+      { services.tempfiles.directories."/var/lib/directory-test/blocker/child" = { }; }
     ];
   };
 in

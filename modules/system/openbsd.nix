@@ -44,6 +44,7 @@ let
   '';
 in
 {
+  imports = [ ./tempfiles.nix ];
   # A null password becomes an empty field in the BSD account writer.
   # Accounts without an explicit password must start locked.
   options.users.users = lib.mkOption {

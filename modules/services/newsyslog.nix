@@ -11,6 +11,7 @@ let
   newsyslog = "${cfg.package}/bin/newsyslog";
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.newsyslog = {
     enable = lib.mkEnableOption "OpenBSD newsyslog log rotation";
 
@@ -55,11 +56,10 @@ in
       "${cfg.schedule} root ${newsyslog} -f ${configPath}"
     ];
 
-    systemd.tmpfiles.rules = [
-      "d /var/log 0755 root wheel - -"
-      "d /var/cron 0555 root wheel - -"
-    ]
-    ++ map (path: "f ${path} 0640 root wheel - -") cfg.createLogFiles;
+    services.tempfiles.directories = {
+      "/var/log" = { };
+      "/var/cron".mode = "0555";
+    };
 
     init.services.newsyslog-check = {
       description = "Validate OpenBSD newsyslog configuration";
@@ -74,10 +74,6 @@ in
         configPath
       ];
       preStart = ''
-        mkdir -p /var/log /var/cron
-        chown root:wheel /var/log /var/cron
-        chmod 0755 /var/log
-        chmod 0555 /var/cron
         ${lib.concatMapStringsSep "\n" (path: ''
           if [ ! -e ${lib.escapeShellArg path} ]; then
             touch ${lib.escapeShellArg path}

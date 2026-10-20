@@ -11,6 +11,7 @@ let
   relayd = "${cfg.package}/bin/relayd";
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.relayd = {
     enable = lib.mkEnableOption "OpenBSD relayd";
 
@@ -44,10 +45,12 @@ in
     };
     users.groups._relayd.gid = 89;
 
-    systemd.tmpfiles.rules = [
-      "d /var/empty 0555 root root - -"
-      "d /var/run 0755 root root - -"
-    ];
+    services.tempfiles.directories = {
+      "/var/empty".mode = "0555";
+      "/var/run" = { };
+      # relayd unveils this path even when AgentX is disabled.
+      "/var/agentx" = { };
+    };
 
     init.services.relayd = {
       description = "OpenBSD relay daemon";
@@ -66,10 +69,6 @@ in
       ]
       ++ cfg.extraFlags;
       preStart = ''
-        # relayd unveils the AgentX socket path even when AgentX is disabled.
-        mkdir -p /var/empty /var/run /var/agentx
-        chown root:wheel /var/empty
-        chmod 0555 /var/empty
         ${relayd} -n -f ${configPath}
       '';
     };

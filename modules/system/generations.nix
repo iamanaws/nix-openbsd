@@ -8,6 +8,7 @@ let
   cfg = config.openbsd.system;
   services = config.openbsd.rc.services;
   policies = {
+    tempfiles = { };
     httpd = {
       files = [ "httpd.conf" ];
       check = "${config.services.httpd.package}/bin/httpd -n -f \"$target/etc/httpd.conf\"";

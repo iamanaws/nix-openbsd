@@ -7,12 +7,11 @@ let
       remote = toString (3 - number);
       system = flake.nixosConfigurations.openbsd-base.extendModules {
         modules = [
-          ../../modules/system/openbsd.nix
           ({ lib, pkgs, ... }: {
             imports = [
-              ../../modules/services/bgpd.nix
-              ../../modules/services/iked.nix
-              ../../modules/services/pf.nix
+              (flake.outPath + "/modules/services/bgpd.nix")
+              (flake.outPath + "/modules/services/iked.nix")
+              (flake.outPath + "/modules/services/pf.nix")
             ];
             nixpkgs.buildPlatform = "x86_64-linux";
             nixpkgs.overlays = [ (import ../../overlays/openbsd.nix) ];

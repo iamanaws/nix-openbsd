@@ -10,9 +10,9 @@ let
     modules = [
       {
         imports = [
-          ../../modules/services/syslogd.nix
-          ../../modules/services/pflogd.nix
-          ../../modules/services/isakmpd.nix
+          (flake.outPath + "/modules/services/syslogd.nix")
+          (flake.outPath + "/modules/services/pflogd.nix")
+          (flake.outPath + "/modules/services/isakmpd.nix")
         ];
         nixpkgs.overlays = [ (import ../../overlays/openbsd.nix) ];
         services.syslogd = {

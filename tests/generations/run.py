@@ -26,7 +26,7 @@ def main():
     parser.add_argument('--base-system', required=True)
     parser.add_argument('--system-a', required=True)
     parser.add_argument('--system-b', required=True)
-    parser.add_argument('--live-fixtures', type=Path, help='fixture bundle with invalid, failed-start and failed-activation systems')
+    parser.add_argument('--live-fixtures', type=Path, help='fixture bundle with invalid configurations and activation failures')
     parser.add_argument('--live-only', action='store_true', help='test only installation and live updates')
     parser.add_argument('--personal-system', type=Path, help='also boot the native configuration template')
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[2],
@@ -121,6 +121,7 @@ test "$(cron_process)" = "$cron_pid"
 test "$(cat /var/lib/cron-test/boots)" = "$cron_boots"
 ''' if with_cronctl else ''
         live_probe = f'''test "$(readlink -f /run/current-system)" = {a}
+set -E
 trap 'status=$?; trap - ERR; tail -n 20 /var/cron/log >&2 || true; ls -ld /var/lib/cron-test >&2 || true; exit "$status"' ERR
 rebuild={a}/sw/bin/openbsd-rebuild
 ssh_process() {{ ps -ax -o pid=,comm= | awk '$2 == "sshd" {{ print $1 }}'; }}
@@ -146,19 +147,46 @@ cron_wait() {{
     test "$(sqlite3 /var/lib/cron-test/jobs.db 'select distinct uid from runs;')" = "$(id -u daemon)"
 }}
 cron_wait a
+for service in nix_daemon sshd dhcpcd httpd relayd cron syslogd ntpd sensorsd snmpd resolvd; do
+    /etc/rc.d/$service check
+done
+directory=/var/lib/directory-test
+daemon_owner=$(id -u daemon):$(id -g daemon)
+root_owner=$(id -u root):$(awk -F: '$1 == "wheel" {{ print $3 }}' /etc/group)
+directory_check() {{
+    test "$(stat -c '%a:%u:%g' "$directory")" = "$1"
+    test "$(cat "$directory/state")" = preserved
+    test "$(stat -c '%a:%u:%g' "$directory/state")" = "600:$daemon_owner"
+}}
+printf 'preserved\\n' > "$directory/state"
+chown daemon:daemon "$directory/state"
+chmod 0600 "$directory/state"
+printf 'blocker\\n' > "$directory/blocker"
+directory_check "700:$daemon_owner"
+# Reapply the current generation to repair drift without touching its contents.
+chmod 0777 "$directory"
+chown root:wheel "$directory"
+{a}/bin/switch-to-configuration test
+directory_check "700:$daemon_owner"
 default=$(cat /boot/nixos/default.conf)
 {b}/bin/switch-to-configuration dry-activate
 test "$(readlink -f /run/current-system)" = {a}
-for failure in invalid {'invalid-cron' if with_cronctl else ''} failed-start failed-activation; do
+directory_check "700:$daemon_owner"
+test ! -e "$directory/new"
+for failure in invalid {'invalid-cron' if with_cronctl else ''} failed-start failed-activation failed-directories; do
     if $rebuild switch --store-path {fixtures}/$failure; then echo "Unexpected success: $failure"; exit 1; fi
     test "$(readlink -f /run/current-system)" = {a}
     test "$(readlink -f /nix/var/nix/profiles/system)" = {a}
     test "$(cat /boot/nixos/default.conf)" = "$default"
+    directory_check "700:$daemon_owner"
+    test "$(cat "$directory/blocker")" = blocker
     /etc/rc.d/httpd check
     curl -fsS http://127.0.0.1:8080/ | grep NixBSD
 done
 {reload_failure}
 {b}/bin/switch-to-configuration test
+directory_check "750:$root_owner"
+test -d "$directory/new"
 test "$(readlink -f /run/current-system)" = {b}
 test "$(readlink -f /nix/var/nix/profiles/system)" = {a}
 test "$(cat /boot/nixos/default.conf)" = "$default"
@@ -167,11 +195,14 @@ curl -fsS http://127.0.0.1:8080/ | grep 'generation B'
 test "$(/run/current-system/sw/bin/hello)" = 'Hello, world!'
 cron_wait b
 $rebuild test --store-path {a}
+directory_check "700:$daemon_owner"
+test -d "$directory/new"
 if {b}/etc/rc.d/generation_probe check; then echo 'Removed daemon still running'; exit 1; fi
 {b}/bin/switch-to-configuration switch
 test "$(readlink -f /run/current-system)" = {b}
 test "$(readlink -f /nix/var/nix/profiles/system)" = {b}
 $rebuild switch --rollback
+directory_check "700:$daemon_owner"
 test "$(readlink -f /run/current-system)" = {a}
 test "$(readlink -f /nix/var/nix/profiles/system)" = {a}
 test "$(ssh_process)" = "$ssh_pid"
@@ -182,6 +213,15 @@ for root in /nix/var/nix/gcroots/openbsd-system.*; do test ! -d "$root"; done
 echo LIVE_SWITCH_PASS
 '''
         phases['a'] = live_probe + phases['a']
+        for phase, mode, user, group in [('b', '750', 'root', 'wheel'),
+                                        ('rollback', '700', 'daemon', 'daemon'),
+                                        ('recovery', '700', 'daemon', 'daemon')]:
+            phases[phase] += f'''
+owner=$(id -u {user}):$(awk -F: '$1 == "{group}" {{ print $3 }}' /etc/group)
+test "$(stat -c '%a:%u:%g' /var/lib/directory-test)" = "{mode}:$owner"
+test "$(cat /var/lib/directory-test/state)" = preserved
+test "$(stat -c '%a:%u:%g' /var/lib/directory-test/state)" = "600:$(id -u daemon):$(id -g daemon)"
+'''
         if args.live_only:
             phases = {'install': phases['install'], 'a': live_probe}
     if args.recovery_state:
@@ -279,7 +319,7 @@ echo PERSONAL_SYSTEM_PASS
                         expect(rb'Password:')
                         send('toor')
                         expect(rb'root@')
-                        send(f"curl --noproxy '*' -fsS {url}/{phase}.sh -o /tmp/phase.sh && bash /tmp/phase.sh; status=$?; printf '\\nGENERATION_DONE:%s\\n' \"$status\"")
+                        send(f"curl --noproxy '*' --retry 10 --retry-connrefused --retry-delay 1 -fsS {url}/{phase}.sh -o /tmp/phase.sh && bash /tmp/phase.sh; status=$?; printf '\\nGENERATION_DONE:%s\\n' \"$status\"")
                         status = expect(rb'\nGENERATION_DONE:(\d+)\r?\n').group(1)
                         if status != b'0':
                             raise RuntimeError(f'{phase} failed: {status.decode()}')

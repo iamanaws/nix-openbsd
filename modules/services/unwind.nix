@@ -11,6 +11,7 @@ let
   unwind = "${cfg.package}/bin/unwind";
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.unwind = {
     enable = lib.mkEnableOption "OpenBSD unwind";
 
@@ -43,7 +44,7 @@ in
     };
     users.groups._unwind.gid = 48;
 
-    systemd.tmpfiles.rules = [ "d /var/empty 0555 root root - -" ];
+    services.tempfiles.directories."/var/empty".mode = "0555";
 
     init.services.unwind = {
       description = "OpenBSD validating resolver daemon";
@@ -58,8 +59,6 @@ in
       ]
       ++ cfg.extraFlags;
       preStart = ''
-        mkdir -p /var/empty
-        chmod 0555 /var/empty
         rm -f /dev/unwind.sock
         ${unwind} -n -f ${configPath}
       '';

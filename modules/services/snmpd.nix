@@ -11,6 +11,7 @@ let
   snmpd = "${cfg.package}/bin/snmpd";
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.snmpd = {
     enable = lib.mkEnableOption "OpenBSD snmpd";
 
@@ -86,11 +87,11 @@ in
     users.groups._snmpd.gid = 91;
     users.groups._agentx.gid = 92;
 
-    systemd.tmpfiles.rules = [
-      "d /var/empty 0555 root root - -"
-      "d /var/run 0755 root wheel - -"
-      "d /var/agentx 0755 root _agentx - -"
-    ];
+    services.tempfiles.directories = {
+      "/var/empty".mode = "0555";
+      "/var/run" = { };
+      "/var/agentx".group = "_agentx";
+    };
 
     init.services.snmpd = {
       description = "OpenBSD SNMP daemon";
@@ -107,11 +108,6 @@ in
       ]
       ++ cfg.extraFlags;
       preStart = ''
-        mkdir -p /var/empty /var/run /var/agentx
-        chown root:wheel /var/empty /var/run
-        chown root:_agentx /var/agentx
-        chmod 0555 /var/empty
-        chmod 0755 /var/agentx
         rm -f /var/agentx/master
         ${snmpd} -n -f ${configPath} ${lib.escapeShellArgs cfg.extraFlags}
       '';

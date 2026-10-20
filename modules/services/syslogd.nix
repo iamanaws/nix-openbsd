@@ -11,6 +11,7 @@ let
   syslogd = "${cfg.package}/bin/syslogd";
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.syslogd = {
     enable = lib.mkEnableOption "OpenBSD syslogd";
 
@@ -51,11 +52,12 @@ in
     };
     users.groups._syslogd.gid = 73;
 
-    systemd.tmpfiles.rules = [
-      "d /var/empty 0555 root root - -"
-      "d /var/run 0755 root wheel - -"
-      "d /var/log 0755 root wheel - -"
-    ];
+    services.tempfiles.directories = {
+      "/var/empty".mode = "0555";
+      "/var/run" = { };
+      "/var/log" = { };
+      "/var/cron" = { };
+    };
 
     openbsd.rc.services.syslogd.shellVariables.pexp = "syslogd: \\[priv\\]";
 
@@ -75,10 +77,6 @@ in
       ]
       ++ cfg.extraFlags;
       preStart = ''
-        mkdir -p /var/empty /var/run /var/log /var/cron
-        chown root:wheel /var/empty /var/run /var/log
-        chmod 0555 /var/empty
-        chmod 0755 /var/run /var/log
         for f in /var/log/messages /var/log/authlog /var/log/secure \
                  /var/log/daemon /var/cron/log; do
           if [ ! -e "$f" ]; then

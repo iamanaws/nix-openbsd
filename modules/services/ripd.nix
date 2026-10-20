@@ -11,6 +11,7 @@ let
   ripd = "${cfg.package}/bin/ripd";
 in
 {
+  imports = [ ../system/tempfiles.nix ];
   options.services.ripd = {
     enable = lib.mkEnableOption "OpenBSD ripd";
 
@@ -54,10 +55,10 @@ in
     };
     users.groups._ripd.gid = 88;
 
-    systemd.tmpfiles.rules = [
-      "d /var/empty 0555 root root - -"
-      "d /var/run 0755 root wheel - -"
-    ];
+    services.tempfiles.directories = {
+      "/var/empty".mode = "0555";
+      "/var/run" = { };
+    };
 
     init.services.ripd = {
       description = "OpenBSD RIP daemon";
@@ -72,9 +73,6 @@ in
       ]
       ++ cfg.extraFlags;
       preStart = ''
-        mkdir -p /var/empty /var/run
-        chown root:wheel /var/empty /var/run
-        chmod 0555 /var/empty
         rm -f /var/run/ripd.sock*
         ${ripd} -n -f ${configPath} ${lib.escapeShellArgs cfg.extraFlags}
       '';
