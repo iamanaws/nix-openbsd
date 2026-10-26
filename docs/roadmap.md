@@ -27,7 +27,6 @@ Native packages, the toolchain and system workflows pass VM validation.
 - Check the 7.9-to-8.0 upgrade path separately, following the
   [upgrade notes](https://www.openbsd.org/faq/upgrade80.html) and
   [errata](https://www.openbsd.org/errata80.html).
-- Publish the validated closures to Cachix and update pins after testing.
 
 The kernel uses LLVM 22.1.8; userland stays on LLVM 21.1.8.
 Build frozen snapshots so development can continue independently.

@@ -72,10 +72,11 @@ avoids public DNS in its blocking lookup failure test.
 Run the base checks with `bash tests/base/run.sh --max-jobs 1 --cores 8`.
 See [validation results and limitations](status.md) for what has passed.
 
-Check cache availability, including the bootstrap outputs needed during evaluation:
+Check cache availability for native packages, cross-built package targets and
+bootstrap outputs:
 
 ```sh
-python3 tests/cache/check.py path:"$PWD" --bootstrap
+python3 tests/cache/check.py path:"$PWD" --bootstrap --cross
 ```
 
 This checks metadata; the VM test verifies actual downloads.

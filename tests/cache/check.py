@@ -1,4 +1,4 @@
-"""Check runtime and optional bootstrap cache availability.
+"""Check native, cross-built and bootstrap cache availability.
 
 Run with Python 3 and Nix on PATH. This checks narinfo availability, not NAR
 downloads or signatures; the fresh VM test exercises actual substitution.
@@ -38,11 +38,30 @@ def main():
     parser.add_argument('--report', help='write the full JSON availability report')
     parser.add_argument('--bootstrap', action='store_true',
                         help='also check the seed outputs required during evaluation')
+    parser.add_argument('--cross', action='store_true',
+                        help='also check all outputs of the cross-built package targets')
     args = parser.parse_args()
     roots = json.loads(subprocess.check_output([
         'nix', 'eval', '--accept-flake-config', '--json',
         f'{args.flake}#packages.x86_64-openbsd', '--apply',
         'packages: builtins.mapAttrs (_: package: package.outPath) packages'], text=True))
+    if args.cross:
+        cross = json.loads(subprocess.check_output([
+            'nix', 'eval', '--accept-flake-config', '--json',
+            f'{args.flake}#packages.x86_64-linux', '--apply', '''
+              packages: builtins.mapAttrs (_: package:
+                builtins.listToAttrs (map (output: {
+                  name = output;
+                  value = package.${output}.outPath;
+                }) package.outputs)
+              ) (builtins.removeAttrs packages [
+                "default" "native-vm" "native-system-image" "native-system"
+                "native-nix" "minimal-vm" "vm" "system-image" "toplevel"
+              ])
+            '''], text=True))
+        roots.update({f'cross.{name}.{output}': path
+                      for name, outputs in cross.items()
+                      for output, path in outputs.items()})
     bootstrap = {}
     if args.bootstrap:
         seeds = json.loads(subprocess.check_output([

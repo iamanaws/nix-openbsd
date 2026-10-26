@@ -219,6 +219,10 @@
       };
     in
     {
+      formatter = lib.genAttrs lib.systems.flakeExposed (
+        system: nixbsd.inputs.nixpkgs.legacyPackages.${system}.nixfmt-tree
+      );
+
       lib.mkNativeSystem =
         {
           modules,

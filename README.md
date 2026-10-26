@@ -16,6 +16,8 @@ On x86_64 Linux with KVM and Nix flakes enabled:
 nix run github:iamanaws/nix-openbsd#native-vm
 ```
 
+For a validated baseline, use a [tagged release](docs/vm.md#releases).
+
 Accept and remember the cache settings when prompted. Log in as `bestie`
 with password `toor`, then run inside OpenBSD:
 

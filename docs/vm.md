@@ -5,6 +5,19 @@ x86_64 Linux with KVM and assembles the image from cached packages.
 The first package build inside the guest also fetches sources and build inputs,
 which can take a few minutes.
 
+## Releases
+
+The current validated release is OpenBSD 8.0. Use its `openbsd-8.0` tag if
+`main` is undergoing changes:
+
+```sh
+nix run github:iamanaws/nix-openbsd/openbsd-8.0#native-vm
+```
+
+Use the same tag in package references to stay on this release.
+New OpenBSD versions receive their own tags after validation. Published tags
+remain fixed; this guide will point to the latest validated release.
+
 ## Access and shutdown
 
 Both `bestie` and `root` use password `toor`. These are public test accounts.

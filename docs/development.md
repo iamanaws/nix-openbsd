@@ -69,3 +69,42 @@ nix build .#vm
 
 See [Nix implementation notes](nix-internals.md) for runtime fixes and
 [the integration plan](roadmap.md) for remaining work.
+
+## Cache maintenance
+
+Each validated release gets a versioned Git tag and Cachix pins. The current
+release uses `openbsd-8.0` and `openbsd-8.0-packages`. Create new tags and pins
+for future OpenBSD versions, and update the [VM guide](vm.md#releases).
+Preserve existing release pins while developing `main`.
+
+Publish validated development builds under a separate `main` pin, keeping its
+latest revision. Give obsolete development pins one day of retention when
+retiring them. Retire an older release only as a separate decision.
+
+### Publish a bundle
+
+Publication is manual. A [bundle](../tools/cache-bundle.nix) links to selected
+store outputs; pinning it protects their dependency closures. Include packages,
+documentation, toolchains, build tools, bootstrap seeds and sources. Leave VM
+images, launchers and build history out.
+
+Save `nix build --json` results from the validated builds. With `jq` and `cachix`
+available, collect their outputs and publish from the checkout:
+
+```sh
+jq -s '[.[][] | .outputs[]] | unique' build-results.json > /tmp/cache-roots.json
+nix build --impure --file tools/cache-bundle.nix \
+  --argstr rootsFile /tmp/cache-roots.json --out-link /tmp/cache-bundle
+bundle=$(readlink -f /tmp/cache-bundle)
+cachix push --jobs 2 --num-concurrent-chunks 1 nix-openbsd "$bundle"
+cachix pin nix-openbsd main "$bundle" --keep-revisions 1
+```
+
+Pass additional result files to `jq` to combine builds. Native outputs and their
+dependencies must be copied from the guest into the publishing machine's store
+first. The bundle recipe groups outputs; it does not build or test packages.
+Keep the output list with the build records.
+
+For a release, use its new versioned pin name instead of `main`.
+`--keep-revisions 1` preserves the latest bundle until replaced; it does not
+expire after one day. See [Cachix pins](https://docs.cachix.org/pins).
