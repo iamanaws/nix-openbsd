@@ -20,6 +20,8 @@ mkDerivation {
 
   postPatch = ''
     sed -i '/DPADD/d' "$BSDSRCDIR/usr.sbin/httpd/Makefile"
+    # Nix store programs cannot be relinked in place at boot.
+    sed -i '/^RELINK=/d' "$BSDSRCDIR/usr.sbin/httpd/Makefile"
     sed -i '/#include <stdio.h>/a#include <stdlib.h>' \
       "$BSDSRCDIR/usr.sbin/httpd/parse.y"
   '';

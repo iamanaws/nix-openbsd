@@ -32,7 +32,7 @@ main(void)
 
     assert(uname(&host) == 0);
     assert(strcmp(host.sysname, "OpenBSD") == 0);
-    assert(strcmp(host.release, "7.9") == 0);
+    assert(strcmp(host.release, OPENBSD_RELEASE) == 0);
     agent = agentx(connection, &calls);
     assert(agent != NULL);
     assert(calls.connect == 1 && calls.free == 0);

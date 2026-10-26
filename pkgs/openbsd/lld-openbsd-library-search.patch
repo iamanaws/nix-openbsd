@@ -1,0 +1,74 @@
+Support OpenBSD's major.minor shared-library names with explicit *_obsd
+emulations. Adapted from OpenBSD's LLD, with target scoping and sysroot support:
+https://github.com/openbsd/src/blob/master/gnu/llvm/lld/ELF/DriverUtils.cpp
+
+--- a/ELF/DriverUtils.cpp
++++ b/ELF/DriverUtils.cpp
+@@ -236,15 +236,53 @@
+   return std::nullopt;
+ }
+ 
++// OpenBSD installs shared libraries as libfoo.so.major.minor without a
++// libfoo.so symlink. Keep the fallback within each -L directory.
++static std::optional<std::string>
++findOpenBSDLibrary(Ctx &ctx, StringRef dir, StringRef name) {
++  SmallString<128> searchDir;
++  if (dir.starts_with("="))
++    path::append(searchDir, ctx.arg.sysroot, dir.drop_front());
++  else
++    searchDir = dir;
++
++  std::string prefix = ("lib" + name + ".so.").str();
++  int bestMajor = -1, bestMinor = -1;
++  std::optional<std::string> best;
++  std::error_code ec;
++  for (fs::directory_iterator it(searchDir, ec), end; it != end && !ec;
++       it.increment(ec)) {
++    StringRef filename = path::filename(it->path());
++    if (!filename.consume_front(prefix))
++      continue;
++    auto [majorText, minorText] = filename.split('.');
++    int major, minor;
++    if (majorText.getAsInteger(10, major) || major < 0 ||
++        minorText.getAsInteger(10, minor) || minor < 0 ||
++        !fs::is_regular_file(it->path()))
++      continue;
++    if (major > bestMajor || (major == bestMajor && minor > bestMinor)) {
++      bestMajor = major;
++      bestMinor = minor;
++      best = it->path();
++    }
++  }
++  return best;
++}
++
+ // This is for -l<basename>. We'll look for lib<basename>.so or lib<basename>.a from
+ // search paths.
+ std::optional<std::string> elf::searchLibraryBaseName(Ctx &ctx,
+                                                       StringRef name) {
+   for (StringRef dir : ctx.arg.searchPaths) {
+-    if (!ctx.arg.isStatic)
++    if (!ctx.arg.isStatic) {
+       if (std::optional<std::string> s =
+               findFile(ctx, dir, "lib" + name + ".so"))
+         return s;
++      if (ctx.arg.osabi == ELF::ELFOSABI_OPENBSD)
++        if (std::optional<std::string> s = findOpenBSDLibrary(ctx, dir, name))
++          return s;
++    }
+     if (std::optional<std::string> s = findFile(ctx, dir, "lib" + name + ".a"))
+       return s;
+   }
+--- a/ELF/Driver.cpp
++++ b/ELF/Driver.cpp
+@@ -149,7 +149,9 @@
+                                                              StringRef emul) {
+   uint8_t osabi = 0;
+   StringRef s = emul;
+-  if (s.ends_with("_fbsd")) {
++  if (s.consume_back("_obsd"))
++    osabi = ELFOSABI_OPENBSD;
++  else if (s.ends_with("_fbsd")) {
+     s = s.drop_back(5);
+     osabi = ELFOSABI_FREEBSD;
+   }

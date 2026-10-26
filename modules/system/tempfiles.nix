@@ -73,7 +73,11 @@ in
         "etc"
       ];
       # rc.subr requires the service name from its rc.d symlink.
-      text = "/etc/rc.d/tempfiles -f start";
+      text = ''
+        # su unveils /var/run/dev.db before mtree creates /var/run.
+        mkdir -p /var/run
+        /etc/rc.d/tempfiles -f start
+      '';
     };
   };
 }

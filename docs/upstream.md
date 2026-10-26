@@ -11,8 +11,8 @@ pass without it. See [native probes](../tests/native/README.md#focused-runtime-p
 
 | Patch | Purpose | Status / next step |
 | --- | --- | --- |
-| `libc-difftime.patch` | Negative timestamps. | OpenBSD [b018fff](https://github.com/openbsd/src/commit/b018fffbd6c97a22e7af2d20e7fa5ba61fdbfb36). Remove after updating the source and checking both bootstrap and native libc with the [probe](../tests/native/difftime.c). |
-| `kernel-clang.patch` | Kernel format attributes, SCSI sleep identifier and sensor register selection. | OpenBSD backports: [printf](https://github.com/openbsd/src/commit/2f70c1a437bcc2bff242b351d3336b6d7ac1a877), [SCSI](https://github.com/openbsd/src/commit/3c019fcac636f960f981bb0cf7e92433c3c50874), [sensors](https://github.com/openbsd/src/commit/9f06b4d0de89448d55447db96bc04231453a7d12). Remove after a source update and kernel build/boot checks. |
+| `libc-no-tags.patch` | Skip libc's ctags database. | Nixpkgs' existing patch refreshed for 8.0; remove when the pin includes it. |
+| `rc-boot-phases.patch` | Run NixBSD's ordered services. | Nixpkgs' existing patch refreshed for 8.0; remove when the pin includes it. |
 | `gnulib-openbsd-fseeko.patch` | Opaque FILE support. | Gnulib backport for gzip and tar. Remove when each bundles the fix and passes native checks; [compile probe](../tests/upstream/gnulib-fseeko.py). Cross-build success alone is insufficient. |
 | `libffi-openbsd-closures.patch` | Closures without RWX mappings. | Scoped adaptation of the [OpenBSD ports fix](https://raw.githubusercontent.com/openbsd/ports/master/devel/libffi/patches/patch-src_closures_c). Keep until upstream avoids RWX and closure tests pass without it. |
 | `librthread-private-semaphores.patch` | Separate private futex wakeups after fork. | Candidate: OpenBSD; preserve shared/named semaphore behavior. |
@@ -20,9 +20,13 @@ pass without it. See [native probes](../tests/native/README.md#focused-runtime-p
 | `libcxx-openbsd-mbstate.patch` | mbstate declarations without importing overloads. | [LLVM #200940](https://github.com/llvm/llvm-project/pull/200940) fixes the C++17/20 module failure. Frozen C++03 needs our [follow-up](../upstream/llvm/libcxx-mbstate-cxx03.patch); check with the [probe](../tests/upstream/llvm-mbstate.py). Keep the working patch until the replacement passes the full suites. |
 | `libcxx-openbsd-locale-headers.patch` | Locale declarations under feature-test macros. | LLVM 23.1.3 still fails with `_XOPEN_SOURCE=500`. Minimize declarations for the new locale API. The merged encoding fix [#228306](https://github.com/llvm/llvm-project/pull/228306) addresses a different failure. |
 | `llvm-interpreter-roundeven.patch` | Interpreter support without libm roundeven. | Generic LLVM interpreter fix. Native regression passes all four host rounding modes; see the [probe](../tests/native/llvm-roundeven.cc). Related [#188898](https://github.com/llvm/llvm-project/pull/188898) changes library availability, not interpreter lowering. |
-| `llvm-openbsd-wait-timeout.patch` | Avoid process-wide alarms and reap the correct child after timeout. | Split into generic child-specific reaping and timeout handling. Current upstream retains both problems; [#19243](https://github.com/llvm/llvm-project/issues/19243) is an earlier related report. Keep the tested local patch while preparing focused regression tests. |
+| `llvm-openbsd-wait-timeout.patch`, `llvm-openbsd-wait-timeout-22.patch` | Avoid process-wide alarms and reap the correct child after timeout. | The LLVM 22 variant adjusts include context. Split into generic child-specific reaping and timeout handling. Current upstream retains both problems; [#19243](https://github.com/llvm/llvm-project/issues/19243) is an earlier related report. |
+| `llvm-openbsd-cas-sync.patch` | Flush new CAS headers before reading them through another descriptor. | Local fix, not submitted upstream. Reproduced stale reads before `msync`; all 36 CAS tests pass with the fix on OpenBSD 8.0. LLVM 22 only. |
+| `llvm-lit-resource-limits.patch` | Detect whether Python provides `RLIMIT_AS`. | Local fix, not submitted upstream. Fixes an observed `AttributeError`; keeps descriptor, stack and file-size checks enabled on OpenBSD. LLVM 22 only. |
 | `clang-openbsd-static-pie.patch` | Pass -pie for static PIE links. | Backport of [118efe76](https://github.com/llvm/llvm-project/commit/118efe7680bdc010ab984f8ae4505699f53bbca6); remove after updating Clang and running driver/linking checks. |
 | `clang-openbsd-no-pie.patch` | Emit LLD-compatible -no-pie. | Backport of [a2171756](https://github.com/llvm/llvm-project/commit/a2171756dd5d690faf30bafe63810d1dc6cdb342); remove after updating Clang and running driver/linking checks. |
+| `lld-openbsd-library-search.patch` | Find OpenBSD's `libfoo.so.major.minor` libraries. | Adapted from OpenBSD with explicit target selection and sysroot handling; [lookup probe](../tests/upstream/lld-openbsd.py). Keep bootstrap symlinks while older linkers remain in use. |
+| `clang-openbsd-lld-emulation.patch` | Select LLD's OpenBSD target. | Local companion to the library lookup patch; GNU ld retains its existing arguments. Native driver and lookup probes pass. |
 | `gnulib-openbsd-case-mapping.patch` | Consistent Unicode case conversion. | Candidate: gnulib; consumed by grep. |
 | `diffutils-openbsd-pipes.patch` | Do not treat anonymous pipes as the same file. | Candidate: gnulib; consumed by diffutils. |
 | `findutils-test-gnulib.patch` | Link the xargs test against gnulib. | Candidate: findutils. |
@@ -43,7 +47,8 @@ pass without it. See [native probes](../tests/native/README.md#focused-runtime-p
 Checked LLVM main `4bd435d59f89`, LLVM 23.1.3 and PR #200940 at `e518ff874288`
 on OpenBSD/amd64 on 2026-10-17. The installed LLVM 21 headers pass 42 compile/run
 checks. These are focused probes; the full upstream suites were not rerun.
-Keep LLVM 21.1.8 for now: 23.1.3 still needs the header fixes and encoding backport.
+Keep LLVM 21.1.8 for userland; the kernel uses LLVM 22.1.8.
+LLVM 23.1.3 still needs the header fixes and encoding backport.
 
 - Start with the libc++abi futex constants, then child-specific reaping in
   LLVM Support. The timeout redesign needs separate review: process-wide alarms
@@ -65,6 +70,10 @@ Keep LLVM 21.1.8 for now: 23.1.3 still needs the header fixes and encoding backp
   [#228306](https://github.com/llvm/llvm-project/pull/228306). Its
   [release backport](https://github.com/llvm/llvm-project/pull/232746) targets LLVM 23,
   not our LLVM 21 pin.
+- The OpenBSD LLD lookup adaptation passes native probes for target selection,
+  version ordering, search paths, static links and sysroots. Keep bootstrap
+  library symlinks while older linkers remain in use, and keep Libtool's loader
+  detection separate.
 
 ## Packaging and integration
 

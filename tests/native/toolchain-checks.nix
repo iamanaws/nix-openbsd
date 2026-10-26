@@ -4,6 +4,7 @@
   nonce,
   compiler-rt,
   toolchain,
+  python3,
 }:
 (import ./libraries.nix {
   inherit
@@ -36,6 +37,11 @@
         -L${lib.getLib toolchain.llvm}/lib -Wl,-rpath,${lib.getLib toolchain.llvm}/lib \
         -lLLVM -o llvm-wait
       timeout 30 ./llvm-wait
+      ${python3}/bin/python3 ${../upstream/lld-openbsd.py} \
+        --clang ${toolchain.clang}/bin/clang \
+        --lld ${toolchain.lld}/bin/ld.lld \
+        --ar ${toolchain.llvm}/bin/llvm-ar \
+        --readelf "$READELF"
     '';
     installPhase = old.installPhase + ''
       cp nopie driver-nopie linker-nopie llvm-wait "$out/bin/"

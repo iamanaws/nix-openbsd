@@ -59,7 +59,8 @@ in
       "/var/cron" = { };
     };
 
-    openbsd.rc.services.syslogd.shellVariables.pexp = "syslogd: \\[priv\\]";
+    # OpenBSD 8.0 runs the privileged parent in a separate executable.
+    openbsd.rc.services.syslogd.shellVariables.pexp = "syslogd-parent: \\[priv\\]";
 
     init.services.syslogd = {
       description = "OpenBSD system logging daemon";

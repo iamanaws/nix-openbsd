@@ -18,8 +18,6 @@ mkDerivation {
 
   postPatch = ''
     sed -i '/DPADD/d' "$BSDSRCDIR/usr.sbin/ntpd/Makefile"
-    substituteInPlace "$BSDSRCDIR/usr.sbin/ntpd/ntpd.c" \
-      --replace-fail '"/usr/sbin/ntpd"' "\"$out/bin/ntpd\""
   '';
 
   meta.mainProgram = "ntpd";

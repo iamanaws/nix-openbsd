@@ -1,7 +1,7 @@
 # Validation status
 
 The native stdenv, Nix, system packages and SMP kernel pass VM validation on
-amd64 OpenBSD 7.9. Validated native runtime closures contain no declared
+amd64 OpenBSD 8.0. Validated native runtime closures contain no declared
 bootstrap seed outputs. The EFI loader remains cross-built.
 
 ## Validated workflows
@@ -21,19 +21,25 @@ bootstrap seed outputs. The EFI loader remains cross-built.
 - System generations: live updates, rollback, failed-update recovery,
   garbage collection and boot-console recovery.
 
-The fresh-VM workflow passed on 2026-10-19: package
-downloads, a forced native hello build, personal configuration builds, live
-switching and rollback across reboots.
+Fresh-image boot and reboot passed on 2026-10-25, including console and SSH
+login, all 11 configured services, HTTPS, a regular-user native Nix build,
+store integrity and persistent state. Image assembly used RAM staging to
+limit host disk I/O.
 
-The full generation VM suite last passed on 2026-10-09. All 22 local generation
-tests pass. See the [testing guide](testing.md) for commands and suite coverage.
+OpenBSD 8.0 generation tests passed on 2026-10-25: live updates, rollback,
+failed-update recovery, garbage collection and console boot recovery.
+See the [testing guide](testing.md) for commands and suite coverage.
 
 ## Suite results
 
 These counts come from the recorded VM runs. A cached test run can reuse their outputs.
 
-- LLVM's `check-all` passes for the X86 configuration. Full Clang and LLD
-  suites are disabled; the toolchain tests cover compilation and linking.
+- LLVM 22's X86 `check-all` has 36,274 passes, 34,443 unsupported tests,
+  62 expected failures and 414 skipped tests. LLVM 21 had one lit timeout;
+  that test passed twice in isolation, without a full-suite rerun.
+  Full Clang and LLD suites are disabled; focused tests cover compilation,
+  linking and OpenBSD library lookup. Userland uses LLVM 21.1.8; the kernel
+  uses LLVM 22.1.8.
 - libffi has 1,750 passes. fmt passes 21 test groups; CFFI passes the ten
   selected upstream `extern "Python"` tests. libevent's suite passes with the
   [test-only adjustments](../tests/packages/default.nix).

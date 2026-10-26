@@ -1,0 +1,31 @@
+Select LLD's OpenBSD emulation for OpenBSD links. This enables the
+OpenBSD library-name fallback without changing GNU ld or other targets.
+Requires lld-openbsd-library-search.patch.
+
+--- a/lib/Driver/ToolChains/OpenBSD.cpp
++++ b/lib/Driver/ToolChains/OpenBSD.cpp
+@@ -123,6 +123,15 @@
+       Static && !Shared && !Profiling && !Nopie && !Relocatable;
+   ArgStringList CmdArgs;
+ 
++  bool IsLLD;
++  std::string LinkerPath = ToolChain.GetLinkerPath(&IsLLD);
++  if (IsLLD) {
++    if (const char *Emulation = getLDMOption(Triple, Args)) {
++      CmdArgs.push_back("-m");
++      CmdArgs.push_back(Args.MakeArgString(Twine(Emulation) + "_obsd"));
++    }
++  }
++
+   // Silence warning for "clang -g foo.o -o foo"
+   Args.ClaimAllArgs(options::OPT_g_Group);
+   // and "clang -emit-llvm foo.o -o foo"
+@@ -285,7 +294,7 @@
+ 
+   ToolChain.addProfileRTLibs(Args, CmdArgs);
+ 
+-  const char *Exec = Args.MakeArgString(ToolChain.GetLinkerPath());
++  const char *Exec = Args.MakeArgString(LinkerPath);
+   C.addCommand(std::make_unique<Command>(JA, *this,
+                                          ResponseFileSupport::AtFileCurCP(),
+                                          Exec, CmdArgs, Inputs, Output));

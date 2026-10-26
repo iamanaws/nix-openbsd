@@ -6,7 +6,6 @@ let
       patches = (old.patches or [ ]) ++ [ ./librthread-private-semaphores.patch ];
     });
     libcMinimal = pkgs.openbsd.libcMinimal.overrideAttrs (old: {
-      patches = (old.patches or [ ]) ++ [ ./libc-difftime.patch ];
       postInstall = (old.postInstall or "") + ''
         # Nixpkgs rewrites this private guard to "true", which becomes active in C23.
         substituteInPlace "$dev/include/sys/time.h" \

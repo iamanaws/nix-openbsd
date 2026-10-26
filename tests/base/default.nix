@@ -65,8 +65,13 @@ let
   };
   enabledSwitch = base.extendModules { modules = [ { system.switch.enable = true; } ]; };
 in
+assert lib.versions.major base.pkgs.openbsd.sys.stdenv.cc.version == "22";
+assert lib.versions.major base.pkgs.stdenv.cc.version == "21";
+assert lib.versions.major flake.legacyPackages.x86_64-openbsd.openbsd.sys.stdenv.cc.version == "22";
+assert lib.versions.major flake.legacyPackages.x86_64-openbsd.stdenv.cc.version == "21";
 assert base.config.openbsd.rc.conf.pf == false;
 assert base.config.system.switch.enable == false;
+assert base.config.virtualisation.vmVariant.fileSystems."/".noCheck;
 assert lib.any (
   a: !a.assertion && lib.hasPrefix "OpenBSD live switching" a.message
 ) enabledSwitch.config.assertions;

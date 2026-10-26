@@ -1,0 +1,18 @@
+OpenBSD needs msync() before reading shared mapping changes through pread().
+Publish new CAS headers before another opener checks their capacity and offset.
+See https://man.openbsd.org/msync.2.
+
+--- a/llvm/lib/CAS/MappedFileRegionArena.cpp
++++ b/llvm/lib/CAS/MappedFileRegionArena.cpp
+@@ -258,6 +258,11 @@ Expected<MappedFileRegionArena> MappedFileRegionArena::create(
+ 
+     Result.H->HeaderOffset.exchange(HeaderOffset);
+     Result.H->Capacity.exchange(Capacity);
++#if defined(__OpenBSD__)
++    // Publish the header before pread() in another opener reads the file.
++    if (std::error_code EC = Result.Region.sync())
++      return createFileError(Result.Path, EC);
++#endif
+   }
+ 
+   if (MainFile->Locked == sys::fs::LockKind::Exclusive) {

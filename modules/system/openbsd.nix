@@ -48,9 +48,11 @@ in
   # A null password becomes an empty field in the BSD account writer.
   # Accounts without an explicit password must start locked.
   options.users.users = lib.mkOption {
-    type = lib.types.attrsOf (lib.types.submodule {
-      config.initialHashedPassword = lib.mkOverride 1100 "*";
-    });
+    type = lib.types.attrsOf (
+      lib.types.submodule {
+        config.initialHashedPassword = lib.mkOverride 1100 "*";
+      }
+    );
   };
   config = lib.mkIf pkgs.stdenv.hostPlatform.isOpenBSD {
     # pwd_mkdb validates root's shell before the rest of /etc is activated.
@@ -61,6 +63,7 @@ in
     '';
     # Activation checks root before mounting it writable. rc must not fsck it again.
     fileSystems."/".noCheck = true;
+    virtualisation.vmVariant.virtualisation.fileSystems."/".noCheck = true;
     # Without a ruleset, rc leaves its temporary outbound block rules active.
     openbsd.rc.conf.pf = lib.mkDefault false;
     system.switch.enable = lib.mkDefault false;
@@ -71,9 +74,7 @@ in
     # dev_mkdb creates dev.db as a file. Only its parent directory is needed here.
     environment.etc."rc".source = lib.mkForce (
       pkgs.writeText "rc" (
-        lib.replaceStrings
-          [ "mkdir -p /var/run/dev.db   # make su work" ]
-          [ "mkdir -p /var/run" ]
+        lib.replaceStrings [ "mkdir -p /var/run/dev.db   # make su work" ] [ "mkdir -p /var/run" ]
           config.environment.etc."rc".text
       )
     );

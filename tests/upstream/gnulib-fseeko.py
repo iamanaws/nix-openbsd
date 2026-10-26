@@ -7,7 +7,7 @@ import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("source", type=Path, help="Unpatched gzip or tar source tree")
-parser.add_argument("--headers", type=Path, required=True, help="OpenBSD 7.9 libc include directory")
+parser.add_argument("--headers", type=Path, required=True, help="OpenBSD libc include directory")
 parser.add_argument("--cc", default="clang", help="Host-runnable Clang executable")
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[2]

@@ -7,6 +7,49 @@ fi
 
 build_args=(--max-jobs 1 --cores "$NATIVE_BUILD_CORES" --option substitute true --option fallback true)
 
+if [[ ${1:-} == --all ]]; then
+    export NIX_REMOTE=daemon
+    work=$(mktemp -d)
+    trap 'rm -rf "$work"' EXIT
+    "$0" --toolchain
+    "$0" --cxx
+    "$0" --nix
+    recipe_args=(
+        --argstr nixbsdSource "$NATIVE_NIXBSD"
+        --argstr nixPackageSource "$(dirname "$NATIVE_PACKAGES")/native-nix.nix"
+        --argstr environment "$NATIVE_ENVIRONMENT"
+        --argstr packageSetSource "$NATIVE_PACKAGES"
+        --argstr consumerSource "$NATIVE_CONSUMER"
+    )
+    # Keep every compiler output, including development headers, for reuse on the host.
+    for target in toolchainOutputs toolchainChecks cxxChecks nativeNix; do
+        nix-build "$NATIVE_RECIPE" "${recipe_args[@]}" --argstr nonce "$target" \
+            -A "$target" --no-out-link "${build_args[@]}" >> "$work/roots"
+    done
+    native_nix=$(nix-build "$NATIVE_RECIPE" "${recipe_args[@]}" --argstr nonce nativeNix \
+        -A nativeNix --no-out-link "${build_args[@]}")
+    "$native_nix/bin/nix" --extra-experimental-features 'nix-command flakes' \
+        build --accept-flake-config --impure --no-link --print-out-paths \
+        --max-jobs 1 --cores "$NATIVE_BUILD_CORES" --keep-failed -L \
+        "$NATIVE_PROJECT#checks.x86_64-openbsd.packages" \
+        "$NATIVE_PROJECT#checks.x86_64-openbsd.libevent" \
+        "$NATIVE_PROJECT#checks.x86_64-openbsd.cffi-callbacks" \
+        "$NATIVE_PROJECT#checks.x86_64-openbsd.sqlite-utils" \
+        "$NATIVE_PROJECT#native-system" >> "$work/roots"
+    sort -u "$work/roots" -o "$work/roots"
+    cat "$work/roots"
+    if [[ -n ${NATIVE_EXPORT_URL:-} ]]; then
+        curl --noproxy '*' --fail --silent --show-error "$NATIVE_KNOWN_URL" > "$work/known"
+        nix-store --query --requisites $(cat "$work/roots") \
+            | sort -u | grep -Fxv -f "$work/known" > "$work/paths"
+        nix-store --export $(cat "$work/paths") > "$work/outputs.nar"
+        curl --noproxy '*' --fail --silent --show-error \
+            --upload-file "$work/outputs.nar" "$NATIVE_EXPORT_URL"
+    fi
+    echo 'OpenBSD native validation passed'
+    exit
+fi
+
 if [[ ${1:-} == --nix-checks ]]; then
     exec bash "$(dirname "$NATIVE_RECIPE")/nix-checks.sh" "$2" "$0"
 fi

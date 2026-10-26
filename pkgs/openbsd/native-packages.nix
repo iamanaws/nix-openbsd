@@ -145,7 +145,6 @@ import nixpkgs {
                         disallowedRequisites = (attrs.disallowedRequisites or [ ]) ++ [ bootstrap.libunwind ];
                       });
                       libcMinimal = old.libcMinimal.overrideAttrs (attrs: {
-                        patches = (attrs.patches or [ ]) ++ [ ./libc-difftime.patch ];
                         # Nixpkgs rewrites this private guard to "true", which is active in C23.
                         postInstall = (attrs.postInstall or "") + ''
                           substituteInPlace "$dev/include/sys/time.h" \

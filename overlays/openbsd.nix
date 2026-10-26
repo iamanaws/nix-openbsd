@@ -12,36 +12,6 @@ final: prev:
               execl(_PATH_BSHELL, "sh", _PATH_RC, "shutdown", (char *)NULL);'
         '';
       });
-      rc = openbsdPrev.rc.overrideAttrs (old: {
-        postPatch = (old.postPatch or "") + ''
-          # rc.d prints service names without a newline; delimit the early
-          # NixBSD phases just like OpenBSD's other daemon groups.
-          substituteInPlace "$BSDSRCDIR/etc/rc" \
-            --replace-fail 'daemon_phase 10' $'echo -n "starting system services:"\ndaemon_phase 10' \
-            --replace-fail 'daemon_phase 20' $'daemon_phase 20\necho "."' \
-            --replace-fail "echo 'starting network'" "echo -n 'starting network:'" \
-            --replace-fail 'daemon_phase 30' $'daemon_phase 30\necho "."'
-          # vmd is not installed unless its service is configured.
-          substituteInPlace "$BSDSRCDIR/etc/rc" \
-            --replace-fail 'if /etc/rc.d/vmd check > /dev/null; then' \
-              'if [[ -x /etc/rc.d/vmd ]] && /etc/rc.d/vmd check > /dev/null; then'
-          # Networking is configured by NixBSD services. Traditional setup and
-          # recovery tools are only available when explicitly installed.
-          substituteInPlace "$BSDSRCDIR/etc/rc" \
-            --replace-fail 'sh /etc/netstart' '[[ ! -f /etc/netstart ]] || sh /etc/netstart' \
-            --replace-fail 'if [[ ! -f $_isakmpd_key ]]; then' \
-              'if [[ ''${isakmpd_flags:-NO} != NO && ! -f $_isakmpd_key ]]; then' \
-            --replace-fail 'if [[ ! -f $_iked_key ]]; then' \
-              'if [[ ''${iked_flags:-NO} != NO && ! -f $_iked_key ]]; then' \
-            --replace-fail 'if [[ -d /var/crash ]]; then' \
-              'if [[ -d /var/crash ]] && command -v savecore >/dev/null; then' \
-            --replace-fail "echo 'preserving editor files.'; /usr/libexec/vi.recover" \
-              "if [[ -x /usr/libexec/vi.recover ]]; then echo 'preserving editor files.'; /usr/libexec/vi.recover; fi"
-          # The startup timer can exit before the daemon's start hook returns.
-          substituteInPlace "$BSDSRCDIR/etc/rc.d/rc.subr" \
-            --replace-fail 'kill -ALRM ''${_TIMERSUB}' 'kill -ALRM ''${_TIMERSUB} 2>/dev/null'
-        '';
-      });
       init = openbsdPrev.init.overrideAttrs (old: {
         postPatch = (old.postPatch or "") + ''
           # activate-init-native already creates PID 1's session before activation.
@@ -92,9 +62,18 @@ final: prev:
       snmpd_metrics = openbsdFinal.callPackage ../pkgs/openbsd/snmpd_metrics.nix { };
       syslogc = openbsdFinal.callPackage ../pkgs/openbsd/syslogc.nix { };
       syslogd = openbsdPrev.syslogd.overrideAttrs (old: {
-        postPatch = (old.postPatch or "") + ''
+        postPatch = ''
+          sed -i /DPADD/d "$BSDSRCDIR/usr.sbin/syslogd/syslogd/Makefile"
+
+          # NetBSD make otherwise mistakes the source directories for built executables.
+          for program in syslogd syslogd-parent; do
+            echo ".NOPATH: $program" >> "$BSDSRCDIR/usr.sbin/syslogd/$program/Makefile"
+          done
+
+          # The daemon and its privileged parent are both installed in $out/bin.
           substituteInPlace "$BSDSRCDIR/usr.sbin/syslogd/privsep.c" \
-            --replace-fail '"/usr/sbin/syslogd"' "\"$out/bin/syslogd\""
+            --replace-fail '"/sbin/syslogd"' '"/bin/syslogd"' \
+            --replace-fail '"/libexec/syslogd-parent"' '"/bin/syslogd-parent"'
         '';
         meta = (old.meta or { }) // {
           mainProgram = "syslogd";

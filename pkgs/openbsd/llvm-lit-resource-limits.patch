@@ -1,0 +1,40 @@
+Check for RLIMIT_AS before using it in lit tests; OpenBSD does not provide it.
+Keep the file-size, descriptor and stack-limit tests enabled.
+
+--- a/llvm/utils/lit/tests/Inputs/shtest-ulimit/print_limits.py
++++ b/llvm/utils/lit/tests/Inputs/shtest-ulimit/print_limits.py
+@@ -1,6 +1,7 @@
+ import resource
+ 
+-print("RLIMIT_AS=" + str(resource.getrlimit(resource.RLIMIT_AS)[0]))
++if hasattr(resource, "RLIMIT_AS"):
++    print("RLIMIT_AS=" + str(resource.getrlimit(resource.RLIMIT_AS)[0]))
+ print("RLIMIT_NOFILE=" + str(resource.getrlimit(resource.RLIMIT_NOFILE)[0]))
+ print("RLIMIT_STACK=" + str(resource.getrlimit(resource.RLIMIT_STACK)[0]))
+ print("RLIMIT_FSIZE=" + str(resource.getrlimit(resource.RLIMIT_FSIZE)[0]))
+--- a/llvm/utils/lit/tests/lit.cfg
++++ b/llvm/utils/lit/tests/lit.cfg
+@@ -140,3 +140,12 @@
+ config.environment["PATH"] = os.path.pathsep.join(
+     (test_bin, config.environment["PATH"])
+ )
++
++# Some POSIX systems, including OpenBSD, do not provide an address-space limit.
++try:
++    import resource
++except ImportError:
++    pass
++else:
++    if hasattr(resource, "RLIMIT_AS"):
++        config.available_features.add("rlimit-as")
+--- a/llvm/utils/lit/tests/shtest-ulimit-nondarwin.py
++++ b/llvm/utils/lit/tests/shtest-ulimit-nondarwin.py
+@@ -3,6 +3,8 @@
+ # ulimit does not work on non-POSIX platforms.
+ # These tests are specific to options that Darwin does not support.
+ # UNSUPPORTED: system-windows, system-cygwin, system-darwin, system-aix, system-solaris, system-freebsd
++
++# REQUIRES: rlimit-as
+ 
+ # RUN: not %{lit} -v %{inputs}/shtest-ulimit-nondarwin | FileCheck %s
+ 

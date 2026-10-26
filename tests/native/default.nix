@@ -1,6 +1,9 @@
-{ nixbsd }:
+{
+  nixbsd,
+  cores ? 8,
+  memorySize ? 16384,
+}:
 let
-  cores = 8;
   host = nixbsd.inputs.nixpkgs.legacyPackages.x86_64-linux;
   system = nixbsd.nixosConfigurations.openbsd-base.extendModules {
     modules = [
@@ -14,20 +17,33 @@ let
           (_: prev: {
             callPackage =
               path: args:
-              prev.callPackage path (
-                if
-                  builtins.isPath path
-                  && toString path == "${nixbsd.outPath}/lib/make-disk-image.nix"
-                  && (args.partitionTableType or null) == "bsd"
-                then
-                  args
-                  // {
-                    # This builder reads the store partition; skip its unused temporary copy.
-                    partitions = map (part: part // { tooLargeIntermediate = false; }) args.partitions;
-                  }
-                else
-                  args
-              );
+              let
+                result = prev.callPackage path (
+                  if
+                    builtins.isPath path
+                    && toString path == "${nixbsd.outPath}/lib/make-disk-image.nix"
+                    && (args.partitionTableType or null) == "bsd"
+                  then
+                    args
+                    // {
+                      # This builder reads the store partition; skip its unused temporary copy.
+                      partitions = map (part: part // { tooLargeIntermediate = false; }) args.partitions;
+                    }
+                  else
+                    args
+                );
+              in
+              if
+                builtins.isPath path
+                && toString path == "${nixbsd.outPath}/lib/make-partition-image.nix"
+                && (args.filesystem or null) == "ufs"
+              then
+                result.overrideAttrs (old: {
+                  # Keep unused filesystem space sparse, as in the native VM image.
+                  buildCommand = builtins.replaceStrings [ "/bin/makefs " ] [ "/bin/makefs -Z " ] old.buildCommand;
+                })
+              else
+                result;
           })
         ];
         networking.hostName = lib.mkForce "native-packages";
@@ -36,7 +52,6 @@ let
         # GENERIC only uses one CPU, even when QEMU exposes more.
         boot.kernel.package = lib.mkForce (pkgs.openbsd.sys.override { baseConfig = "GENERIC.MP"; });
         environment.systemPackages = [ guestLauncher ];
-        system.extraDependencies = [ environment ];
         # OpenBSD libc loads UTF-8 character data from this fixed path.
         system.activationScripts.openbsdLocales = ''
           mkdir -p /usr/share/locale
@@ -53,8 +68,7 @@ let
           trusted-public-keys = [ "nix-openbsd.cachix.org-1:IbN25q8l3NyIq8L16AWaJ1MNTxZRiYdzO5eYFQv1J+4=" ];
         };
         virtualisation.vmVariant.virtualisation = {
-          memorySize = 16384;
-          inherit cores;
+          inherit cores memorySize;
           # Leave room for LLVM sources, native outputs and large-file tests.
           rootSize = "64g";
         };
@@ -70,6 +84,7 @@ let
     mkDerivation = attrs: attrs;
   };
   source = (pkgs.openbsd.callPackage ../../pkgs/openbsd/libagentx.nix { }).src;
+  projectSource = host.nix-gitignore.gitignoreSource [ ] ../..;
   # openbsd.makeMinimal uses buildPackages; this make must run in the guest.
   make = (pkgs.netbsd.makeMinimal.override { make-rules = pkgs.openbsd.make-rules; }).overrideAttrs {
     # Configure otherwise embeds the Linux sh found in the build environment.
@@ -78,7 +93,7 @@ let
   environment = host.writeText "openbsd-native-environment.json" (
     builtins.toJSON {
       nixpkgs = nixbsd.inputs.nixpkgs.outPath;
-      # Preload sources so builds can also run without internet access.
+      # Import sources with the recipes so guest builds can run without internet access.
       sources =
         map (p: p.src.outPath) [
           host.hello
@@ -210,9 +225,10 @@ let
     export NATIVE_NIXBSD=${nixbsd.outPath}
     export NATIVE_BUILD_CORES=${toString cores}
     export NATIVE_ENVIRONMENT=${environment}
-    export NATIVE_RECIPE=${./.}/package.nix
-    export NATIVE_PACKAGES=${../../pkgs/openbsd}/native-packages.nix
-    export NATIVE_CONSUMER=${./consumer.c}
+    export NATIVE_RECIPE=${projectSource}/tests/native/package.nix
+    export NATIVE_PACKAGES=${projectSource}/pkgs/openbsd/native-packages.nix
+    export NATIVE_CONSUMER=${projectSource}/tests/native/consumer.c
+    export NATIVE_PROJECT=${projectSource}
     ${builtins.readFile ./test.sh}
   '';
   vm = system.config.system.build.vm;

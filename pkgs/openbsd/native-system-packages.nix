@@ -14,6 +14,14 @@ import base.path {
         )) (import ../../overlays/nixbsd.nix) final prev;
       in
       {
+        llvmPackages_22 =
+          (import ./native-toolchain.nix {
+            pkgs = prev;
+            python3 = base.nativeTestPython;
+            llvmPackages = prev.llvmPackages_22;
+            # This package set has no bootstrap stages; use its native build tools.
+            tools = prev;
+          }).packages;
         # Keep the tested native libraries; reuse NixBSD's boot and login fixes.
         openssh = integration.openssh.overrideAttrs (old: {
           # Disabled regression tests still pull in libredirect, which needs sys/xattr.h.
@@ -31,19 +39,12 @@ import base.path {
                 platforms = prev.lib.platforms.openbsd;
               };
             });
-            sys =
-              (openbsdPrev.sys.override {
-                # Keep our tested compiler when the upstream recipe changes its LLVM pin.
-                overrideCC = stdenv: _: final.overrideCC stdenv (final.mkStdenvNoLibs final.stdenv).cc;
-              }).overrideAttrs
-                (old: {
-                  # The kernel needs OpenBSD's linker features, provided by our native LLD.
-                  preBuild = old.preBuild + ''
-                    ln -sf ${final.stdenv.cc.bintools.bintools}/bin/ld.lld "$TMP/bin/ld"
-                  '';
-                  # OpenBSD's upstream fixes for newer Clang diagnostics and sensor writes.
-                  patches = (old.patches or [ ]) ++ [ ./kernel-clang.patch ];
-                });
+            sys = openbsdPrev.sys.overrideAttrs (old: {
+              # The kernel needs OpenBSD's linker features, provided by our native LLD.
+              preBuild = old.preBuild + ''
+                ln -sf ${final.stdenv.cc.bintools.bintools}/bin/ld.lld "$TMP/bin/ld"
+              '';
+            });
           }
         );
         netbsd = prev.netbsd.overrideScope (
@@ -73,6 +74,13 @@ import base.path {
               --replace-fail 'TZ=Etc/GMT+7' 'TZ=GMT7'
           '';
         };
+        tmux = prev.tmux.overrideAttrs (old: {
+          postPatch = (old.postPatch or "") + ''
+            # OpenBSD 8.0 removed imsg_get; detect it before using the system imsg API.
+            substituteInPlace configure.ac \
+              --replace-fail 'AC_SEARCH_LIBS(imsg_add, util,' 'AC_SEARCH_LIBS(imsg_get, util,'
+          '';
+        });
         python3 =
           (prev.python3Minimal.override {
             self = final.python3;

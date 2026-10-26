@@ -1,14 +1,36 @@
-# Next steps and NixBSD integration
+# Roadmap
 
 The focus is native package builds and usable native systems. The cross-built
 demo remains a reference. OpenBSD integration fixes stay in this project until
 FreeBSD and OpenBSD compatibility has been tested for upstream changes.
 
-- Expand native package coverage and regression tests.
-- Extend live updates to more services and networking changes.
-- Extend network tests for IPv6, firewall policies, routing and VPNs.
-- Investigate build isolation on OpenBSD.
-- Upstream validated package fixes to Nixpkgs and system support to NixBSD.
+## Next features
+
+| Order | Work | Validation |
+| --- | --- | --- |
+| 1 | Live updates for NTP, then DNS and logging. | Configuration checks, service start/stop, failed-update recovery and rollback in the native VM. |
+| 2 | Native Go support, then a Go application built through Nix. | Regular-user daemon builds, upstream tests and a cgo consumer using the existing C toolchain. |
+| 3 | Broader network coverage. | IPv6 forwarding, PF policies, routing and VPN recovery across service restarts and reboots. |
+| 4 | Build isolation. | Investigate restrictions on filesystem and network access while preserving working native builds. |
+
+Package and toolchain cleanup is tracked in [upstream work](upstream.md).
+
+## OpenBSD 8.0
+
+[OpenBSD 8.0](https://www.openbsd.org/80.html) was released on October 20, 2026.
+The [validated baseline](status.md) is OpenBSD 8.0.
+
+The project uses the 8.0 release sources. The `difftime`
+and kernel Clang backports have been removed. The private semaphore fix remains.
+Native packages, the toolchain and system workflows pass VM validation.
+
+- Check the 7.9-to-8.0 upgrade path separately, following the
+  [upgrade notes](https://www.openbsd.org/faq/upgrade80.html) and
+  [errata](https://www.openbsd.org/errata80.html).
+- Publish the validated closures to Cachix and update pins after testing.
+
+The kernel uses LLVM 22.1.8; userland stays on LLVM 21.1.8.
+Build frozen snapshots so development can continue independently.
 
 ## Live configuration switching
 

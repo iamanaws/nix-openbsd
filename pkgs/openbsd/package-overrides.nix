@@ -19,6 +19,13 @@ final: prev: {
   );
   openbsd = prev.openbsd.overrideScope (
     _: old: {
+      inherit (final.callPackage ./source.nix { }) source version;
+      libcMinimal = old.libcMinimal.overrideAttrs (attrs: {
+        patches = map (
+          patch:
+          if prev.lib.hasSuffix "-skip-tags.patch" (toString patch) then ./libc-no-tags.patch else patch
+        ) attrs.patches;
+      });
       librthread = old.librthread.overrideAttrs (attrs: {
         patches = (attrs.patches or [ ]) ++ [ ./librthread-private-semaphores.patch ];
       });

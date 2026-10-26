@@ -233,6 +233,11 @@ in
     pkgs
     toolchain
     ;
+  toolchainOutputs = lib.concatMap (package: map (output: package.${output}) package.outputs) [
+    toolchain.llvm
+    toolchain.clang
+    toolchain.lld
+  ];
   nativeNix = import nixPackageSource {
     inherit pkgs;
     nixbsdSource = store nixbsdSource;
@@ -262,6 +267,7 @@ in
       toolchain
       ;
     compiler-rt = stdenv.openbsdBootstrap.compiler-rt;
+    python3 = testPython;
   };
   cxxChecks = import ./cxx-checks.nix {
     libcxx = stdenv.cc.libcxx;
@@ -279,6 +285,7 @@ in
       dontUnpack = true;
       dontConfigure = true;
       buildInputs = [ library ];
+      env.NIX_CFLAGS_COMPILE = ''-DOPENBSD_RELEASE="${pkgs.openbsd.version}"'';
       buildPhase = ''
         runHook preBuild
         "$CC" -Wall -Wextra -Werror ${store consumerSource} -lagentx -o agentx-shared
