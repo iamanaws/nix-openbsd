@@ -95,7 +95,7 @@ in
 
     init.services.cron = {
       description = "OpenBSD cron daemon";
-      dependencies = [ "FILESYSTEMS" ];
+      dependencies = [ "FILESYSTEMS" ] ++ lib.optional (config.services.smtpd.enable or false) "smtpd";
       before = [ "SERVERS" ];
       startType = "forking";
       path = [ pkgs.coreutils ];

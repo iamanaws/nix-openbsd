@@ -42,6 +42,12 @@ let
       check = "${config.services.ntpd.package}/bin/ntpd -n -f \"$target/etc/ntpd.conf\"";
     };
   }
+  // lib.optionalAttrs (config.services.smtpd.enable or false) {
+    smtpd = {
+      files = [ "mail/smtpd.conf" "mail/aliases" ];
+      check = "${config.services.smtpd.package}/bin/smtpd -n -f \"$target/etc/mail/smtpd.conf\"";
+    };
+  }
   // lib.optionalAttrs (config.services.syslogd.enable or false) {
     syslogd = {
       files = [ "syslog.conf" ];

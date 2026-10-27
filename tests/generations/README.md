@@ -23,6 +23,7 @@ nix run .#test -- --suite dns
 nix run .#test -- --suite dns --live-only
 nix run .#test -- --suite logging
 nix run .#test -- --suite doas
+nix run .#test -- --suite mail
 ```
 
 The runner builds and transfers the fixtures automatically. See the
@@ -41,6 +42,11 @@ rules have a pre-activation syntax check; OpenBSD syslogd provides none.
 
 Doas checks cover password authentication, command and argument restrictions,
 environment handling, live rule updates and rollback. The test VM disables sudo.
+
+Mail checks cover regular-user submission, aliases, mbox permissions, cron output
+from a locked service account, offline submission, queued delivery across reboot,
+failed-update recovery, stopped services and rollback. They use local delivery
+through the Unix socket and check that port 25 has no listener.
 
 Local failure tests need Bash, jq, GNU coreutils and Python:
 

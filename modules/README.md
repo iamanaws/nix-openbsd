@@ -10,13 +10,15 @@ the [configuration template](../templates/native-system). It supplies the native
 packages, service options and generation manager; choose services in your module.
 
 [Service modules](services) cover HTTP, DHCP, DNS, NTP, PF, routing, VPNs,
-logging, SNMP and sensors. [ACME renewal](security/acme-client.nix) uses cron.
+logging, local mail, SNMP and sensors. [ACME renewal](security/acme-client.nix) uses cron.
 The modules declare options, service users and runtime directories. They
 check configuration before startup where the daemon supports it.
 Use each daemon's OpenBSD configuration format.
 
 Native systems also provide `security.doas`, reusing the NixOS module with
 OpenBSD's BSD authentication. See [administrative commands](../docs/configuration.md#administrative-commands).
+Native systems enable local mail through `services.smtpd`; see
+[local mail](../docs/configuration.md#local-mail) for aliases and delivery.
 
 The flake and tests import [OpenBSD integration fixes](system/openbsd.nix)
 for PF defaults, DHCP process matching, MTU and IPv6 default routes. This module

@@ -32,6 +32,10 @@ runtime checks on those hosts remain pending. See [VM hosts](vm.md#hosts).
   services, failed-update recovery and rollback across reboots.
 - Native doas: password authentication, command restrictions, environment handling,
   configuration checks, live rule updates and rollback across reboots.
+- Local mail: regular-user submission, aliases, mailbox permissions, service-account
+  cron output, offline queuing, failed-update recovery and delivery across reboot.
+  The five mail generation phases passed on 2026-10-27, including garbage collection
+  and boot-console recovery.
 - System generations: live updates, rollback, failed-update recovery,
   garbage collection and boot-console recovery.
 
@@ -70,6 +74,8 @@ These counts come from the recorded VM runs. A cached test run can reuse their o
 Builds use separate users without sandboxing. Full upstream Nix suites have
 not been run; BLAKE3 uses its non-TBB implementation. Native package coverage
 is still experimental. The cross-built reference demo is a separate target.
+Mail tests cover local delivery through the Unix socket. Custom TCP listeners,
+outbound relaying, TLS and filters have not been validated.
 
 OpenBSD provides C-locale formatting and UTF-8 character conversion. Tests
 requiring regional locales or the absent `quick_exit` API report unsupported.

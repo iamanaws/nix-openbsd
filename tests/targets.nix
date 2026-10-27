@@ -22,6 +22,7 @@ in
     dns = (import ./generations/dns-fixtures.nix { inherit flake; }).all;
     logging = (import ./generations/logging-fixtures.nix { inherit flake; }).all;
     doas = (import ./generations/doas-fixtures.nix { inherit flake; }).all;
+    mail = (import ./generations/mail-fixtures.nix { inherit flake; }).all;
     cron-fallback =
       (import ./generations/fixtures.nix {
         inherit flake;

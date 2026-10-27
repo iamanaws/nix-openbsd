@@ -68,6 +68,7 @@
         ];
         nix.package = lib.mkDefault nativeNix;
         security.doas.enable = lib.mkDefault true;
+        services.smtpd.enable = lib.mkDefault true;
         nixpkgs.pkgs = nativeSystemPackages;
         nixpkgs.overlays = lib.mkForce [ ];
         nixpkgs.buildPlatform = lib.mkForce "x86_64-openbsd";
@@ -153,6 +154,7 @@
                 /var/log/authlog	root:wheel	640  7     *    168   Z
                 /var/log/daemon			640  5     300  *     Z
                 /var/log/messages			644  5     300  *     Z
+                /var/log/maillog	root:wheel	640  7     *    24    Z
                 /var/log/secure			600  7     *    168   Z
               '';
             };
@@ -166,6 +168,7 @@
                 authpriv.debug					/var/log/secure
                 cron.info						/var/cron/log
                 daemon.info						/var/log/daemon
+                mail.info						/var/log/maillog
               '';
             };
 
@@ -362,6 +365,7 @@
               python3
               ;
             git = nativeSystemPackages.gitMinimal;
+            smtpd = nativeSystemPackages.openbsd.smtpd;
             python-cffi = nativeSystemPackages.python3.withPackages (ps: [
               ps.cffi
               ps.setuptools
@@ -408,6 +412,7 @@
               ripctl
               ripd
               sensorsd
+              smtpd
               snmp
               snmp_mibs
               snmpd

@@ -35,6 +35,7 @@ def main():
     fixtures.add_argument('--dns-fixtures', type=Path, help='DNS configuration and failure fixtures')
     fixtures.add_argument('--logging-fixtures', type=Path, help='Logging configuration and failure fixtures')
     fixtures.add_argument('--doas-fixtures', type=Path, help='Privilege management and failure fixtures')
+    fixtures.add_argument('--mail-fixtures', type=Path, help='Local mail and failure fixtures')
     parser.add_argument('--live-only', action='store_true', help='test only installation and live updates')
     parser.add_argument('--timeout', type=int, default=600, help='seconds allowed for each guest operation')
     parser.add_argument('--personal-system', type=Path, help='also boot the native configuration template')
@@ -48,7 +49,7 @@ def main():
         parser.error('--timeout must be positive')
     if args.vm_state and args.recovery_state:
         parser.error('--vm-state and --recovery-state cannot be combined')
-    if args.live_only and (not (args.live_fixtures or args.dns_fixtures or args.logging_fixtures or args.doas_fixtures) or args.personal_system or args.recovery_state):
+    if args.live_only and (not (args.live_fixtures or args.dns_fixtures or args.logging_fixtures or args.doas_fixtures or args.mail_fixtures) or args.personal_system or args.recovery_state):
         parser.error('--live-only requires service fixtures and excludes personal/recovery tests')
     args.launcher = args.launcher.resolve(strict=True)
     for name in ('base_system', 'system_a', 'system_b'):
@@ -61,6 +62,8 @@ def main():
         args.logging_fixtures = args.logging_fixtures.resolve(strict=True)
     if args.doas_fixtures:
         args.doas_fixtures = args.doas_fixtures.resolve(strict=True)
+    if args.mail_fixtures:
+        args.mail_fixtures = args.mail_fixtures.resolve(strict=True)
     if args.personal_system:
         args.personal_system = args.personal_system.resolve(strict=True)
     if args.recovery_state:
@@ -82,6 +85,8 @@ def main():
         needed |= closure(str(args.logging_fixtures))
     if args.doas_fixtures:
         needed |= closure(str(args.doas_fixtures))
+    if args.mail_fixtures:
+        needed |= closure(str(args.mail_fixtures))
     if args.personal_system:
         needed |= closure(str(args.personal_system))
         source = 'path:' + str(args.source.resolve(strict=True))
@@ -115,6 +120,7 @@ rm /tmp/generation-systems.nar
 /etc/rc.d/cron stop
 rm -rf /var/lib/cron-test /var/lib/directory-test
 {('rm -f /var/log/logging-* /root/logging-persistence' if args.logging_fixtures else '')}
+{('rm -f /var/mail/bestie /var/mail/mail-test /root/mail-persistence /root/mail-queued' if args.mail_fixtures else '')}
 {a}/bin/switch-to-configuration boot
 test "$(readlink -f /run/current-system)" = {shlex.quote(args.base_system)}
 touch /root/generation-persistence
@@ -333,6 +339,20 @@ python3 -B /tmp/doas-check.py {phase} {a} {b} {doas_tools}{fixtures}
             phases[phase] += '\n' + doas_probe('b' if phase == 'b' else 'a')
         if args.live_only:
             phases = {'install': phases['install'], 'a': doas_probe('live')}
+    if args.mail_fixtures:
+        shutil.copyfile(Path(__file__).with_name('mail-check.py'), payload / 'mail-check.py')
+
+        def mail_probe(phase):
+            fixtures = ' ' + shlex.quote(str(args.mail_fixtures)) if phase == 'live' else ''
+            return f'''{fetch} {url}/mail-check.py -o /tmp/mail-check.py
+python3 -B /tmp/mail-check.py {phase} {a} {b}{fixtures}
+'''
+
+        phases['a'] = mail_probe('live') + phases['a']
+        for phase in ['b', 'rollback', 'recovery']:
+            phases[phase] += '\n' + mail_probe('b' if phase == 'b' else 'a')
+        if args.live_only:
+            phases = {'install': phases['install'], 'a': mail_probe('live')}
     if args.recovery_state:
         phases = {'recovery': phases['recovery']}
     if args.personal_system:

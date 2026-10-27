@@ -53,7 +53,7 @@ All actions except `build` require root.
 | `switch` | Apply changes and select them for future boots. |
 | `boot` | Select the next boot configuration without changing the running system. |
 
-Packages, HTTP, relayd, DNS, NTP, logging and cron schedules support live updates.
+Packages, HTTP, relayd, DNS, NTP, logging, local mail and cron schedules support live updates.
 `resolvd` watches atomic updates to `resolv.conf`; it has no syntax checker.
 `unwind` checks its configuration before reloading. NTP checks before restarting.
 Cron validates and reloads schedules without restarting or rerunning `@reboot` jobs.
@@ -109,6 +109,38 @@ security.doas.extraRules = [
 Rules are checked when building and before live activation. Rule changes support
 live updates and rollback. Enabling or disabling the setuid wrapper requires a
 reboot. Set `security.sudo.enable = false` if you only want `doas`.
+
+## Local mail
+
+Native systems enable OpenBSD's `smtpd` for local submission and delivery to
+`/var/mail/USER`. The default opens a Unix socket and has no TCP listener or
+outbound relay. Cron sends job output through the wrapped `sendmail` command;
+set `MAILTO` in `services.cron.systemCronJobs` to choose the recipient.
+
+Route administrative mail to an existing account with aliases:
+
+```nix
+services.smtpd.aliases = ''
+  root: alice
+  postmaster: root
+  MAILER-DAEMON: postmaster
+'';
+```
+
+Submit mail with `sendmail alice` or `sendmail -t` and read the user's mbox at
+`/var/mail/alice`. `smtpctl show queue` inspects pending delivery as root.
+Submission by regular users also queues mail while smtpd is stopped.
+OpenSMTPD returns `EX_TEMPFAIL` (75) after offline queuing and processes the
+message when the daemon starts again.
+
+Aliases use a text table in the Nix store, so changes need no `newaliases`
+command. The default configuration references that generation's table directly.
+Use `services.smtpd.config` for a custom smtpd.conf; reference
+`/etc/mail/aliases` explicitly if the custom rules need the declared aliases.
+Configuration and alias changes restart smtpd during live updates. Queues and
+mailboxes persist across updates and rollback; rollback does not undo delivered
+mail. Enabling or disabling the privileged wrappers requires a reboot.
+Periodic daily, weekly and monthly maintenance jobs are not enabled yet.
 
 ## Rollback
 

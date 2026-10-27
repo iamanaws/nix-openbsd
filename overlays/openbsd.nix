@@ -43,6 +43,8 @@ final: prev:
       libagentx = openbsdFinal.callPackage ../pkgs/openbsd/libagentx.nix { };
       libedit = openbsdFinal.callPackage ../pkgs/openbsd/libedit.nix { };
       libkeynote = openbsdFinal.callPackage ../pkgs/openbsd/libkeynote.nix { };
+      lockspool = openbsdFinal.callPackage ../pkgs/openbsd/lockspool.nix { };
+      mail-local = openbsdFinal.callPackage ../pkgs/openbsd/mail-local.nix { };
       libpcap = openbsdFinal.callPackage ../pkgs/openbsd/libpcap.nix { };
       libradius = openbsdFinal.callPackage ../pkgs/openbsd/libradius.nix { };
       netstat = openbsdFinal.callPackage ../pkgs/openbsd/netstat.nix { };
@@ -59,6 +61,7 @@ final: prev:
       ripctl = openbsdFinal.callPackage ../pkgs/openbsd/ripctl.nix { };
       ripd = openbsdFinal.callPackage ../pkgs/openbsd/ripd.nix { };
       sensorsd = openbsdFinal.callPackage ../pkgs/openbsd/sensorsd.nix { };
+      smtpd = openbsdFinal.callPackage ../pkgs/openbsd/smtpd.nix { };
       snmp = openbsdFinal.callPackage ../pkgs/openbsd/snmp.nix { };
       snmp_mibs = openbsdFinal.callPackage ../pkgs/openbsd/snmp_mibs.nix { };
       snmpd = openbsdFinal.callPackage ../pkgs/openbsd/snmpd.nix { };

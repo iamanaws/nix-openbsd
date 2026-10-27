@@ -19,6 +19,7 @@
     ../services/resolvd.nix
     ../services/ripd.nix
     ../services/sensorsd.nix
+    ../services/smtpd.nix
     ../services/snmpd.nix
     ../services/syslogd.nix
     ../services/unwind.nix
