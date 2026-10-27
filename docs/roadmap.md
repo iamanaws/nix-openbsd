@@ -31,6 +31,22 @@ Native packages, the toolchain and system workflows pass VM validation.
 The kernel uses LLVM 22.1.8; userland stays on LLVM 21.1.8.
 Build frozen snapshots so development can continue independently.
 
+## VM hosts
+
+Run the cached amd64 guest on additional hosts before adding another OpenBSD
+architecture. Host launchers and Linux image builders are separate from the
+shared guest package set, preserving the existing bootstrap and native cache.
+See [host requirements](vm.md#hosts). Validate boot, networking, cached package
+commands and persistent state on ARM Linux and Apple Silicon macOS hardware.
+
+## arm64 OpenBSD (later)
+
+Defer this until the amd64 system and host launchers are stable. OpenBSD's arm64
+port needs a separate bootstrap, native stdenv, AArch64 LLVM, Nix, kernel and EFI
+loader in this project. Validate package builds, services, updates and rollback
+before publishing an arm64 release and cache pins. Sources can be shared with
+amd64; compiled outputs need their own builds. Preserve the amd64 release.
+
 ## Live configuration switching
 
 The native system uses a [local generation manager](../modules/system/generations.nix).

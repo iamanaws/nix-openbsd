@@ -16,6 +16,9 @@ On x86_64 Linux with KVM and Nix flakes enabled:
 nix run github:iamanaws/nix-openbsd#native-vm
 ```
 
+Experimental launchers for ARM Linux and Apple Silicon macOS run the same
+amd64 guest. See [host requirements](docs/vm.md#hosts).
+
 For a validated baseline, use a [tagged release](docs/vm.md#releases).
 
 Accept and remember the cache settings when prompted. Log in as `bestie`

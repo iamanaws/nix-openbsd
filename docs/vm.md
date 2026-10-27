@@ -1,9 +1,24 @@
 # Run the native VM
 
-Start with the [quick start](../README.md#quick-start). The launcher runs on
-x86_64 Linux with KVM and assembles the image from cached packages.
+Start with the [quick start](../README.md#quick-start). The launcher runs an
+amd64 OpenBSD guest and assembles its image from cached packages.
 The first package build inside the guest also fetches sources and build inputs,
 which can take a few minutes.
+
+## Hosts
+
+| Host | Execution | Status |
+| --- | --- | --- |
+| x86-64 Linux | KVM when accessible; otherwise TCG emulation. | Boot, services and cache checks passed with both. |
+| ARM64 Linux | TCG emulation of the amd64 guest. | Experimental; evaluation checked, host testing pending. |
+| Apple Silicon macOS | TCG emulation of the amd64 guest. | Experimental; evaluation checked, host testing pending. |
+
+All hosts use the same cached amd64 OpenBSD packages. Emulated builds are slower.
+Native arm64 OpenBSD is [later work](roadmap.md#arm64-openbsd-later).
+
+Image assembly runs on Linux. ARM Linux assembles locally; Apple Silicon macOS
+needs an `aarch64-linux` Nix builder, such as nix-darwin's Linux builder.
+The macOS launcher and QEMU run on macOS. Images remain outside the binary cache.
 
 ## Releases
 
@@ -15,13 +30,13 @@ nix run github:iamanaws/nix-openbsd/openbsd-8.0#native-vm
 ```
 
 Use the same tag in package references to stay on this release.
-New OpenBSD versions receive their own tags after validation. Published tags
-remain fixed; this guide will point to the latest validated release.
+New OpenBSD versions receive their own tags after validation. This guide will
+point to the latest validated release.
 
 ## Access and shutdown
 
 Both `bestie` and `root` use password `toor`. These are public test accounts.
-From the Linux host, connect over SSH with:
+From the host, connect over SSH with:
 
 ```sh
 ssh -p 2222 bestie@127.0.0.1
@@ -56,10 +71,12 @@ one package at a time.
 | `NIX_VM_HTTP_PORT` | `8080` |
 | `NIX_VM_SSH_PORT` | `2222` |
 | `NIX_VM_STATE_DIR` | `openbsd-native-vm/` |
+| `NIX_VM_ACCEL` | `auto`: KVM on compatible Linux hosts, otherwise TCG |
 | `NIX_VM_DISK_READ_BPS` | 40 MiB/s, expressed in bytes/s |
 | `NIX_VM_DISK_WRITE_BPS` | 20 MiB/s, expressed in bytes/s |
 
 Disk limits apply to the running VM. Image builds run through the host Nix daemon.
+Set `NIX_VM_ACCEL=tcg` to test software emulation on x86-64 Linux.
 
 ## Persistent state
 

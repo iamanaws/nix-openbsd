@@ -3,11 +3,21 @@
   nixbsdSource,
   nativeSystem,
   hostPkgs,
+  pkgs ? cross.buildPackages,
 }:
 let
-  pkgs = cross.buildPackages;
   inherit (pkgs) lib;
   source = nixbsdSource;
+  # Other image builders fetch the same amd64 boot inputs without Linux build dependencies.
+  guestInput =
+    package:
+    if pkgs.stdenv.hostPlatform.system == cross.buildPackages.stdenv.hostPlatform.system then
+      package
+    else
+      let
+        path = builtins.unsafeDiscardStringContext package.outPath;
+      in
+      builtins.appendContext path { "${path}".path = true; };
   # Linux assembles an already-built native closure, fetched from the cache.
   path = builtins.unsafeDiscardStringContext nativeSystem.outPath;
   system = builtins.appendContext path {
@@ -35,7 +45,9 @@ let
     install -m 600 /dev/null $out/var/db/host.random
     ${pkgs.python3}/bin/python3 ${./seed.py} reserve $out/etc/random.seed
   '';
-  devices = cross.openbsd.callPackage (source + "/lib/openbsd-makedev-mtree.nix") { };
+  devices = guestInput (cross.openbsd.callPackage (source + "/lib/openbsd-makedev-mtree.nix") { });
+  bootloader = guestInput cross.openbsd.stand;
+  makedev = guestInput cross.openbsd.makedev;
   boot = pkgs.runCommand "native-system-boot" { } ''
     mkdir -p $out/nixos
     cat > $out/nixos/default.conf <<CONF
@@ -47,7 +59,7 @@ let
   '';
   esp = pkgs.runCommand "native-system-esp" { } ''
     mkdir -p $out/efi/boot
-    cp ${cross.openbsd.stand}/bin/BOOTX64.EFI $out/efi/boot/BOOTX64.EFI
+    cp ${bootloader}/bin/BOOTX64.EFI $out/efi/boot/BOOTX64.EFI
   '';
   rootPartition = import (source + "/lib/make-partition-image.nix") {
     inherit pkgs lib;
@@ -69,7 +81,7 @@ let
       }
       {
         target = "/dev/MAKEDEV";
-        source = lib.getExe cross.openbsd.makedev;
+        source = "${makedev}/bin/MAKEDEV";
       }
     ];
     extraMtree = "${devices}/mtree";
@@ -124,52 +136,7 @@ let
       filename = "openbsd-native.qcow2";
     };
   });
-  launcher = pkgs.writeShellApplication {
-    name = "run-openbsd-native-vm";
-    runtimeInputs = [
-      hostPkgs.qemu_kvm
-      hostPkgs.nix.nix-cli
-      pkgs.coreutils
-    ];
-    text = ''
-      state="''${NIX_VM_STATE_DIR:-openbsd-native-vm}"
-      mkdir -p "$state"
-      state=$(realpath "$state")
-      if [ ! -e "$state/disk.qcow2" ]; then
-        nix-store --add-root "$state/base-image" --realise ${image} >/dev/null
-        # Never boot the shared template seed. Write host entropy into the
-        # private overlay before making the new disk available to QEMU.
-        seed=$(mktemp "$state/.random-seed.XXXXXX")
-        trap 'rm -f "$seed" "$state/disk.qcow2.tmp"' EXIT
-        dd if=/dev/urandom of="$seed" bs=512 count=1 status=none
-        qemu-img create -f qcow2 -F qcow2 -b ${image}/${image.filename} "$state/disk.qcow2.tmp"
-        (cd "$state"; qemu-io -f qcow2 \
-          -c "write -q -s ''${seed##*/} $(cat ${image}/random-seed-offset) 512" disk.qcow2.tmp)
-        mv "$state/disk.qcow2.tmp" "$state/disk.qcow2"
-        rm "$seed"
-        trap - EXIT
-      elif [ "$(readlink -f "$state/base-image")" != "${image}" ]; then
-        echo "Using existing VM disk in $state, created from an older image." >&2
-        echo "Update the guest, or set NIX_VM_STATE_DIR to a new directory for a fresh VM." >&2
-      fi
-      if [ ! -e "$state/efi.fd" ]; then
-        cp ${pkgs.OVMF.fd}/FV/OVMF_VARS.fd "$state/efi.fd"
-        chmod u+w "$state/efi.fd"
-      fi
-      # Host CPU passthrough caused illegal instructions during native Nix cache downloads.
-      exec qemu-system-x86_64 -enable-kvm \
-        -name openbsd-native -m "''${NIX_VM_MEMORY:-4096}" -smp "''${NIX_VM_CORES:-2}" \
-        -device virtio-rng-pci \
-        -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:''${NIX_VM_HTTP_PORT:-8080}-:80,hostfwd=tcp:127.0.0.1:''${NIX_VM_SSH_PORT:-2222}-:22" \
-        -device virtio-net-pci,netdev=net0 \
-        -drive "file=$state/disk.qcow2,format=qcow2,if=none,id=root,cache=none,bps_rd=''${NIX_VM_DISK_READ_BPS:-41943040},bps_wr=''${NIX_VM_DISK_WRITE_BPS:-20971520}" \
-        -device virtio-blk-pci,drive=root,bootindex=1 \
-        -drive if=pflash,format=raw,unit=0,readonly=on,file=${pkgs.OVMF.fd}/FV/OVMF_CODE.fd \
-        -drive "if=pflash,format=raw,unit=1,file=$state/efi.fd" \
-        -nographic "$@"
-    '';
-  };
 in
 {
-  inherit image launcher;
+  inherit image;
 }

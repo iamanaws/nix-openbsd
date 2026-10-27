@@ -16,8 +16,15 @@
   outputs =
     { self, nixbsd, ... }:
     let
+      # Keep seed producers fixed so VM hosts share the same native guest closure.
       system = "x86_64-linux";
       inherit (nixbsd.inputs.nixpkgs) lib;
+      hostSystems = [
+        system
+        "aarch64-linux"
+        "aarch64-darwin"
+      ];
+      forAllHosts = lib.genAttrs hostSystems;
 
       seedMetadata = import ./pkgs/openbsd/native-bootstrap.nix { pkgs = openbsdBase.pkgs; };
       # Match the VM's seed references: store outputs, without Linux build derivations.
@@ -75,12 +82,48 @@
         modules = [ nativeModule ];
       };
 
-      nativeVM = import ./vm/native.nix {
-        cross = openbsdWebserver.pkgs;
-        hostPkgs = openbsdWebserver.config.virtualisation.vmVariant.virtualisation.host.pkgs;
-        nixbsdSource = nixbsd.outPath;
-        nativeSystem = openbsdNative.config.system.build.toplevel;
-      };
+      hostPackages = forAllHosts (
+        hostSystem:
+        if hostSystem == system then
+          openbsdWebserver.config.virtualisation.vmVariant.virtualisation.host.pkgs
+        else if hostSystem == "aarch64-linux" then
+          import nixbsd.inputs.nixpkgs {
+            system = hostSystem;
+            inherit (openbsdBase.pkgs) overlays;
+          }
+        else
+          nixbsd.inputs.nixpkgs.legacyPackages.${hostSystem}
+      );
+      nativeImages = lib.genAttrs [ system "aarch64-linux" ] (
+        imageSystem:
+        (import ./vm/native.nix {
+          cross = openbsdWebserver.pkgs;
+          hostPkgs = hostPackages.${imageSystem};
+          pkgs =
+            if imageSystem == system then openbsdWebserver.pkgs.buildPackages else hostPackages.${imageSystem};
+          nixbsdSource = nixbsd.outPath;
+          nativeSystem = openbsdNative.config.system.build.toplevel;
+        }).image
+      );
+      nativeVMs = forAllHosts (
+        hostSystem:
+        let
+          # macOS uses its matching Linux builder for image assembly.
+          imageSystem = if hostSystem == "aarch64-darwin" then "aarch64-linux" else hostSystem;
+          image = nativeImages.${imageSystem};
+          # Firmware executes in the amd64 guest, regardless of the launcher's host.
+          firmwarePath = builtins.unsafeDiscardStringContext openbsdWebserver.pkgs.buildPackages.OVMF.fd.outPath;
+          firmware = builtins.appendContext firmwarePath { "${firmwarePath}".path = true; };
+        in
+        {
+          inherit image;
+          launcher = import ./vm/launcher.nix {
+            pkgs = hostPackages.${hostSystem};
+            inherit image firmware;
+          };
+        }
+      );
+      nativeVM = nativeVMs.${system};
 
       openbsdBase = nixbsd.nixosConfigurations.openbsd-base.extendModules {
         modules = [
@@ -255,104 +298,113 @@
         name = "openbsd-development";
       };
 
-      apps.${system} = {
+      apps = forAllHosts (hostSystem: {
         native-vm = {
           type = "app";
-          program = "${nativeVM.launcher}/bin/run-openbsd-native-vm";
+          program = "${nativeVMs.${hostSystem}.launcher}/bin/run-openbsd-native-vm";
         };
         test-native-vm = {
           type = "app";
           program = "${
             import ./tests/vm/default.nix {
-              pkgs = openbsdWebserver.config.virtualisation.vmVariant.virtualisation.host.pkgs;
+              pkgs = hostPackages.${hostSystem};
               source = self.outPath;
             }
           }/bin/test-openbsd-native-vm";
         };
-      };
-
-      packages.x86_64-openbsd = {
-        native-nix = nativeNix;
-        native-system = openbsdNative.config.system.build.toplevel;
-        inherit (nativeSystemPackages)
-          hello
-          jq
-          curl
-          sqlite
-          sqlite-utils
-          tmux
-          libevent
-          fmt
-          python3
-          ;
-        git = nativeSystemPackages.gitMinimal;
-        python-cffi = nativeSystemPackages.python3.withPackages (ps: [
-          ps.cffi
-          ps.setuptools
-        ]);
-      };
+      });
 
       checks.x86_64-openbsd = import ./tests/packages {
         pkgs = nativeSystemPackages;
         bootstrap = seedMetadata;
       };
 
-      packages.${system} = {
-        native-vm = nativeVM.launcher;
-        native-system-image = nativeVM.image;
-        native-nix = nativeNix;
-        native-system = openbsdNative.config.system.build.toplevel;
-        inherit (openbsdWebserver.pkgs.openbsd)
-          acme-client
-          arp
-          bgpctl
-          bgpd
-          cron
-          crontab
-          dhcpd
-          doas
-          httpd
-          ikectl
-          iked
-          ipsecctl
-          isakmpd
-          libagentx
-          libedit
-          libkeynote
-          libpcap
-          libradius
-          netstat
-          newsyslog
-          ntpctl
-          ntpd
-          ospfctl
-          ospfd
-          pfctl
-          pflogd
-          ping
-          rad
-          relayctl
-          relayd
-          resolvd
-          ripctl
-          ripd
-          sensorsd
-          snmp
-          snmp_mibs
-          snmpd
-          snmpd_metrics
-          syslogc
-          syslogd
-          tcpdump
-          traceroute
-          unwind
-          w
-          ;
-        default = openbsdWebserver.config.system.build.vm;
-        minimal-vm = openbsdBase.config.system.build.vm;
-        vm = openbsdWebserver.config.system.build.vm;
-        system-image = openbsdWebserver.config.system.build.systemImage;
-        toplevel = openbsdWebserver.config.system.build.toplevel;
-      };
+      packages =
+        forAllHosts (hostSystem: {
+          native-vm = nativeVMs.${hostSystem}.launcher;
+          native-system-image = nativeVMs.${hostSystem}.image;
+          native-nix = nativeNix;
+          native-system = openbsdNative.config.system.build.toplevel;
+        })
+        // {
+          x86_64-openbsd = {
+            native-nix = nativeNix;
+            native-system = openbsdNative.config.system.build.toplevel;
+            inherit (nativeSystemPackages)
+              hello
+              jq
+              curl
+              sqlite
+              sqlite-utils
+              tmux
+              libevent
+              fmt
+              python3
+              ;
+            git = nativeSystemPackages.gitMinimal;
+            python-cffi = nativeSystemPackages.python3.withPackages (ps: [
+              ps.cffi
+              ps.setuptools
+            ]);
+          };
+
+          ${system} = {
+            native-vm = nativeVM.launcher;
+            native-system-image = nativeVM.image;
+            native-nix = nativeNix;
+            native-system = openbsdNative.config.system.build.toplevel;
+            inherit (openbsdWebserver.pkgs.openbsd)
+              acme-client
+              arp
+              bgpctl
+              bgpd
+              cron
+              crontab
+              dhcpd
+              doas
+              httpd
+              ikectl
+              iked
+              ipsecctl
+              isakmpd
+              libagentx
+              libedit
+              libkeynote
+              libpcap
+              libradius
+              netstat
+              newsyslog
+              ntpctl
+              ntpd
+              ospfctl
+              ospfd
+              pfctl
+              pflogd
+              ping
+              rad
+              relayctl
+              relayd
+              resolvd
+              ripctl
+              ripd
+              sensorsd
+              snmp
+              snmp_mibs
+              snmpd
+              snmpd_metrics
+              syslogc
+              syslogd
+              tcpdump
+              traceroute
+              unwind
+              w
+              ;
+            default = openbsdWebserver.config.system.build.vm;
+            minimal-vm = openbsdBase.config.system.build.vm;
+            vm = openbsdWebserver.config.system.build.vm;
+            system-image = openbsdWebserver.config.system.build.systemImage;
+            toplevel = openbsdWebserver.config.system.build.toplevel;
+          };
+        };
     };
 }

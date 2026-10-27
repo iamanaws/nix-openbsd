@@ -8,6 +8,12 @@ Run VM tests from a project checkout on x86_64 Linux with KVM.
 nix run .#test-native-vm
 ```
 
+On x86-64 Linux, also test the emulation path used by ARM hosts:
+
+```sh
+NIX_VM_ACCEL=tcg nix run .#test-native-vm
+```
+
 This checks regular-user package commands, services, HTTP, SSH and persistent
 state across a restart. It supplies the checkout's sources to a fresh guest.
 It also checks Python HTTPS and sqlite-utils cache downloads and data imports.

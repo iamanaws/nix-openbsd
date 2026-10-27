@@ -4,6 +4,11 @@ The native stdenv, Nix, system packages and SMP kernel pass VM validation on
 amd64 OpenBSD 8.0. Validated native runtime closures contain no declared
 bootstrap seed outputs. The EFI loader remains cross-built.
 
+The amd64 guest passed launcher checks with KVM and TCG on x86-64 Linux on
+2026-10-26: boot, services, HTTPS, cached packages and persistent state across
+an accelerator change. ARM Linux and Apple Silicon macOS launchers evaluate;
+runtime checks on those hosts remain pending. See [VM hosts](vm.md#hosts).
+
 ## Validated workflows
 
 - Native toolchain and package tests through the Nix daemon, requested by root
