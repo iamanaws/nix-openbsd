@@ -54,18 +54,19 @@ class SelectionTests(unittest.TestCase):
         self.assertIn('dns', output.getvalue())
 
     def test_focused_runtime_forwards_live_only_and_timeout(self):
-        with tempfile.TemporaryDirectory() as directory:
-            work = Path(directory)
-            args = runner.arguments(['--suite', 'dns', '--live-only', '--timeout', '1200'])
-            runtime = runner.Runtime(args, ['dns'], work)
-            runtime.launcher = Path('/launcher')
-            with patch.object(runtime, 'ensure_prepared', return_value={'base': '/base', 'dns': '/dns'}), \
-                 patch.object(runtime, 'command') as command:
-                runtime.run_suite('dns', work / 'dns.log')
-            argv = command.call_args.args[0]
-            self.assertIn('--live-only', argv)
-            self.assertEqual(argv[argv.index('--timeout') + 1], '1200')
-            self.assertEqual(argv[argv.index('--dns-fixtures') + 1], Path('/dns'))
+        for name in ['dns', 'logging']:
+            with self.subTest(suite=name), tempfile.TemporaryDirectory() as directory:
+                work = Path(directory)
+                args = runner.arguments(['--suite', name, '--live-only', '--timeout', '1200'])
+                runtime = runner.Runtime(args, [name], work)
+                runtime.launcher = Path('/launcher')
+                with patch.object(runtime, 'ensure_prepared', return_value={'base': '/base', name: '/' + name}), \
+                     patch.object(runtime, 'command') as command:
+                    runtime.run_suite(name, work / (name + '.log'))
+                argv = command.call_args.args[0]
+                self.assertIn('--live-only', argv)
+                self.assertEqual(argv[argv.index('--timeout') + 1], '1200')
+                self.assertEqual(argv[argv.index('--' + name + '-fixtures') + 1], Path('/' + name))
 
 
 class ReportTests(unittest.TestCase):

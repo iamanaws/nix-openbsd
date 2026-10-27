@@ -28,6 +28,8 @@ runtime checks on those hosts remain pending. See [VM hosts](vm.md#hosts).
 - DNS: lookups through `unwind` and libc, atomic resolver-file updates, cached answers
   across blocklist reloads, failure recovery, stopped services and rollback across
   reboots. These checks use a local DNS server and do not test DNSSEC validation.
+- Logging: log delivery and rotation, file ownership and permissions, stopped
+  services, failed-update recovery and rollback across reboots.
 - System generations: live updates, rollback, failed-update recovery,
   garbage collection and boot-console recovery.
 

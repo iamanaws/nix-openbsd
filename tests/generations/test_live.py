@@ -89,6 +89,43 @@ test ! -f {system}/fail-activate
         self.assertNotIn('stop', self.events.read_text())
         self.assertNotIn('activate', self.events.read_text())
 
+    def test_invalid_configuration_does_not_stop_or_activate(self):
+        meta = self.b / 'openbsd-system.json'
+        content = json.loads(meta.read_text())
+        content['services']['app']['check'] = 'false'
+        meta.write_text(json.dumps(content))
+        self.run_manager('switch', self.b, success=False)
+        self.assertEqual(self.events.read_text(), '')
+        self.assertEqual((self.root / 'run/current-system').resolve(), self.a)
+        self.assertEqual(self.profile.resolve(), self.a)
+
+    def enable_oneshot(self):
+        for system in (self.a, self.b):
+            meta = system / 'openbsd-system.json'
+            content = json.loads(meta.read_text())
+            content['services']['app']['oneshot'] = True
+            meta.write_text(json.dumps(content))
+
+    def test_oneshot_success_does_not_require_a_running_process(self):
+        self.enable_oneshot()
+        self.running.unlink()
+        # A completed oneshot has no process for rc.d check to find.
+        script = self.b / 'etc/rc.d/app'
+        script.write_text(script.read_text().replace(f'touch {self.running}', ':'))
+        self.run_manager('switch', self.b)
+        self.assertFalse(self.running.exists())
+        self.assertIn('b start', self.events.read_text())
+        self.assertNotIn('b check', self.events.read_text())
+        self.assertNotIn('stop', self.events.read_text())
+
+    def test_failed_oneshot_recovers_the_previous_configuration(self):
+        self.enable_oneshot()
+        self.running.unlink()
+        (self.b / 'fail-start').touch()
+        self.run_manager('switch', self.b, success=False)
+        self.assertEqual((self.root / 'run/current-system').resolve(), self.a)
+        self.assertEqual(self.profile.resolve(), self.a)
+
     def test_unknown_service_change_requires_reboot(self):
         meta = self.b / 'openbsd-system.json'
         content = json.loads(meta.read_text())

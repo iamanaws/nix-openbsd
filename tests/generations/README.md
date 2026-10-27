@@ -21,6 +21,7 @@ nix run .#test -- --suite generations
 nix run .#test -- --suite cron-fallback
 nix run .#test -- --suite dns
 nix run .#test -- --suite dns --live-only
+nix run .#test -- --suite logging
 ```
 
 The runner builds and transfers the fixtures automatically. See the
@@ -30,6 +31,12 @@ DNS checks use a local server and cover lookups, resolver-file updates,
 blocklist reloads, cache preservation,
 failed-update recovery, stopped services and rollback across reboots. They do not
 test DNSSEC validation.
+
+Logging checks cover real messages, rotation, new log files, stopped services,
+failed-update recovery and persistence across reboots and rollback. Rotation-only
+changes keep syslogd and cron running. Syslog configuration changes restart the
+daemon, including equal-size files with fixed store timestamps. Only rotation
+rules have a pre-activation syntax check; OpenBSD syslogd provides none.
 
 Local failure tests need Bash, jq, GNU coreutils and Python:
 

@@ -7,6 +7,9 @@
 let
   cfg = config.openbsd.system;
   services = config.openbsd.rc.services;
+  oneshots = map (service: lib.replaceStrings [ "-" ] [ "_" ] service.name) (
+    lib.filter (service: service.startType == "oneshot") (builtins.attrValues config.init.services)
+  );
   policies = {
     tempfiles = { };
     httpd = {
@@ -31,6 +34,19 @@ let
     ntpd = {
       files = [ "ntpd.conf" ];
       check = "${config.services.ntpd.package}/bin/ntpd -n -f \"$target/etc/ntpd.conf\"";
+    };
+  }
+  // lib.optionalAttrs (config.services.syslogd.enable or false) {
+    syslogd = {
+      files = [ "syslog.conf" ];
+      # Equal-size store configs share an mtime, so privsep can miss changes on reload.
+      # Restart to reopen the config and its log destinations reliably.
+    };
+  }
+  // lib.optionalAttrs (config.services.newsyslog.enable or false) {
+    newsyslog_check = {
+      files = [ "newsyslog.conf" ];
+      check = "${config.services.newsyslog.package}/bin/newsyslog -n -f \"$target/etc/newsyslog.conf\"";
     };
   }
   // lib.optionalAttrs (config.services.resolvd.enable or false) {
@@ -64,6 +80,7 @@ let
             files = policies.${service.name}.files or [ ];
             check = policies.${service.name}.check or "";
           }
+          // lib.optionalAttrs (lib.elem service.name oneshots) { oneshot = true; }
           // lib.optionalAttrs (policies.${service.name}.reload or false) { reload = true; }
         )
       ) services;
@@ -110,14 +127,14 @@ in
 {
   options.openbsd.system.services = lib.mkOption {
     default = { };
-    description = "Additional services that can safely be restarted during live activation.";
+    description = "Services and one-shot tasks allowed during live activation.";
     type = lib.types.attrsOf (
       lib.types.submodule {
         options = {
           files = lib.mkOption {
             type = lib.types.listOf lib.types.str;
             default = [ ];
-            description = "Paths below /etc whose changes require restarting the service.";
+            description = "Paths below /etc whose changes require updating the service.";
           };
           check = lib.mkOption {
             type = lib.types.lines;

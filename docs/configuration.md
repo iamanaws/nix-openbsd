@@ -53,10 +53,14 @@ All actions except `build` require root.
 | `switch` | Apply changes and select them for future boots. |
 | `boot` | Select the next boot configuration without changing the running system. |
 
-Packages, HTTP, relayd, DNS, NTP and cron schedules support live updates.
+Packages, HTTP, relayd, DNS, NTP, logging and cron schedules support live updates.
 `resolvd` watches atomic updates to `resolv.conf`; it has no syntax checker.
 `unwind` checks its configuration before reloading. NTP checks before restarting.
 Cron validates and reloads schedules without restarting or rerunning `@reboot` jobs.
+Logging updates restart `syslogd`; it has no configuration-check mode.
+Rotation rules are checked with `newsyslog -n`. Updating rotation rules alone
+keeps syslogd and cron running. Boot and activation create declared log files as
+`root:wheel` with mode `0640`, preserving existing contents.
 Other services can opt in through `openbsd.system.services`. Kernel, filesystem,
 networking and unhandled service changes require `boot` followed by a reboot.
 

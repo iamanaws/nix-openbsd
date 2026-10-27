@@ -22,6 +22,7 @@ SUITES = {
     'workflow': 'Regular-user builds, personal configuration and live rollback',
     'generations': 'HTTP, cron, NTP, directories, failure recovery and boot recovery',
     'dns': 'DNS updates, failure recovery, cache preservation and boot recovery',
+    'logging': 'Log delivery, rotation, live updates, failure recovery and boot recovery',
     'cron-fallback': 'Generation checks without cronctl',
     'network': 'Two-VM routing, BGP and IPsec',
     'native': 'Native bootstrap, toolchain, C++ and Nix validation (slow)',
@@ -31,8 +32,8 @@ SUITES = {
     'nix': 'Focused native Nix CLI and daemon checks',
 }
 REGULAR = ('local', 'base', 'packages', 'vm', 'workflow', 'generations',
-           'dns', 'cron-fallback', 'network')
-GENERATIONS = {'generations', 'dns', 'cron-fallback'}
+           'dns', 'logging', 'cron-fallback', 'network')
+GENERATIONS = {'generations', 'dns', 'logging', 'cron-fallback'}
 NATIVE = {'native': '--all', 'bootstrap': None, 'toolchain': '--toolchain',
           'cxx': '--cxx', 'nix': '--nix'}
 BASELINE = 'github:iamanaws/nix-openbsd/openbsd-8.0'
@@ -56,7 +57,7 @@ def arguments(argv=None):
     if args.timeout is not None and args.timeout <= 0:
         parser.error('--timeout must be positive')
     if args.live_only and (not args.suite or not set(args.suite) <= GENERATIONS):
-        parser.error('--live-only requires --suite generations, dns or cron-fallback')
+        parser.error('--live-only requires --suite generations, dns, logging or cron-fallback')
     return args
 
 
@@ -251,7 +252,7 @@ class Runtime:
                        '--source', self.source, '--launcher', self.launcher,
                        '--base-system', inputs['base'], '--system-a', fixtures / 'a',
                        '--system-b', fixtures / 'b',
-                       '--dns-fixtures' if name == 'dns' else '--live-fixtures', fixtures,
+                       {'dns': '--dns-fixtures', 'logging': '--logging-fixtures'}.get(name, '--live-fixtures'), fixtures,
                        '--timeout', str(self.timeout),
                        '--vm-state', self.work / 'native-preparation/state']
             if self.args.live_only:

@@ -40,7 +40,8 @@ live_prepare() {
             export target
             bash -euc "$check" || die "$name configuration check failed"
         fi
-        if test -x "$old/etc/rc.d/$name" && "$old/etc/rc.d/$name" check >/dev/null 2>&1; then
+        if ! jq -e --arg name "$name" '.services[$name].oneshot == true' "$old_meta" >/dev/null &&
+            test -x "$old/etc/rc.d/$name" && "$old/etc/rc.d/$name" check >/dev/null 2>&1; then
             live_was_running+=("$name")
             # Reload only when the daemon definition itself is unchanged.
             if jq -e -s --arg name "$name" '
@@ -52,7 +53,8 @@ live_prepare() {
         fi
         if test -x "$target/etc/rc.d/$name"; then
             # New services start; previously stopped services stay stopped.
-            if ! test -x "$old/etc/rc.d/$name" || [[ " ${live_was_running[*]} " == *" $name "* ]]; then
+            if jq -e --arg name "$name" '.services[$name].oneshot == true' "$new_meta" >/dev/null ||
+                ! test -x "$old/etc/rc.d/$name" || [[ " ${live_was_running[*]} " == *" $name "* ]]; then
                 live_start+=("$name")
             fi
         fi
@@ -93,7 +95,9 @@ live_apply() {
             else
                 "$target/etc/rc.d/$name" start || return $?
             fi
-            "$target/etc/rc.d/$name" check || return $?
+            if ! jq -e --arg name "$name" '.services[$name].oneshot == true' "$new_meta" >/dev/null; then
+                "$target/etc/rc.d/$name" check || return $?
+            fi
         fi
     done < <(service_order "$target")
 }

@@ -8,10 +8,9 @@ FreeBSD and OpenBSD compatibility has been tested for upstream changes.
 
 | Order | Work | Validation |
 | --- | --- | --- |
-| 1 | Live updates for logging. | Configuration checks, service start/stop, failed-update recovery and rollback in the native VM. |
-| 2 | Native Go support, then a Go application built through Nix. | Regular-user daemon builds, upstream tests and a cgo consumer using the existing C toolchain. |
-| 3 | Broader network coverage. | IPv6 forwarding, PF policies, routing and VPN recovery across service restarts and reboots. |
-| 4 | Build isolation. | Investigate restrictions on filesystem and network access while preserving working native builds. |
+| 1 | Native Go support, then a Go application built through Nix. | Regular-user daemon builds, upstream tests and a cgo consumer using the existing C toolchain. |
+| 2 | Broader network coverage. | IPv6 forwarding, PF policies, routing and VPN recovery across service restarts and reboots. |
+| 3 | Build isolation. | Investigate restrictions on filesystem and network access while preserving working native builds. |
 
 Package and toolchain cleanup is tracked in [upstream work](upstream.md).
 

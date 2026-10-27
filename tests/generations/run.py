@@ -33,6 +33,7 @@ def main():
     fixtures = parser.add_mutually_exclusive_group()
     fixtures.add_argument('--live-fixtures', type=Path, help='fixture bundle with invalid configurations and activation failures')
     fixtures.add_argument('--dns-fixtures', type=Path, help='DNS configuration and failure fixtures')
+    fixtures.add_argument('--logging-fixtures', type=Path, help='Logging configuration and failure fixtures')
     parser.add_argument('--live-only', action='store_true', help='test only installation and live updates')
     parser.add_argument('--timeout', type=int, default=600, help='seconds allowed for each guest operation')
     parser.add_argument('--personal-system', type=Path, help='also boot the native configuration template')
@@ -46,7 +47,7 @@ def main():
         parser.error('--timeout must be positive')
     if args.vm_state and args.recovery_state:
         parser.error('--vm-state and --recovery-state cannot be combined')
-    if args.live_only and (not (args.live_fixtures or args.dns_fixtures) or args.personal_system or args.recovery_state):
+    if args.live_only and (not (args.live_fixtures or args.dns_fixtures or args.logging_fixtures) or args.personal_system or args.recovery_state):
         parser.error('--live-only requires service fixtures and excludes personal/recovery tests')
     args.launcher = args.launcher.resolve(strict=True)
     for name in ('base_system', 'system_a', 'system_b'):
@@ -55,6 +56,8 @@ def main():
         args.live_fixtures = args.live_fixtures.resolve(strict=True)
     if args.dns_fixtures:
         args.dns_fixtures = args.dns_fixtures.resolve(strict=True)
+    if args.logging_fixtures:
+        args.logging_fixtures = args.logging_fixtures.resolve(strict=True)
     if args.personal_system:
         args.personal_system = args.personal_system.resolve(strict=True)
     if args.recovery_state:
@@ -72,6 +75,8 @@ def main():
         needed |= closure(str(args.live_fixtures))
     if args.dns_fixtures:
         needed |= closure(str(args.dns_fixtures))
+    if args.logging_fixtures:
+        needed |= closure(str(args.logging_fixtures))
     if args.personal_system:
         needed |= closure(str(args.personal_system))
         source = 'path:' + str(args.source.resolve(strict=True))
@@ -95,7 +100,7 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = f'http://10.0.2.2:{server.server_port}/{token}'
     # Guest networking can still settle after login; retry fixture downloads.
-    fetch = "curl --noproxy '*' --retry 10 --retry-connrefused --retry-delay 1 -fsS"
+    fetch = "curl --noproxy '*' --retry 10 --retry-all-errors --retry-delay 1 --connect-timeout 5 -fsS"
     a, b = map(shlex.quote, (args.system_a, args.system_b))
     (payload / 'setup.sh').write_text(f'''set -eu
 {fetch} {url}/systems.nar -o /tmp/generation-systems.nar
@@ -104,6 +109,7 @@ rm /tmp/generation-systems.nar
 # Reused disks may contain data from an earlier generation test.
 /etc/rc.d/cron stop
 rm -rf /var/lib/cron-test /var/lib/directory-test
+{('rm -f /var/log/logging-* /root/logging-persistence' if args.logging_fixtures else '')}
 {a}/bin/switch-to-configuration boot
 test "$(readlink -f /run/current-system)" = {shlex.quote(args.base_system)}
 touch /root/generation-persistence
@@ -292,6 +298,20 @@ python3 -B /tmp/dns-check.py {phase} {a} {b}{fixtures}
             phases[phase] += '\n' + dns_probe('b' if phase == 'b' else 'a')
         if args.live_only:
             phases = {'install': phases['install'], 'a': dns_probe('live')}
+    if args.logging_fixtures:
+        shutil.copyfile(Path(__file__).with_name('logging-check.py'), payload / 'logging-check.py')
+
+        def logging_probe(phase):
+            fixtures = ' ' + shlex.quote(str(args.logging_fixtures)) if phase == 'live' else ''
+            return f'''{fetch} {url}/logging-check.py -o /tmp/logging-check.py
+python3 -B /tmp/logging-check.py {phase} {a} {b}{fixtures}
+'''
+
+        phases['a'] = logging_probe('live') + phases['a']
+        for phase in ['b', 'rollback', 'recovery']:
+            phases[phase] += '\n' + logging_probe('b' if phase == 'b' else 'a')
+        if args.live_only:
+            phases = {'install': phases['install'], 'a': logging_probe('live')}
     if args.recovery_state:
         phases = {'recovery': phases['recovery']}
     if args.personal_system:

@@ -40,7 +40,7 @@ in
         "/var/log/lpd-errs"
         "/var/cron/log"
       ];
-      description = "Log files created before syslogd starts.";
+      description = "Log files created at boot and activation. Existing contents are preserved.";
     };
   };
 
@@ -59,6 +59,12 @@ in
     services.tempfiles.directories = {
       "/var/log" = { };
       "/var/cron".mode = "0555";
+    };
+
+    # The check service is a oneshot; live activation must also prepare new log files.
+    system.activationScripts.newsyslog = {
+      deps = [ "tempfiles" ];
+      text = config.init.services.newsyslog-check.preStart;
     };
 
     init.services.newsyslog-check = {
