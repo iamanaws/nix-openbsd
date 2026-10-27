@@ -26,7 +26,9 @@ def main():
     parser.add_argument('--base-system', required=True)
     parser.add_argument('--system-a', required=True)
     parser.add_argument('--system-b', required=True)
-    parser.add_argument('--live-fixtures', type=Path, help='fixture bundle with invalid configurations and activation failures')
+    fixtures = parser.add_mutually_exclusive_group()
+    fixtures.add_argument('--live-fixtures', type=Path, help='fixture bundle with invalid configurations and activation failures')
+    fixtures.add_argument('--dns-fixtures', type=Path, help='DNS configuration and failure fixtures')
     parser.add_argument('--live-only', action='store_true', help='test only installation and live updates')
     parser.add_argument('--personal-system', type=Path, help='also boot the native configuration template')
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[2],
@@ -34,13 +36,15 @@ def main():
     parser.add_argument('--recovery-state', type=Path, help='rerun only console recovery on a preserved test disk')
     parser.add_argument('--keep', action='store_true')
     args = parser.parse_args()
-    if args.live_only and (not args.live_fixtures or args.personal_system or args.recovery_state):
-        parser.error('--live-only requires --live-fixtures and excludes personal/recovery tests')
+    if args.live_only and (not (args.live_fixtures or args.dns_fixtures) or args.personal_system or args.recovery_state):
+        parser.error('--live-only requires service fixtures and excludes personal/recovery tests')
     args.launcher = args.launcher.resolve(strict=True)
     for name in ('base_system', 'system_a', 'system_b'):
         setattr(args, name, str(Path(getattr(args, name)).resolve(strict=True)))
     if args.live_fixtures:
         args.live_fixtures = args.live_fixtures.resolve(strict=True)
+    if args.dns_fixtures:
+        args.dns_fixtures = args.dns_fixtures.resolve(strict=True)
     if args.personal_system:
         args.personal_system = args.personal_system.resolve(strict=True)
     if args.recovery_state:
@@ -54,6 +58,8 @@ def main():
     needed = closure(args.system_a) | closure(args.system_b)
     if args.live_fixtures:
         needed |= closure(str(args.live_fixtures))
+    if args.dns_fixtures:
+        needed |= closure(str(args.dns_fixtures))
     if args.personal_system:
         needed |= closure(str(args.personal_system))
         source = 'path:' + str(args.source.resolve(strict=True))
@@ -253,6 +259,20 @@ test "$(stat -c '%a:%u:%g' /var/lib/directory-test/state)" = "600:$(id -u daemon
 '''
         if args.live_only:
             phases = {'install': phases['install'], 'a': live_probe}
+    if args.dns_fixtures:
+        shutil.copyfile(Path(__file__).with_name('dns-check.py'), payload / 'dns-check.py')
+
+        def dns_probe(phase):
+            fixtures = ' ' + shlex.quote(str(args.dns_fixtures)) if phase == 'live' else ''
+            return f'''curl --noproxy '*' -fsS {url}/dns-check.py -o /tmp/dns-check.py
+python3 -B /tmp/dns-check.py {phase} {a} {b}{fixtures}
+'''
+
+        phases['a'] = dns_probe('live') + phases['a']
+        for phase in ['b', 'rollback', 'recovery']:
+            phases[phase] += '\n' + dns_probe('b' if phase == 'b' else 'a')
+        if args.live_only:
+            phases = {'install': phases['install'], 'a': dns_probe('live')}
     if args.recovery_state:
         phases = {'recovery': phases['recovery']}
     if args.personal_system:

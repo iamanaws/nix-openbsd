@@ -8,6 +8,14 @@
 let
   cfg = config.services.resolvd;
   resolvd = "${cfg.package}/bin/resolvd";
+  updateResolver = ''
+    (
+      temporary=$(mktemp /etc/.resolv.conf.XXXXXXXX) || exit 1
+      trap 'rm -f "$temporary"' EXIT
+      install -m 0644 /etc/resolv.conf.resolvd "$temporary" &&
+        mv -f "$temporary" /etc/resolv.conf
+    )
+  '';
 in
 {
   options.services.resolvd = {
@@ -18,7 +26,7 @@ in
     config = lib.mkOption {
       type = lib.types.lines;
       default = "";
-      description = "Initial user-managed contents of resolv.conf(5).";
+      description = "User-managed contents of resolv.conf(5), applied at startup and live updates.";
     };
 
     extraFlags = lib.mkOption {
@@ -32,6 +40,9 @@ in
     environment.etc."resolv.conf.resolvd".text = cfg.config;
     environment.systemPackages = [ cfg.package ];
 
+    # resolvd watches resolv.conf; replace it atomically without sending a signal.
+    openbsd.rc.services.resolvd.hooks.rc_reload = updateResolver;
+
     init.services.resolvd = {
       description = "OpenBSD resolver configuration daemon";
       dependencies = [ "NETWORKING" ];
@@ -40,9 +51,8 @@ in
       path = [ pkgs.coreutils ];
       startCommand = [ resolvd ] ++ cfg.extraFlags;
       preStart = ''
-        rm -f /etc/resolv.conf /etc/resolv.conf.new /dev/resolvd.lock
-        cp /etc/resolv.conf.resolvd /etc/resolv.conf
-        chmod 0644 /etc/resolv.conf
+        rm -f /dev/resolvd.lock
+        ${updateResolver}
       '';
     };
   };

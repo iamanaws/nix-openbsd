@@ -25,6 +25,9 @@ runtime checks on those hosts remain pending. See [VM hosts](vm.md#hosts).
   service-account jobs, failure recovery and persistent data across updates and rollback.
 - NTP: configuration checks, restart recovery, preserving stopped services and
   rollback across reboots. These checks use loopback peers and do not test clock accuracy.
+- DNS: lookups through `unwind` and libc, atomic resolver-file updates, cached answers
+  across blocklist reloads, failure recovery, stopped services and rollback across
+  reboots. These checks use a local DNS server and do not test DNSSEC validation.
 - System generations: live updates, rollback, failed-update recovery,
   garbage collection and boot-console recovery.
 

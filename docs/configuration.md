@@ -53,10 +53,11 @@ All actions except `build` require root.
 | `switch` | Apply changes and select them for future boots. |
 | `boot` | Select the next boot configuration without changing the running system. |
 
-Packages, HTTP, relayd, NTP and cron schedules support live updates. NTP checks
-the new configuration before restarting. Cron validates the new crontab and
-reloads it without restarting the daemon or rerunning `@reboot` jobs. Other
-services can opt in through `openbsd.system.services`. Kernel, filesystem,
+Packages, HTTP, relayd, DNS, NTP and cron schedules support live updates.
+`resolvd` watches atomic updates to `resolv.conf`; it has no syntax checker.
+`unwind` checks its configuration before reloading. NTP checks before restarting.
+Cron validates and reloads schedules without restarting or rerunning `@reboot` jobs.
+Other services can opt in through `openbsd.system.services`. Kernel, filesystem,
 networking and unhandled service changes require `boot` followed by a reboot.
 
 Set `services.cron.controlPackage = null` to omit `cronctl`. Cron then detects

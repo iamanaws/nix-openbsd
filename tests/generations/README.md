@@ -39,6 +39,12 @@ is passed.
 Add `--live-only` with `--live-fixtures` to run installation and live-update checks only.
 Use `--recovery-state DIR/state` to repeat only console recovery on a preserved disk.
 
+For DNS, build `tests/generations/dns-fixtures.nix` with the same command and pass
+`--dns-fixtures "$fixtures"` instead of `--live-fixtures`. These checks use a local
+DNS server and cover lookups, resolver-file updates, blocklist reloads, cache preservation,
+failed-update recovery, stopped services and rollback across reboots. They do not
+test DNSSEC validation. `--live-only` also works with these fixtures.
+
 Local failure tests need Bash, jq, GNU coreutils and Python:
 
 ```sh

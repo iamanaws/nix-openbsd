@@ -44,12 +44,19 @@ in
     };
     users.groups._unwind.gid = 48;
 
-    services.tempfiles.directories."/var/empty".mode = "0555";
+    services.tempfiles.directories = {
+      "/var/empty".mode = "0555";
+      "/var/db" = { };
+    };
+
+    openbsd.rc.services.unwind.hooks.rc_configtest = ''
+      rc_exec "''${daemon} -n ''${daemon_flags}"
+    '';
 
     init.services.unwind = {
       description = "OpenBSD validating resolver daemon";
       dependencies = [ "NETWORKING" ];
-      before = [ "SERVERS" ];
+      before = [ "SERVERS" ] ++ lib.optional (config.services.resolvd.enable or false) "resolvd";
       startType = "forking";
       path = [ pkgs.coreutils ];
       startCommand = [
@@ -60,7 +67,6 @@ in
       ++ cfg.extraFlags;
       preStart = ''
         rm -f /dev/unwind.sock
-        ${unwind} -n -f ${configPath}
       '';
     };
   };

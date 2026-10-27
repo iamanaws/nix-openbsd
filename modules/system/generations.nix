@@ -33,6 +33,19 @@ let
       check = "${config.services.ntpd.package}/bin/ntpd -n -f \"$target/etc/ntpd.conf\"";
     };
   }
+  // lib.optionalAttrs (config.services.resolvd.enable or false) {
+    resolvd = {
+      files = [ "resolv.conf.resolvd" ];
+      reload = true;
+    };
+  }
+  // lib.optionalAttrs (config.services.unwind.enable or false) {
+    unwind = {
+      files = [ "unwind.conf" ];
+      check = "${config.services.unwind.package}/bin/unwind -n -f \"$target/etc/unwind.conf\"";
+      reload = true;
+    };
+  }
   // cfg.services;
   metadata = pkgs.writeText "openbsd-system.json" (
     builtins.toJSON {
