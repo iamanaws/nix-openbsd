@@ -67,6 +67,7 @@
           ./modules/system/locale.nix
         ];
         nix.package = lib.mkDefault nativeNix;
+        security.doas.enable = lib.mkDefault true;
         nixpkgs.pkgs = nativeSystemPackages;
         nixpkgs.overlays = lib.mkForce [ ];
         nixpkgs.buildPlatform = lib.mkForce "x86_64-openbsd";
@@ -349,6 +350,7 @@
             native-nix = nativeNix;
             native-system = openbsdNative.config.system.build.toplevel;
             inherit (nativeSystemPackages)
+              doas
               hello
               jq
               curl

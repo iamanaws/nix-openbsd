@@ -54,7 +54,7 @@ class SelectionTests(unittest.TestCase):
         self.assertIn('dns', output.getvalue())
 
     def test_focused_runtime_forwards_live_only_and_timeout(self):
-        for name in ['dns', 'logging']:
+        for name in ['dns', 'logging', 'doas']:
             with self.subTest(suite=name), tempfile.TemporaryDirectory() as directory:
                 work = Path(directory)
                 args = runner.arguments(['--suite', name, '--live-only', '--timeout', '1200'])

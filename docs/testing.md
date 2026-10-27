@@ -29,6 +29,7 @@ supported hosts. Suites run sequentially; networking uses two small guests.
 | `generations` | HTTP, cron, NTP, directories, failed-update recovery, rollback, GC and console recovery. |
 | `dns` | Resolver updates, lookups, reload failures, cache preservation and boot recovery. |
 | `logging` | Log delivery, rotation, failed-update recovery, rollback and boot recovery. |
+| `doas` | Native password authentication, command restrictions, environment handling and permission rollback. |
 | `cron-fallback` | Generation checks without `cronctl`. |
 | `network` | Routing, BGP and IPsec between isolated guests. |
 
@@ -37,7 +38,7 @@ native bootstrap, toolchain, C++ and Nix checks. Use `--suite bootstrap`,
 `--suite toolchain`, `--suite cxx` or `--suite nix` to run those separately.
 `--full` is an alias for `--all`.
 For faster iteration, `--live-only` skips reboot, GC and console recovery in
-explicitly selected `generations`, `dns`, `logging` or `cron-fallback` suites.
+explicitly selected `generations`, `dns`, `logging`, `doas` or `cron-fallback` suites.
 
 ## Development runs
 

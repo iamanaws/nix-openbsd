@@ -1,6 +1,9 @@
 final: prev:
 
 {
+  # NixOS's doas module also uses buildPackages.doas to validate its rules.
+  doas = if prev.stdenv.hostPlatform.isOpenBSD then final.openbsd.doas else prev.doas;
+
   openbsd = prev.openbsd.overrideScope (
     openbsdFinal: openbsdPrev: {
       reboot = openbsdPrev.reboot.overrideAttrs (old: {

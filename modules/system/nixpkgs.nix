@@ -12,6 +12,7 @@ in
     installerTools
   ];
   imports = [
+    (import ../security/doas.nix { nixpkgs = nixbsd.inputs.nixpkgs; })
     # NixBSD omits the shell-script revision substitution. Fix only nixos-version.
     (
       {

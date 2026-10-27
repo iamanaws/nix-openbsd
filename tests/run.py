@@ -23,6 +23,7 @@ SUITES = {
     'generations': 'HTTP, cron, NTP, directories, failure recovery and boot recovery',
     'dns': 'DNS updates, failure recovery, cache preservation and boot recovery',
     'logging': 'Log delivery, rotation, live updates, failure recovery and boot recovery',
+    'doas': 'Native privilege management, authentication and configuration rollback',
     'cron-fallback': 'Generation checks without cronctl',
     'network': 'Two-VM routing, BGP and IPsec',
     'native': 'Native bootstrap, toolchain, C++ and Nix validation (slow)',
@@ -32,8 +33,8 @@ SUITES = {
     'nix': 'Focused native Nix CLI and daemon checks',
 }
 REGULAR = ('local', 'base', 'packages', 'vm', 'workflow', 'generations',
-           'dns', 'logging', 'cron-fallback', 'network')
-GENERATIONS = {'generations', 'dns', 'logging', 'cron-fallback'}
+           'dns', 'logging', 'doas', 'cron-fallback', 'network')
+GENERATIONS = {'generations', 'dns', 'logging', 'doas', 'cron-fallback'}
 NATIVE = {'native': '--all', 'bootstrap': None, 'toolchain': '--toolchain',
           'cxx': '--cxx', 'nix': '--nix'}
 BASELINE = 'github:iamanaws/nix-openbsd/openbsd-8.0'
@@ -57,7 +58,7 @@ def arguments(argv=None):
     if args.timeout is not None and args.timeout <= 0:
         parser.error('--timeout must be positive')
     if args.live_only and (not args.suite or not set(args.suite) <= GENERATIONS):
-        parser.error('--live-only requires --suite generations, dns, logging or cron-fallback')
+        parser.error('--live-only requires --suite generations, dns, logging, doas or cron-fallback')
     return args
 
 
@@ -219,6 +220,8 @@ class Runtime:
             self.build('local', [self.ref + '#checks.' + self.args.host_system + '.local'])
             self.command(['nix', 'eval', '--impure', '--json', '--file',
                           self.source / 'tests/base/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
+            self.command(['nix', 'eval', '--impure', '--json', '--file',
+                          self.source / 'tests/security/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
         elif name == 'base':
             self.command(['bash', self.source / 'tests/base/run.sh', '--max-jobs', '1', '--cores', '2', '--builders', ''])
         elif name == 'network':
@@ -252,7 +255,7 @@ class Runtime:
                        '--source', self.source, '--launcher', self.launcher,
                        '--base-system', inputs['base'], '--system-a', fixtures / 'a',
                        '--system-b', fixtures / 'b',
-                       {'dns': '--dns-fixtures', 'logging': '--logging-fixtures'}.get(name, '--live-fixtures'), fixtures,
+                       {s: '--' + s + '-fixtures' for s in ['dns', 'logging', 'doas']}.get(name, '--live-fixtures'), fixtures,
                        '--timeout', str(self.timeout),
                        '--vm-state', self.work / 'native-preparation/state']
             if self.args.live_only:

@@ -15,6 +15,9 @@ The modules declare options, service users and runtime directories. They
 check configuration before startup where the daemon supports it.
 Use each daemon's OpenBSD configuration format.
 
+Native systems also provide `security.doas`, reusing the NixOS module with
+OpenBSD's BSD authentication. See [administrative commands](../docs/configuration.md#administrative-commands).
+
 The flake and tests import [OpenBSD integration fixes](system/openbsd.nix)
 for PF defaults, DHCP process matching, MTU and IPv6 default routes. This module
 only applies on OpenBSD. The fixes remain here pending upstream compatibility testing.

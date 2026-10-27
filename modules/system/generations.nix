@@ -21,6 +21,12 @@ let
       check = "${config.services.relayd.package}/bin/relayd -n -f \"$target/etc/relayd.conf\"";
     };
   }
+  // lib.optionalAttrs (config.security.doas.enable or false) {
+    doas_check = {
+      files = [ "doas.conf" ];
+      check = "${config.security.doas.package}/bin/doas -C \"$target/etc/doas.conf\"";
+    };
+  }
   // lib.optionalAttrs (config.services.cron.enable or false) {
     cron = {
       files = [ "crontab" ];

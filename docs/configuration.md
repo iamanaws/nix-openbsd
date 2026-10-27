@@ -90,6 +90,26 @@ Directories default to `0755`, owned by `root:wheel`. Boot, live activation and
 rollback apply their ownership and permissions without changing existing contents.
 Removing a declaration leaves its directory and data in place.
 
+## Administrative commands
+
+Native systems enable OpenBSD's `doas`, using the NixOS `security.doas` options.
+Members of `wheel` must authenticate with their own password by default.
+
+```nix
+security.doas.extraRules = [
+  {
+    users = [ "alice" ];
+    cmd = "/run/current-system/sw/bin/openbsd-rebuild";
+    args = [ "list-generations" ];
+    noPass = true;
+  }
+];
+```
+
+Rules are checked when building and before live activation. Rule changes support
+live updates and rollback. Enabling or disabling the setuid wrapper requires a
+reboot. Set `security.sudo.enable = false` if you only want `doas`.
+
 ## Rollback
 
 As root, list generations or return to the previous one:

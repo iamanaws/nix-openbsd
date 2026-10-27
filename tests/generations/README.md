@@ -22,6 +22,7 @@ nix run .#test -- --suite cron-fallback
 nix run .#test -- --suite dns
 nix run .#test -- --suite dns --live-only
 nix run .#test -- --suite logging
+nix run .#test -- --suite doas
 ```
 
 The runner builds and transfers the fixtures automatically. See the
@@ -37,6 +38,9 @@ failed-update recovery and persistence across reboots and rollback. Rotation-onl
 changes keep syslogd and cron running. Syslog configuration changes restart the
 daemon, including equal-size files with fixed store timestamps. Only rotation
 rules have a pre-activation syntax check; OpenBSD syslogd provides none.
+
+Doas checks cover password authentication, command and argument restrictions,
+environment handling, live rule updates and rollback. The test VM disables sudo.
 
 Local failure tests need Bash, jq, GNU coreutils and Python:
 
