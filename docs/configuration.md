@@ -53,11 +53,11 @@ All actions except `build` require root.
 | `switch` | Apply changes and select them for future boots. |
 | `boot` | Select the next boot configuration without changing the running system. |
 
-Packages, HTTP, relayd and cron schedules support live updates. Cron validates
-the new crontab and reloads it without restarting the daemon or rerunning
-`@reboot` jobs. Other services can opt in through
-`openbsd.system.services`. Kernel, filesystem, networking and unhandled service
-changes require `boot` followed by a reboot.
+Packages, HTTP, relayd, NTP and cron schedules support live updates. NTP checks
+the new configuration before restarting. Cron validates the new crontab and
+reloads it without restarting the daemon or rerunning `@reboot` jobs. Other
+services can opt in through `openbsd.system.services`. Kernel, filesystem,
+networking and unhandled service changes require `boot` followed by a reboot.
 
 Set `services.cron.controlPackage = null` to omit `cronctl`. Cron then detects
 schedule changes and rollback at its next minute check, without pre-activation

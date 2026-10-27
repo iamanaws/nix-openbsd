@@ -50,6 +50,7 @@ let
     );
   };
   changed = { lib, pkgs, ... }: {
+    services.ntpd.config = lib.mkForce "server 127.0.0.3\n";
     services.tempfiles.directories = {
       "/var/lib/directory-test" = {
         mode = lib.mkForce "0750";
@@ -72,17 +73,37 @@ let
     openbsd.system.services.generation_probe = { };
   };
   systems = {
-    a = system [ { services.cron.systemCronJobs = [ "* * * * * daemon ${job "a"}" ]; } ];
+    a = system [
+      ({ lib, ... }: {
+        services.cron.systemCronJobs = [ "* * * * * daemon ${job "a"}" ];
+        services.ntpd.config = lib.mkForce "server 127.0.0.2\n";
+      })
+    ];
     b = system [
       changed
       { services.cron.systemCronJobs = [ "* * * * * daemon ${job "b"}" ]; }
     ];
     invalid-cron = system [
-      { services.cron.systemCronJobs = [ "60 * * * * daemon true" ]; }
+      ({ lib, ... }: {
+        services.cron.systemCronJobs = [ "60 * * * * daemon true" ];
+        services.ntpd.config = lib.mkForce "server 127.0.0.2\n";
+      })
+    ];
+    invalid-ntpd = system [
+      ({ lib, ... }: {
+        services.ntpd.config = lib.mkForce "this is not an ntpd configuration";
+      })
     ];
     invalid = system [
       ({ lib, ... }: {
         services.httpd.config = lib.mkForce "this is not an httpd configuration";
+        services.ntpd.config = lib.mkForce "server 127.0.0.2\n";
+      })
+    ];
+    failed-ntpd-start = system [
+      changed
+      ({ lib, ... }: {
+        init.services.ntpd.preStart = lib.mkAfter "false";
       })
     ];
     failed-start = system [

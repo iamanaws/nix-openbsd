@@ -27,6 +27,12 @@ let
       reload = true;
     };
   }
+  // lib.optionalAttrs (config.services.ntpd.enable or false) {
+    ntpd = {
+      files = [ "ntpd.conf" ];
+      check = "${config.services.ntpd.package}/bin/ntpd -n -f \"$target/etc/ntpd.conf\"";
+    };
+  }
   // cfg.services;
   metadata = pkgs.writeText "openbsd-system.json" (
     builtins.toJSON {

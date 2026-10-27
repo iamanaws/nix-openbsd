@@ -50,6 +50,9 @@ in
       "/var/run" = { };
     };
 
+    # OpenBSD's ntpd does not reload its configuration; changes require a restart.
+    openbsd.rc.services.ntpd.shellVariables.rc_reload = false;
+
     init.services.ntpd = {
       description = "OpenBSD network time daemon";
       dependencies = [ "NETWORKING" ];

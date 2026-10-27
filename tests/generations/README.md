@@ -11,6 +11,8 @@ Cron checks cover schedule validation, SQLite writes as a locked service account
 reload failure recovery and rollback without restarting cron or rerunning `@reboot` jobs.
 Building the fixtures with `withCronctl = false` tests automatic reload without
 the helper; parser checks and the injected reload failure are omitted in that mode.
+NTP checks use loopback peers and cover configuration validation, restart failures,
+stopped services, rollback and persistence after reboot. They do not test clock accuracy.
 
 Build the fixtures inside OpenBSD from the repository root:
 

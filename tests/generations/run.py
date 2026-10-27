@@ -107,6 +107,9 @@ test "$(readlink -f /nix/var/nix/profiles/system)" = {a}''',
     if args.live_fixtures:
         fixtures = shlex.quote(str(args.live_fixtures))
         shutil.copyfile(Path(__file__).with_name('cron-check.sh'), payload / 'cron-check.sh')
+        shutil.copyfile(Path(__file__).with_name('ntpd-check.sh'), payload / 'ntpd-check.sh')
+        ntpd_check = f'''curl --noproxy '*' -fsS {url}/ntpd-check.sh -o /tmp/ntpd-check.sh
+source /tmp/ntpd-check.sh'''
         metadata = json.loads((Path(args.system_a) / 'openbsd-system.json').read_text())
         with_cronctl = bool(metadata['services']['cron']['check'])
         cron_check = (f'''curl --noproxy '*' -fsS {url}/cron-check.sh -o /tmp/cron-check.sh
@@ -127,6 +130,9 @@ rebuild={a}/sw/bin/openbsd-rebuild
 ssh_process() {{ ps -ax -o pid=,comm= | awk '$2 == "sshd" {{ print $1 }}'; }}
 ssh_pid=$(ssh_process)
 test -n "$ssh_pid"
+{ntpd_check}
+ntpd_check 127.0.0.2
+ntpd_pid=$(ntpd_process)
 cron_process() {{ ps -ax -o pid=,ppid=,comm= | awk '$2 == 1 && $3 == "cron" {{ print $1 }}'; }}
 cron_pid=$(cron_process)
 test -n "$cron_pid"
@@ -167,13 +173,16 @@ directory_check "700:$daemon_owner"
 chmod 0777 "$directory"
 chown root:wheel "$directory"
 {a}/bin/switch-to-configuration test
+test "$(ntpd_process)" = "$ntpd_pid"
 directory_check "700:$daemon_owner"
 default=$(cat /boot/nixos/default.conf)
 {b}/bin/switch-to-configuration dry-activate
 test "$(readlink -f /run/current-system)" = {a}
 directory_check "700:$daemon_owner"
 test ! -e "$directory/new"
-for failure in invalid {'invalid-cron' if with_cronctl else ''} failed-start failed-activation failed-directories; do
+test "$(ntpd_process)" = "$ntpd_pid"
+for failure in invalid invalid-ntpd {'invalid-cron' if with_cronctl else ''} failed-start failed-ntpd-start failed-activation failed-directories; do
+    ntpd_pid=$(ntpd_process)
     if $rebuild switch --store-path {fixtures}/$failure; then echo "Unexpected success: $failure"; exit 1; fi
     test "$(readlink -f /run/current-system)" = {a}
     test "$(readlink -f /nix/var/nix/profiles/system)" = {a}
@@ -182,9 +191,20 @@ for failure in invalid {'invalid-cron' if with_cronctl else ''} failed-start fai
     test "$(cat "$directory/blocker")" = blocker
     /etc/rc.d/httpd check
     curl -fsS http://127.0.0.1:8080/ | grep NixBSD
+    ntpd_check 127.0.0.2
+    case "$failure" in
+        invalid*) test "$(ntpd_process)" = "$ntpd_pid" ;;
+        failed-ntpd-start) test "$(ntpd_process)" != "$ntpd_pid" ;;
+    esac
 done
 {reload_failure}
+ntpd_pid=$(ntpd_process)
 {b}/bin/switch-to-configuration test
+ntpd_check 127.0.0.3
+test "$(ntpd_process)" != "$ntpd_pid"
+ntpd_pid=$(ntpd_process)
+{b}/bin/switch-to-configuration test
+test "$(ntpd_process)" = "$ntpd_pid"
 directory_check "750:$root_owner"
 test -d "$directory/new"
 test "$(readlink -f /run/current-system)" = {b}
@@ -194,7 +214,13 @@ test "$(cat /boot/nixos/default.conf)" = "$default"
 curl -fsS http://127.0.0.1:8080/ | grep 'generation B'
 test "$(/run/current-system/sw/bin/hello)" = 'Hello, world!'
 cron_wait b
+/etc/rc.d/ntpd stop
+ntpd_stopped
 $rebuild test --store-path {a}
+ntpd_stopped
+grep -Fx 'server 127.0.0.2' /etc/ntpd.conf
+/etc/rc.d/ntpd start
+ntpd_check 127.0.0.2
 directory_check "700:$daemon_owner"
 test -d "$directory/new"
 if {b}/etc/rc.d/generation_probe check; then echo 'Removed daemon still running'; exit 1; fi
@@ -202,6 +228,7 @@ if {b}/etc/rc.d/generation_probe check; then echo 'Removed daemon still running'
 test "$(readlink -f /run/current-system)" = {b}
 test "$(readlink -f /nix/var/nix/profiles/system)" = {b}
 $rebuild switch --rollback
+ntpd_check 127.0.0.2
 directory_check "700:$daemon_owner"
 test "$(readlink -f /run/current-system)" = {a}
 test "$(readlink -f /nix/var/nix/profiles/system)" = {a}
@@ -217,6 +244,8 @@ echo LIVE_SWITCH_PASS
                                         ('rollback', '700', 'daemon', 'daemon'),
                                         ('recovery', '700', 'daemon', 'daemon')]:
             phases[phase] += f'''
+{ntpd_check}
+ntpd_check {'127.0.0.3' if phase == 'b' else '127.0.0.2'}
 owner=$(id -u {user}):$(awk -F: '$1 == "{group}" {{ print $3 }}' /etc/group)
 test "$(stat -c '%a:%u:%g' /var/lib/directory-test)" = "{mode}:$owner"
 test "$(cat /var/lib/directory-test/state)" = preserved
