@@ -1,13 +1,9 @@
 # Native OpenBSD package test
 
-Run from the project root, with `nixbsd` beside it:
+Run from the project root on x86_64 Linux:
 
 ```sh
-nix build --impure --max-jobs 1 --cores 8 --out-link result-native-test \
-  --extra-substituters https://nix-openbsd.cachix.org \
-  --extra-trusted-public-keys 'nix-openbsd.cachix.org-1:IbN25q8l3NyIq8L16AWaJ1MNTxZRiYdzO5eYFQv1J+4=' \
-  --expr '(import ./tests/native { nixbsd = builtins.getFlake ("path:" + toString ../nixbsd); }).test'
-./result-native-test/bin/test-openbsd-native
+nix run .#test -- --suite native
 ```
 
 The host supplies cross-built seed tools and sources to an OpenBSD VM.
@@ -19,26 +15,23 @@ The runner imports recipes, sources and seed tools after boot over a local
 connection. Rerun the build command after editing them. Changes to the VM's
 installed tools or configuration rebuild the base image.
 
-Use `--prepare-only` to check recipe transfer and evaluation without building
-packages, `--cxx` to run the full C++ suites, or `--toolchain` to build and test
-native LLVM, Clang and LLD. Use `--nix` to build the native Nix CLI and daemon,
+Use `--suite bootstrap` for the stdenv and package builds, `--suite cxx` for
+the C++ suites, or `--suite toolchain` for native LLVM, Clang and LLD.
+Use `--suite nix` to build the native Nix CLI and daemon,
 then run the package checks through that daemon as root and `bestie`. It also
 checks for bootstrap references, downloads from a local signed cache, and tests garbage
 collection in a disposable store. The original daemon is restored afterward.
 
-The VM has eight vCPUs, 16 GiB of RAM and a 64 GiB root filesystem. Host and
-guest builds run one package at a time, with eight cores per build.
+The VM defaults to eight vCPUs, 16 GiB of RAM and a 64 GiB root filesystem.
+Set `NIX_VM_CORES` and `NIX_VM_MEMORY` to override its resources.
 
-Use `--all --state-dir /tmp/openbsd-validation` to run the toolchain, C++ and Nix
-checks, then package checks and a native system build in the same VM. It imports
-the outputs into the host store and keeps them rooted in that directory.
-Rerun with the same directory to reuse completed builds. Keep the same base VM;
-changes to its kernel or preloaded contents need a fresh directory.
+The `native` suite runs the toolchain, C++ and Nix checks, then package checks
+and a native system build in the same VM. It imports the outputs into the host store.
+The lower-level runner still supports `--prepare-only` and `--all --state-dir DIR`
+for recipe debugging and reuse of completed builds.
 
-Failed runs keep the log, disk and failed build directories. Set
-`OPENBSD_VM_KEEP_TMP=1` to keep successful runs too. The timeout is 24 hours.
-Change it with `OPENBSD_VM_TIMEOUT`, in seconds. The runner requests a clean
-guest shutdown after the test.
+Failed runs keep logs, disks and failed build directories. Add `--keep` to retain
+successful disks. See the [testing guide](../../docs/testing.md) for reports and timeouts.
 
 ## Checks
 

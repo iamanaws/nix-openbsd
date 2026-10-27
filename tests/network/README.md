@@ -3,11 +3,7 @@
 Run from the project root on x86_64 Linux with KVM:
 
 ```sh
-nix run --impure --max-jobs 1 --cores 1 --expr '
-  (import ./tests/network {
-    flake = builtins.getFlake (toString ./.);
-  }).test
-'
+nix run .#test -- --suite network
 ```
 
 The test boots two headless OpenBSD guests with fresh disks, one CPU and

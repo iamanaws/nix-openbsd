@@ -11,9 +11,13 @@ import shlex
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from guest import clone_state
 
 
 def closure(path):
@@ -30,12 +34,18 @@ def main():
     fixtures.add_argument('--live-fixtures', type=Path, help='fixture bundle with invalid configurations and activation failures')
     fixtures.add_argument('--dns-fixtures', type=Path, help='DNS configuration and failure fixtures')
     parser.add_argument('--live-only', action='store_true', help='test only installation and live updates')
+    parser.add_argument('--timeout', type=int, default=600, help='seconds allowed for each guest operation')
     parser.add_argument('--personal-system', type=Path, help='also boot the native configuration template')
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[2],
                         help='project source for the personal configuration test')
     parser.add_argument('--recovery-state', type=Path, help='rerun only console recovery on a preserved test disk')
     parser.add_argument('--keep', action='store_true')
+    parser.add_argument('--vm-state', type=Path, help='copy a prepared VM as the initial test state')
     args = parser.parse_args()
+    if args.timeout <= 0:
+        parser.error('--timeout must be positive')
+    if args.vm_state and args.recovery_state:
+        parser.error('--vm-state and --recovery-state cannot be combined')
     if args.live_only and (not (args.live_fixtures or args.dns_fixtures) or args.personal_system or args.recovery_state):
         parser.error('--live-only requires service fixtures and excludes personal/recovery tests')
     args.launcher = args.launcher.resolve(strict=True)
@@ -51,6 +61,8 @@ def main():
         args.recovery_state = args.recovery_state.resolve(strict=True)
     work = Path(tempfile.mkdtemp(prefix='nixopenbsd-generations.'))
     print(f'Test files: {work}', flush=True)
+    if args.vm_state:
+        clone_state(args.vm_state, work / 'state')
     public = work / 'public'
     token = secrets.token_hex(24)
     payload = public / token
@@ -82,15 +94,22 @@ def main():
     server = ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(Handler, directory=str(public)))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = f'http://10.0.2.2:{server.server_port}/{token}'
+    # Guest networking can still settle after login; retry fixture downloads.
+    fetch = "curl --noproxy '*' --retry 10 --retry-connrefused --retry-delay 1 -fsS"
     a, b = map(shlex.quote, (args.system_a, args.system_b))
     (payload / 'setup.sh').write_text(f'''set -eu
-curl --noproxy '*' -fsS {url}/systems.nar | nix-store --import
+{fetch} {url}/systems.nar -o /tmp/generation-systems.nar
+nix-store --import < /tmp/generation-systems.nar
+rm /tmp/generation-systems.nar
+# Reused disks may contain data from an earlier generation test.
+/etc/rc.d/cron stop
+rm -rf /var/lib/cron-test /var/lib/directory-test
 {a}/bin/switch-to-configuration boot
 test "$(readlink -f /run/current-system)" = {shlex.quote(args.base_system)}
 touch /root/generation-persistence
 ''')
     phases = {
-        'install': f"curl --noproxy '*' -fsS {url}/setup.sh -o /tmp/install.sh && bash /tmp/install.sh",
+        'install': f"{fetch} {url}/setup.sh -o /tmp/install.sh && bash /tmp/install.sh",
         'a': f'''test "$(readlink -f /run/current-system)" = {a}
 openbsd-rebuild boot --store-path {b}
 test "$(readlink -f /run/current-system)" = {a}''',
@@ -114,11 +133,11 @@ test "$(readlink -f /nix/var/nix/profiles/system)" = {a}''',
         fixtures = shlex.quote(str(args.live_fixtures))
         shutil.copyfile(Path(__file__).with_name('cron-check.sh'), payload / 'cron-check.sh')
         shutil.copyfile(Path(__file__).with_name('ntpd-check.sh'), payload / 'ntpd-check.sh')
-        ntpd_check = f'''curl --noproxy '*' -fsS {url}/ntpd-check.sh -o /tmp/ntpd-check.sh
+        ntpd_check = f'''{fetch} {url}/ntpd-check.sh -o /tmp/ntpd-check.sh
 source /tmp/ntpd-check.sh'''
         metadata = json.loads((Path(args.system_a) / 'openbsd-system.json').read_text())
         with_cronctl = bool(metadata['services']['cron']['check'])
-        cron_check = (f'''curl --noproxy '*' -fsS {url}/cron-check.sh -o /tmp/cron-check.sh
+        cron_check = (f'''{fetch} {url}/cron-check.sh -o /tmp/cron-check.sh
 bash /tmp/cron-check.sh''' if with_cronctl else
                       'if command -v cronctl; then echo "Unexpected cronctl"; exit 1; fi')
         reload_failure = f'''touch /run/cron-fail-reload
@@ -264,7 +283,7 @@ test "$(stat -c '%a:%u:%g' /var/lib/directory-test/state)" = "600:$(id -u daemon
 
         def dns_probe(phase):
             fixtures = ' ' + shlex.quote(str(args.dns_fixtures)) if phase == 'live' else ''
-            return f'''curl --noproxy '*' -fsS {url}/dns-check.py -o /tmp/dns-check.py
+            return f'''{fetch} {url}/dns-check.py -o /tmp/dns-check.py
 python3 -B /tmp/dns-check.py {phase} {a} {b}{fixtures}
 '''
 
@@ -330,9 +349,9 @@ echo PERSONAL_SYSTEM_PASS
                     with (work / f'{phase}.log').open('rb') as reader:
                         buffer = b''
 
-                        def expect(pattern, timeout=600):
+                        def expect(pattern, timeout=None):
                             nonlocal buffer
-                            deadline = time.monotonic() + timeout
+                            deadline = time.monotonic() + (args.timeout if timeout is None else timeout)
                             while time.monotonic() < deadline:
                                 buffer += reader.read()
                                 match = re.search(pattern, buffer)
@@ -368,7 +387,7 @@ echo PERSONAL_SYSTEM_PASS
                         expect(rb'Password:')
                         send('toor')
                         expect(rb'root@')
-                        send(f"curl --noproxy '*' --retry 10 --retry-connrefused --retry-delay 1 -fsS {url}/{phase}.sh -o /tmp/phase.sh && bash /tmp/phase.sh; status=$?; printf '\\nGENERATION_DONE:%s\\n' \"$status\"")
+                        send(f"{fetch} {url}/{phase}.sh -o /tmp/phase.sh && bash /tmp/phase.sh; status=$?; printf '\\nGENERATION_DONE:%s\\n' \"$status\"")
                         status = expect(rb'\nGENERATION_DONE:(\d+)\r?\n').group(1)
                         if status != b'0':
                             raise RuntimeError(f'{phase} failed: {status.decode()}')

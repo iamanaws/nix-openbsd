@@ -1,88 +1,98 @@
 # Run tests
 
-Run VM tests from a project checkout on x86_64 Linux with KVM.
-
-## Native VM workflow
+Run the regular regression suites from a project checkout:
 
 ```sh
-nix run .#test-native-vm
+nix run .#test
 ```
 
-On x86-64 Linux, also test the emulation path used by ARM hosts:
+Run one suite, select several, or include the long native toolchain checks:
 
 ```sh
-NIX_VM_ACCEL=tcg nix run .#test-native-vm
+nix run .#test -- --suite dns
+nix run .#test -- --suite dns --live-only
+nix run .#test -- --suite local --suite generations
+nix run .#test -- --all
+nix run .#test -- --list
 ```
 
-This checks regular-user package commands, services, HTTP, SSH and persistent
-state across a restart. It supplies the checkout's sources to a fresh guest.
-It also checks Python HTTPS and sqlite-utils cache downloads and data imports.
+VM suites run on x86_64 Linux with KVM. Local tests also run on the other
+supported hosts. Suites run sequentially; networking uses two small guests.
 
-To include native builds, a personal configuration, live switching and rollback:
+| Suite | Coverage |
+| --- | --- |
+| `local` | Unit tests and configuration evaluation; no VM. Unit tests also run through `nix flake check`. |
+| `base` | Base VM services, outbound HTTPS, MTU, IPv6 routes and network startup failures. |
+| `packages` | Native C/C++, SQLite, tmux, Python, CFFI, libevent and sqlite-utils checks. |
+| `vm` | Fresh native image, regular-user package commands, cache downloads and restart. |
+| `workflow` | Native builds, a personal configuration, live switching and rollback. |
+| `generations` | HTTP, cron, NTP, directories, failed-update recovery, rollback, GC and console recovery. |
+| `dns` | Resolver updates, lookups, reload failures, cache preservation and boot recovery. |
+| `cron-fallback` | Generation checks without `cronctl`. |
+| `network` | Routing, BGP and IPsec between isolated guests. |
+
+These are the default suites. `--all` also runs `native`, which combines the
+native bootstrap, toolchain, C++ and Nix checks. Use `--suite bootstrap`,
+`--suite toolchain`, `--suite cxx` or `--suite nix` to run those separately.
+`--full` is an alias for `--all`.
+For faster iteration, `--live-only` skips reboot, GC and console recovery in
+explicitly selected `generations`, `dns` or `cron-fallback` suites.
+
+## Development runs
+
+The runner builds native fixtures inside OpenBSD and transfers their outputs
+automatically. It starts with the published `openbsd-8.0` VM, then builds and
+selects the checkout's native system. `--baseline` can select another published
+VM. Update the default baseline when publishing a newer validated release.
+
+To reuse installed build inputs, provide a stopped native VM directory containing
+`disk.qcow2` and `efi.fd`:
 
 ```sh
-nix run .#test-native-vm -- --system-workflow
+nix run .#test -- --suite dns --vm-state ./openbsd-native-vm
 ```
 
-To test a published commit without preloading sources or build outputs:
+Tests use private copies and leave that VM unchanged. Focused runs stop if they
+would rebuild LLVM or the C++ runtimes; prepare those with the native suites or
+use a VM that already has the build inputs.
+
+Native guests use `NIX_VM_CORES` and `NIX_VM_MEMORY` (MiB) when set. Regular guests
+default to two CPUs and 4 GiB; the bootstrap suites default to eight CPUs and
+16 GiB. Guest disk limits remain 40 MiB/s for reads and 20 MiB/s for writes.
+Host Nix builds use one job and two cores. `--timeout` overrides the per-suite
+limit: one hour normally, 24 hours for the native bootstrap suites.
+
+## CI and results
+
+Use an empty output directory and archive it after the run:
+
+```sh
+nix run --accept-flake-config .#test -- --all --work-dir test-results
+```
+
+The runner writes `results.json`, `junit.xml` and per-suite logs. A failed suite
+does not stop the remaining suites. After they finish, the command returns exit
+code `1` if any suite failed, or `0` if all passed. Failed runs retain their VM
+disks; add `--keep` to retain successful disks too.
+Nix can reuse successful package and unit-test derivations from the cache.
+
+## Additional checks
+
+Test a published commit without preloading project sources or build outputs:
 
 ```sh
 nix run .#test-native-vm -- --public-ref github:iamanaws/nix-openbsd/REVISION
 ```
 
-Replace `REVISION` with the commit hash. This also forces a native hello build,
-builds a personal configuration, and checks live switching and rollback across
-reboots. Dependencies can use the cache.
+On x86-64 Linux, run `NIX_VM_ACCEL=tcg nix run .#test -- --suite vm` to check
+software emulation. These modes are separate from the default regression run.
 
-Both modes retain the VM's disk I/O limits. Set `NIX_VM_CORES=8` and
-`NIX_VM_MEMORY=8192` for more resources. Add `--builders ''` after `--` to
-assemble the image locally with one job and two cores.
-Logs remain in the printed directory. Successful test disks are removed;
-add `--keep` after `--` to retain them. Failed runs keep their disks.
-
-## Native package checks
-
-Inside OpenBSD, run the package consumer tests with:
-
-```sh
-nix build -L .#checks.x86_64-openbsd.packages
-nix build -L .#checks.x86_64-openbsd.sqlite-utils
-```
-
-This builds C/C++ consumers with CMake and pkg-config, checks SQLite
-transactions and locking, starts a private tmux server, and checks Python's
-SQLite, TLS certificate verification and CFFI extension callbacks.
-The sqlite-utils check covers JSON/CSV imports, queries, exports and persistence.
-It requires a non-root Nix builder and rejects
-runtime dependencies on the bootstrap seeds.
-
-Run libevent's upstream suite and CFFI's upstream `extern "Python"` tests with:
-
-```sh
-nix build -L .#checks.x86_64-openbsd.libevent .#checks.x86_64-openbsd.cffi-callbacks
-```
-
-fmt's package build also runs its upstream tests.
-The libevent check uses test-only patches for OpenBSD resolver behavior and
-avoids public DNS in its blocking lookup failure test.
-
-## Other suites
-
-| Suite | Coverage |
-| --- | --- |
-| [Native packages](../tests/native/README.md) | Stdenv, toolchain, C/C++ runtimes and Nix daemon builds. |
-| [System generations](../tests/generations/README.md) | Live updates, failure recovery, rollback, GC and boot-console recovery. |
-| [Networking](../tests/network/README.md) | Declarative addresses, routing, BGP and IPsec between two VMs. |
-| [Base VM](../tests/base/run.sh) | Service control, outbound HTTPS, MTU, IPv6 routes and network startup failures. |
-
-Run the base checks with `bash tests/base/run.sh --max-jobs 1 --cores 8`.
-See [validation results and limitations](status.md) for what has passed.
-
-Check cache availability for native packages, cross-built package targets and
-bootstrap outputs:
+After publishing, check cache metadata with:
 
 ```sh
 python3 tests/cache/check.py path:"$PWD" --bootstrap --cross
 ```
 
-This checks metadata; the VM test verifies actual downloads.
+Source-specific reproducers under `tests/upstream` remain manual. See
+[native checks](../tests/native/README.md), [generation checks](../tests/generations/README.md),
+[network checks](../tests/network/README.md) and [validation coverage](status.md).

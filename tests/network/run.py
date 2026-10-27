@@ -28,7 +28,8 @@ class Guest:
                 "TMPDIR": str(self.directory / "runtime"), "USE_TMPDIR": "1",
                 "QEMU_OPTS": (
                     f"-netdev socket,id=test,udp=127.0.0.1:{peer_port},localaddr=127.0.0.1:{port} "
-                    f"-device virtio-net-pci,netdev=test,mac=52:54:00:12:34:0{number}"
+                    f"-device virtio-net-pci,netdev=test,mac=52:54:00:12:34:0{number} "
+                    + os.environ.get("QEMU_OPTS", "")
                 ),
             },
         )

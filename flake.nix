@@ -299,6 +299,15 @@
       };
 
       apps = forAllHosts (hostSystem: {
+        test = {
+          type = "app";
+          program = "${
+            import ./tests {
+              pkgs = hostPackages.${hostSystem};
+              source = self.outPath;
+            }
+          }/bin/test-openbsd";
+        };
         native-vm = {
           type = "app";
           program = "${nativeVMs.${hostSystem}.launcher}/bin/run-openbsd-native-vm";
@@ -314,10 +323,19 @@
         };
       });
 
-      checks.x86_64-openbsd = import ./tests/packages {
-        pkgs = nativeSystemPackages;
-        bootstrap = seedMetadata;
-      };
+      checks =
+        forAllHosts (hostSystem: {
+          local = import ./tests/local.nix {
+            pkgs = hostPackages.${hostSystem};
+            source = self.outPath;
+          };
+        })
+        // {
+          x86_64-openbsd = import ./tests/packages {
+            pkgs = nativeSystemPackages;
+            bootstrap = seedMetadata;
+          };
+        };
 
       packages =
         forAllHosts (hostSystem: {

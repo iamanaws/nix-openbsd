@@ -14,36 +14,22 @@ the helper; parser checks and the injected reload failure are omitted in that mo
 NTP checks use loopback peers and cover configuration validation, restart failures,
 stopped services, rollback and persistence after reboot. They do not test clock accuracy.
 
-Build the fixtures inside OpenBSD from the repository root:
+Run from the project root on x86_64 Linux:
 
 ```sh
-nix build --impure --expr '(import ./tests/generations/fixtures.nix {
-  flake = builtins.getFlake ("path:" + toString ./.);
-}).all' --max-jobs 1 --cores 8 -o generation-tests
+nix run .#test -- --suite generations
+nix run .#test -- --suite cron-fallback
+nix run .#test -- --suite dns
+nix run .#test -- --suite dns --live-only
 ```
 
-Copy that closure to the Linux host. With an existing native VM launcher and
-its original system closure available locally, run:
+The runner builds and transfers the fixtures automatically. See the
+[testing guide](../../docs/testing.md) for prepared VMs, logs and resource limits.
 
-```sh
-python3 tests/generations/run.py \
-  --launcher "$launcher" --base-system "$base_system" \
-  --system-a "$fixtures/a" --system-b "$fixtures/b" \
-  --live-fixtures "$fixtures"
-```
-
-`fixtures` is the fixture bundle's store path. The harness imports only paths
-absent from the base closure and keeps the VM's disk I/O limits. Logs remain
-in the printed directory. Successful test disks are removed unless `--keep`
-is passed.
-Add `--live-only` with `--live-fixtures` to run installation and live-update checks only.
-Use `--recovery-state DIR/state` to repeat only console recovery on a preserved disk.
-
-For DNS, build `tests/generations/dns-fixtures.nix` with the same command and pass
-`--dns-fixtures "$fixtures"` instead of `--live-fixtures`. These checks use a local
-DNS server and cover lookups, resolver-file updates, blocklist reloads, cache preservation,
+DNS checks use a local server and cover lookups, resolver-file updates,
+blocklist reloads, cache preservation,
 failed-update recovery, stopped services and rollback across reboots. They do not
-test DNSSEC validation. `--live-only` also works with these fixtures.
+test DNSSEC validation.
 
 Local failure tests need Bash, jq, GNU coreutils and Python:
 
@@ -51,11 +37,10 @@ Local failure tests need Bash, jq, GNU coreutils and Python:
 python3 -m unittest discover -s tests/generations -p 'test_*.py'
 ```
 
-To also check the personal configuration, build the native-system template
-inside OpenBSD and pass its system path as `--personal-system`. This boots
-the template, checks its packages and DNS service, and exercises `openbsd-rebuild`
-against a local copy of the template and project inputs. The local tests cover
-build failure and permissions.
+Use `--suite workflow` to check the personal configuration template and
+`openbsd-rebuild` against project inputs. Add `--live-only` to skip reboot, GC
+and console recovery. The lower-level `run.py` also supports
+`--recovery-state DIR/state` for console recovery.
 
 ## Boot-console recovery
 
