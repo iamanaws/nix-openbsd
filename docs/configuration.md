@@ -73,6 +73,42 @@ To update the reference demo instead, run `nix build .#native-system` from a
 `openbsd-rebuild ACTION --store-path ./result` as root, using an activation action
 from the table. An older VM needs one boot into the new system before live switching.
 
+## Networking
+
+OpenBSD systems use `dhcpleased` for IPv4 DHCP and `resolvd` to apply DNS
+proposals. With the default `networking.useDHCP = true`, DHCP is enabled on
+Ethernet interfaces without a declared static IPv4 address. Select interfaces
+explicitly when mixing DHCP and static addresses:
+
+```nix
+networking.useDHCP = false;
+networking.interfaces.vio0.useDHCP = true;
+networking.interfaces.vio1 = {
+  useDHCP = false;
+  ipv4.addresses = [ { address = "192.0.2.1"; prefixLength = 24; } ];
+};
+```
+
+The module sets OpenBSD's `inet autoconf` flag on selected interfaces. The
+daemon handles leases and link changes; lease files persist in
+`/var/db/dhcpleased`. Inspect a lease with `dhcpleasectl -l vio0`, or request
+a new lease and wait up to 30 seconds with `dhcpleasectl -w 30 vio0`.
+
+`networking.dhcpleased.config` accepts
+[dhcpleased.conf(5)](https://man.openbsd.org/dhcpleased.conf) syntax, for example
+`interface vio1 { ignore dns }`. Its default is empty. Additional resolver
+settings go in `services.resolvd.config`. Set `services.resolvd.enable = false`
+to manage the resolver file yourself.
+
+OpenBSD 8.0 records changed DNS servers in renewed leases, but refreshes its
+resolver proposal when reacquiring the lease, such as after a link change.
+Use `dhcpleasectl -w 30 vio0` to request that refresh immediately.
+
+Networking changes require `boot` followed by a reboot. The DHCP service checks
+configuration before startup and restart; OpenBSD does not support reloading it.
+Explicitly setting `networking.dhcpcd.enable = true` selects the existing dhcpcd
+client instead. The two clients cannot be enabled together.
+
 ## Service directories
 
 Declare directories in your configuration:

@@ -65,7 +65,7 @@ live_prepare() {
 
 service_order() {
     for phase in "$1"/etc/rc.order/*; do
-        while read -r command name; do
+        while read -r command name || test -n "$command"; do
             test "$command" != start_daemon || echo "$name"
         done < "$phase"
     done

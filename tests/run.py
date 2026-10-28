@@ -19,6 +19,7 @@ SUITES = {
     'base': 'Base VM service and network startup checks',
     'packages': 'Native package consumers and package regression checks',
     'go': 'Native Go standard tests, cgo, shfmt and regular-user builds',
+    'dhcp': 'Native DHCP leases, DNS updates, carrier recovery and reboot persistence',
     'vm': 'Fresh native VM, cache downloads and restart',
     'workflow': 'Regular-user builds, personal configuration and live rollback',
     'generations': 'HTTP, cron, NTP, directories, failure recovery and boot recovery',
@@ -35,7 +36,7 @@ SUITES = {
     'cxx': 'Focused libc++ and libc++abi suites (slow)',
     'nix': 'Focused native Nix CLI and daemon checks',
 }
-REGULAR = ('local', 'base', 'packages', 'go', 'vm', 'workflow', 'generations',
+REGULAR = ('local', 'base', 'packages', 'go', 'dhcp', 'vm', 'workflow', 'generations',
            'dns', 'logging', 'doas', 'mail', 'maintenance', 'cron-fallback', 'network')
 GENERATIONS = {'generations', 'dns', 'logging', 'doas', 'mail', 'maintenance', 'cron-fallback'}
 NATIVE = {'native': '--all', 'bootstrap': None, 'toolchain': '--toolchain',
@@ -182,8 +183,8 @@ class Runtime:
             raise RuntimeError(self.prepare_error)
         if self.prepared is not None:
             return self.prepared
-        wanted = [s for s in self.suites if s in GENERATIONS or s in ['packages', 'go']]
-        if any(s in GENERATIONS or s in ['vm', 'workflow'] for s in self.suites):
+        wanted = [s for s in self.suites if s in GENERATIONS or s in ['packages', 'go', 'dhcp']]
+        if any(s in GENERATIONS or s in ['vm', 'workflow', 'dhcp'] for s in self.suites):
             wanted.insert(0, 'base')
         wanted = list(dict.fromkeys(wanted))
         try:
@@ -229,6 +230,8 @@ class Runtime:
                           self.source / 'tests/mail/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
             self.command(['nix', 'eval', '--impure', '--json', '--file',
                           self.source / 'tests/maintenance/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
+            self.command(['nix', 'eval', '--impure', '--json', '--file',
+                          self.source / 'tests/dhcp/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
         elif name == 'base':
             self.command(['bash', self.source / 'tests/base/run.sh', '--max-jobs', '1', '--cores', '2', '--builders', ''])
         elif name == 'network':
@@ -251,6 +254,15 @@ class Runtime:
             command = [sys.executable, '-B', self.source / 'tests/go/run.py',
                        '--source', self.source, '--launcher', self.launcher,
                        '--inputs', inputs['go'], '--timeout', str(self.timeout),
+                       '--vm-state', self.work / 'native-preparation/state']
+            if self.args.keep:
+                command.append('--keep')
+            self.command(command)
+        elif name == 'dhcp':
+            inputs = self.ensure_prepared()
+            command = [sys.executable, '-B', self.source / 'tests/dhcp/run.py',
+                       '--source', self.source, '--launcher', self.launcher,
+                       '--fixtures', inputs['dhcp'], '--timeout', str(self.timeout),
                        '--vm-state', self.work / 'native-preparation/state']
             if self.args.keep:
                 command.append('--keep')

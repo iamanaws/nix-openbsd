@@ -194,9 +194,6 @@
 
             services.resolvd = {
               enable = true;
-              config = ''
-                nameserver 10.0.2.3
-              '';
             };
 
             services.pf = {
@@ -391,6 +388,8 @@
               cron
               crontab
               dhcpd
+              dhcpleased
+              dhcpleasectl
               doas
               httpd
               ikectl

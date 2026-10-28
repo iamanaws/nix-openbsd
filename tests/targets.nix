@@ -15,6 +15,8 @@ in
 {
   nativeTargets = {
     base = flake.packages.x86_64-openbsd.native-system;
+    dhcpleased = pkgs.openbsd.dhcpleased;
+    dhcp = (import ./dhcp { inherit flake; }).all;
     go-bootstrap = pkgs.go.goBootstrap;
     go-toolchain = pkgs.go;
     shfmt = pkgs.shfmt;

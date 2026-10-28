@@ -59,7 +59,9 @@ in pkgs.hello.overrideAttrs (old: {
 ''')
     phases = {
         'fresh': f'''test "$(readlink -f /run/current-system)" = {shlex.quote(expected)}
-for service in nix_daemon sshd dhcpcd httpd relayd cron syslogd; do
+dhcp=dhcpleased
+test -e /etc/rc.d/dhcpleased || dhcp=dhcpcd
+for service in nix_daemon sshd "$dhcp" httpd relayd cron syslogd; do
   /etc/rc.d/$service check
  done
 curl --noproxy '*' -fsS {url}/client.sh -o /tmp/client.sh

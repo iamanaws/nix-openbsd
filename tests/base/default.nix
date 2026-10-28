@@ -59,7 +59,10 @@ let
     + "\n"
     + extra.config.system.build.openbsdNetworkOptions.text;
   noDHCP = base.extendModules { modules = [ { networking.useDHCP = false; } ]; };
-  disabledDhcpcd = base.extendModules { modules = [ { networking.dhcpcd.enable = false; } ]; };
+  disabledDhcpleased = base.extendModules {
+    modules = [ { networking.dhcpleased.enable = false; } ];
+  };
+  legacy = base.extendModules { modules = [ { networking.dhcpcd.enable = true; } ]; };
   interfaceDHCP = noDHCP.extendModules {
     modules = [ { networking.interfaces.vio0.useDHCP = true; } ];
   };
@@ -75,11 +78,13 @@ assert base.config.virtualisation.vmVariant.fileSystems."/".noCheck;
 assert lib.any (
   a: !a.assertion && lib.hasPrefix "OpenBSD live switching" a.message
 ) enabledSwitch.config.assertions;
-assert base.config.openbsd.rc.services.dhcpcd.shellVariables.pexp == "dhcpcd: \\[manager\\].*";
+assert base.config.openbsd.rc.services ? dhcpleased;
+assert !(base.config.openbsd.rc.services ? dhcpcd);
+assert legacy.config.openbsd.rc.services.dhcpcd.shellVariables.pexp == "dhcpcd: \\[manager\\].*";
 assert !(noDHCP.config.openbsd.rc.services ? dhcpcd);
-assert !(disabledDhcpcd.config.openbsd.rc.services ? dhcpcd);
-assert
-  interfaceDHCP.config.openbsd.rc.services.dhcpcd.shellVariables.pexp == "dhcpcd: \\[manager\\].*";
+assert !(noDHCP.config.openbsd.rc.services ? dhcpleased);
+assert !(disabledDhcpleased.config.openbsd.rc.services ? dhcpleased);
+assert interfaceDHCP.config.openbsd.rc.services ? dhcpleased;
 assert lib.hasInfix "ifconfig vio0 mtu 1400" script;
 assert lib.hasInfix "ifconfig vio1 mtu 1450" extraScript;
 assert lib.hasInfix "inet6 2001:db8::2/64 alias" script;

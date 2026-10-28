@@ -45,8 +45,8 @@ in
 
     init.services.resolvd = {
       description = "OpenBSD resolver configuration daemon";
-      dependencies = [ "NETWORKING" ];
-      before = [ "SERVERS" ];
+      dependencies = [ "FILESYSTEMS" ];
+      before = [ "NETWORKING" ];
       startType = "forking";
       path = [ pkgs.coreutils ];
       startCommand = [ resolvd ] ++ cfg.extraFlags;

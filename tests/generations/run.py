@@ -115,7 +115,7 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = f'http://10.0.2.2:{server.server_port}/{token}'
     # Guest networking can still settle after login; retry fixture downloads.
-    fetch = "curl --noproxy '*' --retry 10 --retry-all-errors --retry-delay 1 --connect-timeout 5 -fsS"
+    fetch = "curl --noproxy '*' --retry 60 --retry-all-errors --retry-delay 1 --connect-timeout 5 -fsS"
     a, b = map(shlex.quote, (args.system_a, args.system_b))
     (payload / 'setup.sh').write_text(f'''set -eu
 {fetch} {url}/systems.nar -o /tmp/generation-systems.nar
@@ -201,7 +201,7 @@ cron_wait() {{
     test "$(sqlite3 /var/lib/cron-test/jobs.db 'select distinct uid from runs;')" = "$(id -u daemon)"
 }}
 cron_wait a
-for service in nix_daemon sshd dhcpcd httpd relayd cron syslogd ntpd sensorsd snmpd resolvd; do
+for service in nix_daemon sshd dhcpleased httpd relayd cron syslogd ntpd sensorsd snmpd resolvd; do
     /etc/rc.d/$service check
 done
 directory=/var/lib/directory-test

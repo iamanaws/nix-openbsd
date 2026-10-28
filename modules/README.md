@@ -23,7 +23,9 @@ Native systems enable local mail through `services.smtpd`; see
 and local hooks; see [scheduled maintenance](../docs/configuration.md#scheduled-maintenance).
 
 The flake and tests import [OpenBSD integration fixes](system/openbsd.nix)
-for PF defaults, DHCP process matching, MTU and IPv6 default routes. This module
+for PF defaults, native IPv4 DHCP, MTU and IPv6 default routes. DHCP uses
+`networking.dhcpleased` and the existing global and per-interface `useDHCP`
+options; see [networking](../docs/configuration.md#networking). This module
 only applies on OpenBSD. The fixes remain here pending upstream compatibility testing.
 
 ## Before enabling services

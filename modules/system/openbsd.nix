@@ -44,7 +44,10 @@ let
   '';
 in
 {
-  imports = [ ./tempfiles.nix ];
+  imports = [
+    ./tempfiles.nix
+    ../services/dhcpleased.nix
+  ];
   # A null password becomes an empty field in the BSD account writer.
   # Accounts without an explicit password must start locked.
   options.users.users = lib.mkOption {
@@ -93,7 +96,10 @@ in
         # The upstream hook lets postStart hide an address-setup failure.
         network_interfaces.hooks.rc_start = lib.mkForce ''
           rc_exec "''${daemon} ''${daemon_flags}" || return $?
-          ${networkPostStart}
+          (
+            set -e
+            ${networkPostStart}
+          )
         '';
       })
     ];

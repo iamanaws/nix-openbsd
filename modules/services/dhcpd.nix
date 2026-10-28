@@ -51,7 +51,7 @@ in
       isSystemUser = true;
       group = "_dhcp";
       home = "/var/empty";
-      description = "OpenBSD DHCP daemon";
+      description = "OpenBSD DHCP programs";
     };
     users.groups._dhcp.gid = 77;
 

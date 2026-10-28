@@ -56,7 +56,7 @@ in
     init.services.unwind = {
       description = "OpenBSD validating resolver daemon";
       dependencies = [ "NETWORKING" ];
-      before = [ "SERVERS" ] ++ lib.optional (config.services.resolvd.enable or false) "resolvd";
+      before = [ "SERVERS" ];
       startType = "forking";
       path = [ pkgs.coreutils ];
       startCommand = [

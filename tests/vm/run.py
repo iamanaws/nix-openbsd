@@ -102,7 +102,7 @@ def main():
  # Service accounts must be locked, never silently given an empty password.
  awk -F: '$1 == "daemon" {{ if ($2 != "*") exit 1; found=1 }} END {{ if (!found) exit 1 }}' /etc/master.passwd
  test "$(wc -c < /etc/random.seed)" -ge 512
- for service in nix_daemon sshd dhcpcd httpd relayd cron syslogd; do
+ for service in nix_daemon sshd dhcpleased httpd relayd cron syslogd; do
    /etc/rc.d/$service check
  done
  curl -fsS https://nix-openbsd.cachix.org/nix-cache-info

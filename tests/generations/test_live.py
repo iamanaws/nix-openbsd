@@ -25,7 +25,8 @@ class LiveTests(test_boot.BootTests):
         for system in (self.a, self.b):
             (system / 'etc/rc.d').mkdir(parents=True)
             (system / 'etc/rc.order').mkdir()
-            (system / 'etc/rc.order/40').write_text('start_daemon app\n')
+            # NixBSD generates phase files without a final newline.
+            (system / 'etc/rc.order/40').write_text('start_daemon app')
             script = system / 'etc/rc.d/app'
             script.write_text(f'''#!{shutil.which('bash')}
 echo '{system.name}' "$1" >> {self.events}

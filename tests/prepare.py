@@ -103,7 +103,8 @@ curl --noproxy '*' -fsS --upload-file "$work/outputs.nar" {url}outputs.nar
     thread.start()
     try:
         with Guest(launcher, state, work / 'console.log') as guest:
-            guest.run(f"curl --noproxy '*' -fsS {url}build.sh -o /tmp/build-tests.sh && bash /tmp/build-tests.sh", timeout)
+            # The published baseline may reach login before its DHCP lease settles.
+            guest.run(f"curl --noproxy '*' --retry 60 --retry-all-errors --retry-delay 1 --connect-timeout 2 --max-time 5 -fsS {url}build.sh -o /tmp/build-tests.sh && bash /tmp/build-tests.sh", timeout)
         if not uploaded.is_set():
             raise RuntimeError('Guest did not export its test inputs')
         with (work / 'outputs.nar').open('rb') as stream:

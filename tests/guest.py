@@ -22,9 +22,10 @@ def clone_state(source, destination):
 
 
 class Guest:
-    def __init__(self, launcher, state, log, timeout=600):
+    def __init__(self, launcher, state, log, timeout=600, extra_args=()):
         self.launcher, self.state, self.log = Path(launcher), Path(state), Path(log)
         self.timeout = timeout
+        self.extra_args = list(map(str, extra_args))
         self.buffer = b''
 
     def __enter__(self):
@@ -37,7 +38,7 @@ class Guest:
             ports = {'NIX_VM_HTTP_PORT': str(http.getsockname()[1]),
                      'NIX_VM_SSH_PORT': str(ssh.getsockname()[1])}
         self.process = subprocess.Popen(
-            [str(self.launcher / 'bin/run-openbsd-native-vm')], stdin=subprocess.PIPE,
+            [str(self.launcher / 'bin/run-openbsd-native-vm'), *self.extra_args], stdin=subprocess.PIPE,
             stdout=self.writer, stderr=subprocess.STDOUT,
             env=os.environ | ports | {'NIX_VM_STATE_DIR': str(self.state)},
         )

@@ -62,6 +62,18 @@ in
   openbsd = prev.openbsd.overrideScope (
     openbsdFinal: openbsdPrev: {
       inherit (final.callPackage ../pkgs/openbsd/source.nix { }) source version;
+      dhcpleased = openbsdPrev.dhcpleased.overrideAttrs (old: {
+        # OpenBSD 8.0 re-executes the daemon through libutil's getexecpath.
+        buildInputs = old.buildInputs ++ [ openbsdFinal.libutil ];
+        meta = old.meta // {
+          mainProgram = "dhcpleased";
+        };
+      });
+      dhcpleasectl = openbsdPrev.dhcpleasectl.overrideAttrs (old: {
+        meta = old.meta // {
+          mainProgram = "dhcpleasectl";
+        };
+      });
       libcMinimal = openbsdPrev.libcMinimal.overrideAttrs (old: {
         patches = map (
           patch:

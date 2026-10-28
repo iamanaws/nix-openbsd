@@ -30,6 +30,9 @@ runtime checks on those hosts remain pending. See [VM hosts](vm.md#hosts).
 - DNS: lookups through `unwind` and libc, atomic resolver-file updates, cached answers
   across blocklist reloads, failure recovery, stopped services and rollback across
   reboots. These checks use a local DNS server and do not test DNSSEC validation.
+- Native IPv4 DHCP: automatic boot configuration, lease renewal, static-interface
+  exclusion, DNS refresh after carrier recovery, regular-user lookups,
+  configuration checks, complete daemon shutdown and reboot persistence.
 - Logging: log delivery and rotation, file ownership and permissions, stopped
   services, failed-update recovery and rollback across reboots.
 - Native doas: password authentication, command restrictions, environment handling,
@@ -86,6 +89,9 @@ not been run; BLAKE3 uses its non-TBB implementation. Native package coverage
 is still experimental. The cross-built reference demo is a separate target.
 Go's `cmd` and race suites, and standard-library tests without `-short`,
 have not been run.
+OpenBSD 8.0 refreshes DHCP DNS proposals on lease reacquisition. Renewals record
+changed servers in the lease; see [networking](configuration.md#networking).
+Native IPv6 SLAAC integration remains pending.
 Mail tests cover local delivery through the Unix socket. Custom TCP listeners,
 outbound relaying, TLS and filters have not been validated.
 Maintenance tests do not exercise root-device backups, process accounting or
