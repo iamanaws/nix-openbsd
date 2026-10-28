@@ -37,6 +37,7 @@ supported hosts. Suites run sequentially; DHCP, SLAAC and routing use two guests
 | `maintenance` | OpenBSD maintenance scripts, local hooks, reports, locate/manual databases and rollback. |
 | `cron-fallback` | Generation checks without `cronctl`. |
 | `network` | Native IPv4/IPv6 transit forwarding, PF allow/drop policies, BGP withdrawal and IPsec recovery across restarts and reboots. |
+| `isolation` | Native isolation feasibility: exec inheritance, chroot, routing domains, C/C++/Go/cgo consumers, fixed-output fetches and rejection of unsupported Nix sandbox requests. |
 
 These are the default suites. `--all` also runs `native`, which combines the
 native bootstrap, toolchain, C++ and Nix checks. Use `--suite bootstrap`,
@@ -80,6 +81,9 @@ a LAN endpoint behind each router. They verify actual transit forwarding,
 PF policy for routed and encrypted traffic, route withdrawal, invalid
 configuration handling, service restart and independent router reboots.
 See the [network suite](../tests/network/README.md) for the topology and limits.
+Isolation probes run in one disposable native VM. They test OpenBSD primitives
+and the current Nix capability boundary; they do not enable production sandboxing.
+See [build isolation](build-isolation.md) for the proof and remaining backend work.
 
 Native guests use `NIX_VM_CORES` and `NIX_VM_MEMORY` (MiB) when set. Regular guests
 default to two CPUs and 4 GiB; the bootstrap suites default to eight CPUs and

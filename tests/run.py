@@ -31,6 +31,7 @@ SUITES = {
     'maintenance': 'OpenBSD daily, weekly and monthly scripts, reports and local configuration',
     'cron-fallback': 'Generation checks without cronctl',
     'network': 'Native IPv4/IPv6 forwarding, PF, BGP and IPsec recovery',
+    'isolation': 'Native isolation feasibility, compiler consumers and unsupported Nix sandbox checks',
     'native': 'Native bootstrap, toolchain, C++ and Nix validation (slow)',
     'bootstrap': 'Focused native bootstrap and package builds',
     'toolchain': 'Focused LLVM, Clang and LLD checks (slow)',
@@ -38,7 +39,7 @@ SUITES = {
     'nix': 'Focused native Nix CLI and daemon checks',
 }
 REGULAR = ('local', 'base', 'packages', 'go', 'dhcp', 'slaac', 'vm', 'workflow', 'generations',
-           'dns', 'logging', 'doas', 'mail', 'maintenance', 'cron-fallback', 'network')
+           'dns', 'logging', 'doas', 'mail', 'maintenance', 'cron-fallback', 'network', 'isolation')
 GENERATIONS = {'generations', 'dns', 'logging', 'doas', 'mail', 'maintenance', 'cron-fallback'}
 NATIVE = {'native': '--all', 'bootstrap': None, 'toolchain': '--toolchain',
           'cxx': '--cxx', 'nix': '--nix'}
@@ -184,8 +185,8 @@ class Runtime:
             raise RuntimeError(self.prepare_error)
         if self.prepared is not None:
             return self.prepared
-        wanted = [s for s in self.suites if s in GENERATIONS or s in ['packages', 'go', 'dhcp', 'slaac', 'network']]
-        if any(s in GENERATIONS or s in ['vm', 'workflow', 'dhcp', 'slaac', 'network'] for s in self.suites):
+        wanted = [s for s in self.suites if s in GENERATIONS or s in ['packages', 'go', 'dhcp', 'slaac', 'network', 'isolation']]
+        if any(s in GENERATIONS or s in ['vm', 'workflow', 'dhcp', 'slaac', 'network', 'isolation'] for s in self.suites):
             wanted.insert(0, 'base')
         wanted = list(dict.fromkeys(wanted))
         try:
@@ -237,6 +238,8 @@ class Runtime:
                           self.source / 'tests/slaac/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
             self.command(['nix', 'eval', '--impure', '--json', '--file',
                           self.source / 'tests/network/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
+            self.command(['nix', 'eval', '--impure', '--json', '--file',
+                          self.source / 'tests/isolation/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
         elif name == 'base':
             self.command(['bash', self.source / 'tests/base/run.sh', '--max-jobs', '1', '--cores', '2', '--builders', ''])
         elif name in NATIVE:
@@ -260,7 +263,7 @@ class Runtime:
             if self.args.keep:
                 command.append('--keep')
             self.command(command)
-        elif name in ['dhcp', 'slaac', 'network']:
+        elif name in ['dhcp', 'slaac', 'network', 'isolation']:
             inputs = self.ensure_prepared()
             command = [sys.executable, '-B', self.source / ('tests/' + name + '/run.py'),
                        '--source', self.source, '--launcher', self.launcher,

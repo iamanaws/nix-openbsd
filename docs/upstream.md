@@ -84,6 +84,7 @@ LLVM 23.1.3 still needs the header fixes and encoding backport.
 | Zlib shared-library detection | Track [zlib #960](https://github.com/madler/zlib/issues/960). Remove `--undefined-version` when shared-library detection and the [probe](../tests/upstream/zlib-shared.py) pass without it. |
 | [Native stdenv](../pkgs/openbsd/native-stdenv.nix) and [libtool hook](../pkgs/openbsd/fix-libtool.sh) | Nixpkgs compiler wrappers, hooks and BSD scopes. Validate bootstrap closure independence after changes. |
 | [Nix runtime overrides](../pkgs/openbsd/nix-runtime-overrides.nix) | Nix for PTY, build-user and fork handling. Submit separately with focused tests. |
+| [OpenBSD build isolation](build-isolation.md) | Nix builder backend: integrate the native filesystem/network proof with input/output handling, concurrent builds and routing-domain lifecycle. Keep sandboxing disabled until that backend is validated. |
 | [Native Nix dependencies](../pkgs/openbsd/native-nix.nix) and [system packages](../pkgs/openbsd/native-system-packages.nix) | Nixpkgs for package recipes and dependencies. Keep disabled tests distinct from correctness fixes. |
 | [Native Go](../pkgs/openbsd/native-go.nix) and [bootstrap](../pkgs/openbsd/go-bootstrap.nix) | Nixpkgs for the OpenBSD ports bootstrap and store library paths. Go's direct OpenBSD `-nopie` linker option needs the LLD-compatible `-no-pie` spelling; review separately for Go upstream. |
 | [dhcpleased and slaacd dependencies](../overlays/nixbsd.nix) | Nixpkgs: OpenBSD 8.0 uses libutil's `getexecpath` to re-execute these daemons. |

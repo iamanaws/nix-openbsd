@@ -8,7 +8,7 @@ FreeBSD and OpenBSD compatibility has been tested for upstream changes.
 
 | Order | Work | Validation |
 | --- | --- | --- |
-| 1 | Build isolation. | Investigate restrictions on filesystem and network access while preserving working native builds. |
+| 1 | OpenBSD Nix sandbox backend. | Integrate the [native isolation proof](build-isolation.md) with Nix input/output handling, concurrent builds, routing-domain allocation and cleanup. |
 
 Native IPv4/IPv6 transit, PF policies, BGP and IKEv2 recovery across restarts and
 independent router reboots are covered by the [network tests](../tests/network/README.md).

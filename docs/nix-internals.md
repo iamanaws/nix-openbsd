@@ -20,6 +20,9 @@ The NixBSD OpenBSD overlay supplies these fixes:
 The overlay also disables AWS support and applies terminal and Boost fixes.
 The daemon uses `sandbox = false` and `build-users-group = "nixbld"`.
 Build users do not isolate the filesystem or network.
+The [native isolation proof](build-isolation.md) tests filesystem and routing-domain
+restrictions, execution inheritance, compiler consumers and rejection of unsupported
+Nix sandbox requests. A Nix builder backend is still required before enabling sandboxing.
 
 Related system fixes configure loopback before services, provide curl's
 unversioned linker name for Git's HTTPS helper, and register the running and

@@ -21,6 +21,11 @@ runtime checks on those hosts remain pending. See [VM hosts](vm.md#hosts).
   and SQLite cgo consumers, and shfmt 3.14.1 built through the Nixpkgs recipe.
 - Native Nix 2.34.8: signed cache downloads, store verification, daemon restart
   and garbage collection.
+- Native build-isolation proof: filesystem escape attempts, read-only inputs,
+  IPv4/IPv6 routing-domain separation and private loopback, with C/C++/Go/cgo
+  consumers and regular-user daemon controls. These are controlled primitive
+  tests; production builds still require a Nix sandbox backend.
+  See [build isolation](build-isolation.md).
 - Native VM: boot, clean restart, persistent state, EFI mounting, services,
   HTTP and SSH access.
 - Cron: validation and immediate reload with `cronctl`, automatic reload without it,
