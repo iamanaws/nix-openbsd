@@ -8,10 +8,9 @@ FreeBSD and OpenBSD compatibility has been tested for upstream changes.
 
 | Order | Work | Validation |
 | --- | --- | --- |
-| 1 | Periodic maintenance using the validated local mail service. | Daily, weekly and monthly reports across updates and rollback. |
-| 2 | Native Go support, then a Go application built through Nix. | Regular-user daemon builds, upstream tests and a cgo consumer using the existing C toolchain. |
-| 3 | Broader network coverage and native DHCP/SLAAC clients. | Address renewal, IPv6 forwarding, PF policies, routing and VPN recovery across restarts and reboots. |
-| 4 | Build isolation. | Investigate restrictions on filesystem and network access while preserving working native builds. |
+| 1 | Native Go support, then a Go application built through Nix. | Regular-user daemon builds, upstream tests and a cgo consumer using the existing C toolchain. |
+| 2 | Broader network coverage and native DHCP/SLAAC clients. | Address renewal, IPv6 forwarding, PF policies, routing and VPN recovery across restarts and reboots. |
+| 3 | Build isolation. | Investigate restrictions on filesystem and network access while preserving working native builds. |
 
 Package and toolchain cleanup is tracked in [upstream work](upstream.md).
 

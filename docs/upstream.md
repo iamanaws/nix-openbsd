@@ -12,6 +12,7 @@ pass without it. See [native probes](../tests/native/README.md#focused-runtime-p
 | Patch | Purpose | Status / next step |
 | --- | --- | --- |
 | `libc-no-tags.patch` | Skip libc's ctags database. | Nixpkgs' existing patch refreshed for 8.0; remove when the pin includes it. |
+| `fdisk-readonly.patch` | Read partition tables without requiring a boot-code template. | Candidate: OpenBSD. Only load the template for write/interactive operations; validated through the native security report. |
 | `rc-boot-phases.patch` | Run NixBSD's ordered services. | Nixpkgs' existing patch refreshed for 8.0; remove when the pin includes it. |
 | `gnulib-openbsd-fseeko.patch` | Opaque FILE support. | Gnulib backport for gzip and tar. Remove when each bundles the fix and passes native checks; [compile probe](../tests/upstream/gnulib-fseeko.py). Cross-build success alone is insufficient. |
 | `libffi-openbsd-closures.patch` | Closures without RWX mappings. | Scoped adaptation of the [OpenBSD ports fix](https://raw.githubusercontent.com/openbsd/ports/master/devel/libffi/patches/patch-src_closures_c). Keep until upstream avoids RWX and closure tests pass without it. |

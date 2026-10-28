@@ -24,6 +24,7 @@ nix run .#test -- --suite dns --live-only
 nix run .#test -- --suite logging
 nix run .#test -- --suite doas
 nix run .#test -- --suite mail
+nix run .#test -- --suite maintenance
 ```
 
 The runner builds and transfers the fixtures automatically. See the
@@ -47,6 +48,13 @@ Mail checks cover regular-user submission, aliases, mbox permissions, cron outpu
 from a locked service account, offline submission, queued delivery across reboot,
 failed-update recovery, stopped services and rollback. They use local delivery
 through the Unix socket and check that port 25 has no listener.
+
+The maintenance suite executes OpenBSD's daily, weekly and monthly
+scripts. It checks reports and mail, local hook permissions, locate and
+manual databases, invalid configuration, live updates, disabled schedules,
+report persistence, garbage collection and console recovery. Calendar and locate
+are tested through their separate packages, including locate database generation
+with a minimal shell path.
 
 Local failure tests need Bash, jq, GNU coreutils and Python:
 

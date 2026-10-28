@@ -29,10 +29,27 @@ let
   }
   // lib.optionalAttrs (config.services.cron.enable or false) {
     cron = {
-      files = [ "crontab" ];
-      check = lib.optionalString (
-        config.services.cron.controlPackage != null
-      ) "${config.services.cron.controlPackage}/bin/cronctl check \"$target/etc/crontab\"";
+      files = [
+        "crontab"
+        "daily"
+        "weekly"
+        "monthly"
+        "daily.local"
+        "weekly.local"
+        "monthly.local"
+        "mail.rc"
+        "mtree/special"
+        "changelist"
+      ];
+      check =
+        lib.optionalString (
+          config.services.cron.controlPackage != null
+        ) "${config.services.cron.controlPackage}/bin/cronctl check \"$target/etc/crontab\"\n"
+        + ''
+          for maintenance_file in daily weekly monthly daily.local weekly.local monthly.local; do
+            [ ! -e "$target/etc/$maintenance_file" ] || ${pkgs.oksh}/bin/oksh -n "$target/etc/$maintenance_file" || exit $?
+          done
+        '';
       reload = true;
     };
   }
@@ -44,7 +61,10 @@ let
   }
   // lib.optionalAttrs (config.services.smtpd.enable or false) {
     smtpd = {
-      files = [ "mail/smtpd.conf" "mail/aliases" ];
+      files = [
+        "mail/smtpd.conf"
+        "mail/aliases"
+      ];
       check = "${config.services.smtpd.package}/bin/smtpd -n -f \"$target/etc/mail/smtpd.conf\"";
     };
   }

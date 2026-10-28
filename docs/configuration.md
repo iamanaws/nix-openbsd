@@ -140,7 +140,71 @@ Use `services.smtpd.config` for a custom smtpd.conf; reference
 Configuration and alias changes restart smtpd during live updates. Queues and
 mailboxes persist across updates and rollback; rollback does not undo delivered
 mail. Enabling or disabling the privileged wrappers requires a reboot.
-Periodic daily, weekly and monthly maintenance jobs are not enabled yet.
+
+## Scheduled maintenance
+
+`services.maintenance` configures OpenBSD's
+[daily, weekly and monthly scripts](https://man.openbsd.org/daily). It is
+disabled by default. The module installs the scripts, declares cron entries and
+writes the corresponding `*.local` files. The `pkgs.openbsd.maintenance-scripts`
+package installs the scripts and supporting files. Utilities such as `calendar`,
+`locate` and `mail` are separate OpenBSD packages used by the scripts.
+
+```nix
+services.maintenance = {
+  enable = true;
+  daily.config = ''
+    CALENDAR=0
+    SUIDSKIP="/nix"
+  '';
+  monthly.schedule = "30 5 1 * *";
+  monthly.config = ''
+    echo 'Local monthly maintenance'
+  '';
+};
+```
+
+The example disables calendar notifications and excludes `/nix` from the daily
+setuid/device scan, using OpenBSD's configuration variables. These settings are
+individual choices; the module's daily hook is empty by default.
+
+| Job | Default schedule | Local configuration |
+| --- | --- | --- |
+| Daily | 01:30 every day | `services.maintenance.daily.config` → `/etc/daily.local` |
+| Weekly | 03:30 on Saturday | `services.maintenance.weekly.config` → `/etc/weekly.local` |
+| Monthly | 05:30 on the first day | `services.maintenance.monthly.config` → `/etc/monthly.local` |
+
+Schedules use the system timezone. Jobs use `/var/log` as their home and working
+directory, matching OpenBSD's root crontab. Set a job's `enable = false` to remove
+its schedule; its script remains available for manual execution. The cron
+entries contain the full shell command for manual runs. Set the module's
+`enable = false` to remove its scripts and configuration. Existing reports and
+backups remain in place.
+
+The `config` options are verbatim shell fragments sourced by OpenBSD's scripts.
+The module installs them as regular files owned by root, with mode `0600`, so the
+scripts' permission checks accept them. Live updates validate their shell syntax
+and reload cron; configuration rollback restores the previous hooks and schedules.
+
+OpenBSD's scripts save reports at `/var/log/daily.out`, `weekly.out`, `monthly.out`
+and `security.out`, retaining previous versions with the `.old` suffix. They mail
+nonempty reports to `root`; configure a [local mail alias](#local-mail) for the
+administrator. Monthly maintenance has no standard tasks beyond its local hook.
+
+The weekly hook defaults to `MAKEWHATISARGS=-n`:
+[`makewhatis`](https://mandoc.bsd.lv/man/makewhatis.8.html) scans manuals without
+writing databases into the Nix store. To rebuild a writable manual tree, replace
+that setting with its directory. The locate database is rebuilt only when
+`/var/db/locate.database` already exists.
+
+The `security` script checks accounts, home directories, mailboxes,
+setuid files, devices and configuration changes. `services.maintenance.mtreeConfig`
+configures its `/etc/mtree/special` policy; the default covers mutable account
+files and this module's hooks, using NixBSD ownership. It does not verify Nix
+store contents. Security diagnostics appear in `/var/log/security.out`.
+
+Use `services.cron.systemCronJobs` directly for other site-specific jobs. The
+module adds no Nix garbage collection, generation pruning or custom health checks.
 
 ## Rollback
 

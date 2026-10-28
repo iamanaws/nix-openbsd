@@ -19,6 +19,8 @@ Native systems also provide `security.doas`, reusing the NixOS module with
 OpenBSD's BSD authentication. See [administrative commands](../docs/configuration.md#administrative-commands).
 Native systems enable local mail through `services.smtpd`; see
 [local mail](../docs/configuration.md#local-mail) for aliases and delivery.
+`services.maintenance` optionally configures OpenBSD's maintenance scripts
+and local hooks; see [scheduled maintenance](../docs/configuration.md#scheduled-maintenance).
 
 The flake and tests import [OpenBSD integration fixes](system/openbsd.nix)
 for PF defaults, DHCP process matching, MTU and IPv6 default routes. This module

@@ -12,6 +12,7 @@
     ../services/newsyslog.nix
     ../services/ntpd.nix
     ../services/ospfd.nix
+    ../services/maintenance.nix
     ../services/pf.nix
     ../services/pflogd.nix
     ../services/rad.nix

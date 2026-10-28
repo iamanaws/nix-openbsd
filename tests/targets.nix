@@ -23,6 +23,8 @@ in
     logging = (import ./generations/logging-fixtures.nix { inherit flake; }).all;
     doas = (import ./generations/doas-fixtures.nix { inherit flake; }).all;
     mail = (import ./generations/mail-fixtures.nix { inherit flake; }).all;
+    maintenance-scripts = pkgs.openbsd.maintenance-scripts;
+    maintenance = (import ./generations/maintenance-fixtures.nix { inherit flake; }).all;
     cron-fallback =
       (import ./generations/fixtures.nix {
         inherit flake;

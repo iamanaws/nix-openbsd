@@ -36,6 +36,11 @@ runtime checks on those hosts remain pending. See [VM hosts](vm.md#hosts).
   cron output, offline queuing, failed-update recovery and delivery across reboot.
   The five mail generation phases passed on 2026-10-27, including garbage collection
   and boot-console recovery.
+- OpenBSD maintenance: daily, weekly and monthly scripts, reports,
+  local hook permissions, calendar mail, locate and manual-index databases,
+  configuration checks, live updates and disabled schedules. All five generation
+  phases passed on 2026-10-27, including report persistence through reboot,
+  rollback, garbage collection and boot-console recovery.
 - System generations: live updates, rollback, failed-update recovery,
   garbage collection and boot-console recovery.
 
@@ -76,6 +81,9 @@ not been run; BLAKE3 uses its non-TBB implementation. Native package coverage
 is still experimental. The cross-built reference demo is a separate target.
 Mail tests cover local delivery through the Unix socket. Custom TCP listeners,
 outbound relaying, TLS and filters have not been validated.
+Maintenance tests do not exercise root-device backups, process accounting or
+optional rdist jobs. The maintenance mtree policy covers mutable account files
+and local hooks; it does not verify the Nix store.
 
 OpenBSD provides C-locale formatting and UTF-8 character conversion. Tests
 requiring regional locales or the absent `quick_exit` API report unsupported.

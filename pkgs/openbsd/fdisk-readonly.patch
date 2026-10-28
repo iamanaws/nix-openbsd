@@ -1,0 +1,8 @@
+--- a/sbin/fdisk/fdisk.c
++++ b/sbin/fdisk/fdisk.c
+@@ -164,2 +163,0 @@
+-	get_default_dmbr(mbrfile);
+-
+@@ -172,0 +171,2 @@
++
++	get_default_dmbr(mbrfile);

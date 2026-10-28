@@ -31,6 +31,7 @@ supported hosts. Suites run sequentially; networking uses two small guests.
 | `logging` | Log delivery, rotation, failed-update recovery, rollback and boot recovery. |
 | `doas` | Native password authentication, command restrictions, environment handling and permission rollback. |
 | `mail` | Local submission, aliases, mailbox permissions, cron output, queues and rollback. |
+| `maintenance` | OpenBSD maintenance scripts, local hooks, reports, locate/manual databases and rollback. |
 | `cron-fallback` | Generation checks without `cronctl`. |
 | `network` | Routing, BGP and IPsec between isolated guests. |
 
@@ -39,7 +40,7 @@ native bootstrap, toolchain, C++ and Nix checks. Use `--suite bootstrap`,
 `--suite toolchain`, `--suite cxx` or `--suite nix` to run those separately.
 `--full` is an alias for `--all`.
 For faster iteration, `--live-only` skips reboot, GC and console recovery in
-explicitly selected `generations`, `dns`, `logging`, `doas`, `mail` or `cron-fallback` suites.
+explicitly selected `generations`, `dns`, `logging`, `doas`, `mail`, `maintenance` or `cron-fallback` suites.
 
 ## Development runs
 
