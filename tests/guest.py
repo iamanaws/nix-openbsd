@@ -1,4 +1,5 @@
 """Console access and private copies of prepared OpenBSD test disks."""
+import json
 import os
 from pathlib import Path
 import re
@@ -7,6 +8,23 @@ import shutil
 import socket
 import subprocess
 import time
+
+
+def qmp(path, command, arguments):
+    with socket.socket(socket.AF_UNIX) as connection:
+        connection.settimeout(10)
+        connection.connect(str(path))
+        stream = connection.makefile('rwb', buffering=0)
+        assert 'QMP' in json.loads(stream.readline())
+        for request in [{'execute': 'qmp_capabilities'},
+                        {'execute': command, 'arguments': arguments}]:
+            stream.write((json.dumps(request) + '\n').encode())
+            while True:
+                response = json.loads(stream.readline())
+                if 'error' in response:
+                    raise RuntimeError(response['error'])
+                if 'return' in response:
+                    break
 
 
 def clone_state(source, destination):

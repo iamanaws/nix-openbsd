@@ -33,6 +33,11 @@ runtime checks on those hosts remain pending. See [VM hosts](vm.md#hosts).
 - Native IPv4 DHCP: automatic boot configuration, lease renewal, static-interface
   exclusion, DNS refresh after carrier recovery, regular-user lookups,
   configuration checks, complete daemon shutdown and reboot persistence.
+- Native IPv6 SLAAC: automatic boot configuration, preferred/valid address
+  lifetimes, router and DNS expiry, prefix and DNS changes, carrier recovery,
+  regular-user DNS lookups over IPv6, complete daemon shutdown and reboot.
+  Static-interface exclusion, explicit opt-in alongside static IPv6 addresses
+  and disabling temporary addresses passed in two native VMs.
 - Logging: log delivery and rotation, file ownership and permissions, stopped
   services, failed-update recovery and rollback across reboots.
 - Native doas: password authentication, command restrictions, environment handling,
@@ -91,7 +96,8 @@ Go's `cmd` and race suites, and standard-library tests without `-short`,
 have not been run.
 OpenBSD 8.0 refreshes DHCP DNS proposals on lease reacquisition. Renewals record
 changed servers in the lease; see [networking](configuration.md#networking).
-Native IPv6 SLAAC integration remains pending.
+OpenBSD 8.0's SLAAC client does not process advertised DNS search domains;
+configure them through `services.resolvd.config`.
 Mail tests cover local delivery through the Unix socket. Custom TCP listeners,
 outbound relaying, TLS and filters have not been validated.
 Maintenance tests do not exercise root-device backups, process accounting or

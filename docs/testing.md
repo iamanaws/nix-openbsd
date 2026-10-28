@@ -26,6 +26,7 @@ supported hosts. Suites run sequentially; networking uses two small guests.
 | `packages` | Native package checks for C/C++, SQLite, tmux, Python, CFFI, libevent, sqlite-utils and Go. |
 | `go` | Go standard-library tests in short mode, pure Go, SQLite through cgo, shfmt and regular-user builds. |
 | `dhcp` | Native DHCP boot, automatic renewal, DNS changes, carrier recovery, configuration checks and reboot persistence. |
+| `slaac` | Native IPv6 autoconfiguration, preferred/valid address lifetimes, router/DNS expiry, prefix and DNS changes, interface exclusions, carrier recovery, service lifecycle and reboot. |
 | `vm` | Fresh native image, regular-user package commands, cache downloads and restart. |
 | `workflow` | Native builds, a personal configuration, live switching and rollback. |
 | `generations` | HTTP, cron, NTP, directories, failed-update recovery, rollback, GC and console recovery. |
@@ -69,6 +70,11 @@ also retains its QEMU NAT interface. The checks include static-interface
 exclusion and verify resolver lookups as a regular user.
 Renewal checks inspect the updated lease. DNS proposal changes are checked
 after carrier recovery, following [OpenBSD 8.0 behavior](configuration.md#networking).
+SLAAC checks use OpenBSD `rad` on two private Ethernet links. They verify
+automatic discovery independently of static IPv4, static IPv6 exclusion and
+explicit opt-in, regular-user DNS lookups over IPv6, and temporary-address
+configuration across reboots. Pausing the advertisement daemon checks natural
+address, router and DNS expiry without a graceful withdrawal advertisement.
 
 Native guests use `NIX_VM_CORES` and `NIX_VM_MEMORY` (MiB) when set. Regular guests
 default to two CPUs and 4 GiB; the bootstrap suites default to eight CPUs and

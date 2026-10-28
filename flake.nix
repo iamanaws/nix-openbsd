@@ -368,6 +368,7 @@
               python3
               ;
             git = nativeSystemPackages.gitMinimal;
+            inherit (nativeSystemPackages.openbsd) slaacd slaacctl;
             smtpd = nativeSystemPackages.openbsd.smtpd;
             python-cffi = nativeSystemPackages.python3.withPackages (ps: [
               ps.cffi
@@ -417,6 +418,8 @@
               ripctl
               ripd
               sensorsd
+              slaacd
+              slaacctl
               smtpd
               snmp
               snmp_mibs

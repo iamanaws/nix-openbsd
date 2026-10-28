@@ -50,6 +50,7 @@ Run `nix build .#TARGET` from the checkout.
 | `sqlite-utils` | OpenBSD | Import, query and export SQLite data with Python. |
 | `go`, `shfmt` | OpenBSD | Go compiler and tools, and the shell formatter built with Go. |
 | `dhcpleased`, `dhcpleasectl` | OpenBSD | Native IPv4 DHCP client and lease control command. |
+| `slaacd`, `slaacctl` | OpenBSD | Native IPv6 SLAAC client and control command. |
 | `libevent`, `fmt` | OpenBSD | C event library and C++ formatting library. |
 | `python3`, `python-cffi` | OpenBSD | Python, or Python with CFFI and setuptools. |
 | `native-nix` | OpenBSD | Native Nix CLI and daemon. |

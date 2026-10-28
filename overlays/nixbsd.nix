@@ -74,6 +74,17 @@ in
           mainProgram = "dhcpleasectl";
         };
       });
+      slaacd = openbsdPrev.slaacd.overrideAttrs (old: {
+        buildInputs = old.buildInputs ++ [ openbsdFinal.libutil ];
+        meta = old.meta // {
+          mainProgram = "slaacd";
+        };
+      });
+      slaacctl = openbsdPrev.slaacctl.overrideAttrs (old: {
+        meta = old.meta // {
+          mainProgram = "slaacctl";
+        };
+      });
       libcMinimal = openbsdPrev.libcMinimal.overrideAttrs (old: {
         patches = map (
           patch:

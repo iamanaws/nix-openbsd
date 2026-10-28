@@ -9,28 +9,11 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from guest import Guest, clone_state
+from guest import Guest, clone_state, qmp
 
 
 def run(guest, script, timeout=180):
-    guest.run('bash -eu -c ' + shlex.quote(script.strip()), timeout)
-
-
-def qmp(path, command, arguments):
-    with socket.socket(socket.AF_UNIX) as connection:
-        connection.settimeout(10)
-        connection.connect(str(path))
-        stream = connection.makefile('rwb', buffering=0)
-        assert 'QMP' in json.loads(stream.readline())
-        for request in [{'execute': 'qmp_capabilities'},
-                        {'execute': command, 'arguments': arguments}]:
-            stream.write((json.dumps(request) + '\n').encode())
-            while True:
-                response = json.loads(stream.readline())
-                if 'error' in response:
-                    raise RuntimeError(response['error'])
-                if 'return' in response:
-                    break
+    guest.run('bash -euo pipefail -c ' + shlex.quote(script.strip()), timeout)
 
 
 def main():
@@ -150,6 +133,7 @@ ifconfig vio1 | grep 'status: no carrier'
                 run(client, f'''
 original=$(readlink /etc/dhcpleased.conf)
 before=$(pgrep -x dhcpleased | sort)
+test -n "$before"
 temporary=$(mktemp /etc/.dhcpleased.conf.XXXXXXXX)
 cat {shlex.quote(str(fixtures / 'invalid'))} > "$temporary"
 chmod 644 "$temporary"

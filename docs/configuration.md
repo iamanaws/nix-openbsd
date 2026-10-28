@@ -75,8 +75,8 @@ from the table. An older VM needs one boot into the new system before live switc
 
 ## Networking
 
-OpenBSD systems use `dhcpleased` for IPv4 DHCP and `resolvd` to apply DNS
-proposals. With the default `networking.useDHCP = true`, DHCP is enabled on
+OpenBSD systems use `dhcpleased` for IPv4 DHCP, `slaacd` for IPv6 SLAAC and
+`resolvd` to apply DNS proposals. With the default `networking.useDHCP = true`, DHCP is enabled on
 Ethernet interfaces without a declared static IPv4 address. Select interfaces
 explicitly when mixing DHCP and static addresses:
 
@@ -104,10 +104,39 @@ OpenBSD 8.0 records changed DNS servers in renewed leases, but refreshes its
 resolver proposal when reacquiring the lease, such as after a link change.
 Use `dhcpleasectl -w 30 vio0` to request that refresh immediately.
 
+IPv6 SLAAC defaults to enabled with `networking.useSLAAC = true`. It discovers
+Ethernet interfaces without static IPv6 addresses, independently of IPv4 DHCP
+and static IPv4 configuration. Select interfaces explicitly when needed:
+
+```nix
+networking.useSLAAC = false;
+networking.interfaces.vio0.useSLAAC = true;
+networking.interfaces.vio1 = {
+  useSLAAC = false;
+  ipv6.addresses = [ { address = "2001:db8::1"; prefixLength = 64; } ];
+};
+```
+
+The module sets `inet6 autoconf` on selected interfaces. OpenBSD's `slaacd`
+handles addresses, default routers, lifetimes, link changes and DNS server
+proposals. It needs no configuration file. Inspect state with
+`slaacctl show interface vio0`, or request a router advertisement with
+`slaacctl send solicitation vio0`.
+
+An explicit per-interface `useSLAAC = true` also permits SLAAC alongside static
+IPv6 addresses. Excluded interfaces have both stable and temporary address
+autoconfiguration disabled. OpenBSD normally generates and prefers temporary
+addresses; `networking.tempAddresses = "disabled"` disables their generation.
+The other values retain OpenBSD's source-address selection.
+`networking.enableIPv6 = false` or `networking.slaacd.enable = false` disables
+the native SLAAC service. Advertised DNS search domains are not processed by
+OpenBSD 8.0's `slaacd`; configure search domains through `services.resolvd.config`.
+
 Networking changes require `boot` followed by a reboot. The DHCP service checks
 configuration before startup and restart; OpenBSD does not support reloading it.
 Explicitly setting `networking.dhcpcd.enable = true` selects the existing dhcpcd
-client instead. The two clients cannot be enabled together.
+client instead of the native DHCP and SLAAC daemons. They cannot be enabled
+together with dhcpcd. The SLAAC service supports start, stop and restart, without reload.
 
 ## Service directories
 

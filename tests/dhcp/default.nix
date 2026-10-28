@@ -21,7 +21,10 @@ let
     networking.interfaces.vio0.useDHCP = true;
     services.resolvd.config = lib.mkForce "";
     services.ntpd.config = lib.mkForce "server 127.0.0.2\n";
-    environment.systemPackages = [ pkgs.python3 ];
+    environment.systemPackages = [
+      pkgs.python3
+      pkgs.openbsd.pkill
+    ];
   };
   client = base.extendModules {
     modules = [

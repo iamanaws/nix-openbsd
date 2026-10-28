@@ -47,6 +47,7 @@ in
   imports = [
     ./tempfiles.nix
     ../services/dhcpleased.nix
+    ../services/slaacd.nix
   ];
   # A null password becomes an empty field in the BSD account writer.
   # Accounts without an explicit password must start locked.
@@ -105,8 +106,20 @@ in
     ];
     system.build.openbsdNetworkOptions = networkOptions;
     # NixBSD configures the addresses; apply the missing options afterward.
-    init.services.network_interfaces.postStart =
-      lib.mkIf (mtuInterfaces != [ ] || hasGateway)
-        "${networkOptions}";
+    init.services = lib.mkMerge [
+      {
+        network_interfaces.postStart = lib.mkIf (mtuInterfaces != [ ] || hasGateway) "${networkOptions}";
+      }
+      # OpenBSD has no FreeBSD -i flag. rc also loads this file before networking.
+      (lib.mkIf (config.boot.kernel.sysctl != { }) (
+        lib.genAttrs [ "sysctl" "sysctl-lastload" ] (_: {
+          startCommand = lib.mkForce [
+            "${pkgs.openbsd.sysctl}/bin/sysctl"
+            "-f"
+            "/etc/sysctl.conf"
+          ];
+        })
+      ))
+    ];
   };
 }

@@ -8,7 +8,7 @@ FreeBSD and OpenBSD compatibility has been tested for upstream changes.
 
 | Order | Work | Validation |
 | --- | --- | --- |
-| 1 | Native IPv6 SLAAC and broader network coverage. | IPv6 address and router lifetimes, forwarding, PF policies, routing and VPN recovery across restarts and reboots. |
+| 1 | Broader network coverage. | IPv4/IPv6 forwarding, PF policies, routing and VPN recovery across restarts and reboots. |
 | 2 | Build isolation. | Investigate restrictions on filesystem and network access while preserving working native builds. |
 
 Package and toolchain cleanup is tracked in [upstream work](upstream.md).
