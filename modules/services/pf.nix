@@ -49,6 +49,11 @@ in
     environment.etc."pf.conf".text = cfg.config;
     environment.etc."pf.os".text = cfg.fingerprints;
     environment.systemPackages = [ cfg.package ];
+    openbsd.rc.services.pf.hooks.rc_configtest = ''
+      rc_exec "''${daemon} -n ''${daemon_flags}"
+    '';
+    # pfctl loads kernel rules and exits; there is no daemon to signal.
+    openbsd.rc.services.pf.shellVariables.rc_reload = false;
 
     init.services.pf = {
       description = "Load OpenBSD packet filter rules";
@@ -57,7 +62,6 @@ in
       startType = "oneshot";
       startCommand = [ pfctl ] ++ commonArgs;
       preStart = ''
-        ${pfctl} -n ${lib.escapeShellArgs commonArgs}
         ${lib.optionalString cfg.enableFilter "${pfctl} -e 2>/dev/null || true"}
       '';
     };

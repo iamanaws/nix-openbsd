@@ -37,7 +37,11 @@ only applies on OpenBSD. The fixes remain here pending upstream compatibility te
 - PF loads kernel rules through `pfctl`. Use explicit
   rules before exposing services or enabling forwarding.
 - Routing modules do not enable IP forwarding. Enable it separately with
-  `boot.kernel.sysctl."net.inet.ip.forwarding" = 1` when needed.
+  `boot.kernel.sysctl."net.inet.ip.forwarding" = 1` for IPv4 and
+  `boot.kernel.sysctl."net.inet6.ip6.forwarding" = 1` for IPv6 when needed.
+- BGP and IKE validate their configuration before a restart stops the running
+  daemon. PF validates rules before loading them; `/etc/rc.d/pf start` loads
+  the configured rules through `pfctl`, which exits afterward.
 - `services.iked` provides IKEv2; `services.isakmpd` provides legacy IKEv1.
   `isakmpd -n` is not a configuration check, so its module does not use it
   for pre-start validation. See the [two-VM tests](../tests/network/README.md)

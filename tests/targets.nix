@@ -18,6 +18,7 @@ in
     dhcpleased = pkgs.openbsd.dhcpleased;
     dhcp = (import ./dhcp { inherit flake; }).all;
     slaac = (import ./slaac { inherit flake; }).all;
+    network = (import ./network { inherit flake; }).all;
     go-bootstrap = pkgs.go.goBootstrap;
     go-toolchain = pkgs.go;
     shfmt = pkgs.shfmt;
@@ -38,7 +39,6 @@ in
         withCronctl = false;
       }).all;
   };
-  network = (import ./network { inherit flake; }).test;
   qemu = if host.stdenv.hostPlatform.isx86_64 then host.qemu_kvm else host.qemu;
   native =
     (import ./native {

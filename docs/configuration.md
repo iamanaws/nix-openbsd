@@ -132,6 +132,9 @@ The other values retain OpenBSD's source-address selection.
 the native SLAAC service. Advertised DNS search domains are not processed by
 OpenBSD 8.0's `slaacd`; configure search domains through `services.resolvd.config`.
 
+With static IPv6 addresses, network startup follows OpenBSD `netstart` and waits
+up to ten seconds for Duplicate Address Detection before starting dependent services.
+
 Networking changes require `boot` followed by a reboot. The DHCP service checks
 configuration before startup and restart; OpenBSD does not support reloading it.
 Explicitly setting `networking.dhcpcd.enable = true` selects the existing dhcpcd

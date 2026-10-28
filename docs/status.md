@@ -38,6 +38,12 @@ runtime checks on those hosts remain pending. See [VM hosts](vm.md#hosts).
   regular-user DNS lookups over IPv6, complete daemon shutdown and reboot.
   Static-interface exclusion, explicit opt-in alongside static IPv6 addresses
   and disabling temporary addresses passed in two native VMs.
+- Native routing and VPNs: IPv4/IPv6 transit between isolated LANs, PF allow/drop
+  policies for routed and decrypted traffic, BGP withdrawal and recovery,
+  invalid-configuration handling, IKE restart and independent router reboots.
+  WAN captures require ESP and exclude exposed LAN packets; removing forwarding
+  or IPsec blocks transit traffic. Static IPv6 startup waits for DAD before BGP
+  binds its listen addresses. See the [network tests](../tests/network/README.md).
 - Logging: log delivery and rotation, file ownership and permissions, stopped
   services, failed-update recovery and rollback across reboots.
 - Native doas: password authentication, command restrictions, environment handling,
@@ -103,6 +109,8 @@ outbound relaying, TLS and filters have not been validated.
 Maintenance tests do not exercise root-device backups, process accounting or
 optional rdist jobs. The maintenance mtree policy covers mutable account files
 and local hooks; it does not verify the Nix store.
+Routing tests cover BGP and PSK-authenticated IKEv2. OSPF, RIP, IKEv1,
+certificate authentication, timed rekeying and live network switching remain untested.
 
 OpenBSD provides C-locale formatting and UTF-8 character conversion. Tests
 requiring regional locales or the absent `quick_exit` API report unsupported.

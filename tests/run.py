@@ -30,7 +30,7 @@ SUITES = {
     'mail': 'Local delivery, cron output, persistent queues and configuration rollback',
     'maintenance': 'OpenBSD daily, weekly and monthly scripts, reports and local configuration',
     'cron-fallback': 'Generation checks without cronctl',
-    'network': 'Two-VM routing, BGP and IPsec',
+    'network': 'Native IPv4/IPv6 forwarding, PF, BGP and IPsec recovery',
     'native': 'Native bootstrap, toolchain, C++ and Nix validation (slow)',
     'bootstrap': 'Focused native bootstrap and package builds',
     'toolchain': 'Focused LLVM, Clang and LLD checks (slow)',
@@ -184,8 +184,8 @@ class Runtime:
             raise RuntimeError(self.prepare_error)
         if self.prepared is not None:
             return self.prepared
-        wanted = [s for s in self.suites if s in GENERATIONS or s in ['packages', 'go', 'dhcp', 'slaac']]
-        if any(s in GENERATIONS or s in ['vm', 'workflow', 'dhcp', 'slaac'] for s in self.suites):
+        wanted = [s for s in self.suites if s in GENERATIONS or s in ['packages', 'go', 'dhcp', 'slaac', 'network']]
+        if any(s in GENERATIONS or s in ['vm', 'workflow', 'dhcp', 'slaac', 'network'] for s in self.suites):
             wanted.insert(0, 'base')
         wanted = list(dict.fromkeys(wanted))
         try:
@@ -235,11 +235,10 @@ class Runtime:
                           self.source / 'tests/dhcp/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
             self.command(['nix', 'eval', '--impure', '--json', '--file',
                           self.source / 'tests/slaac/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
+            self.command(['nix', 'eval', '--impure', '--json', '--file',
+                          self.source / 'tests/network/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
         elif name == 'base':
             self.command(['bash', self.source / 'tests/base/run.sh', '--max-jobs', '1', '--cores', '2', '--builders', ''])
-        elif name == 'network':
-            runner = self.build('network', ['network'], self.target_args())
-            self.command([runner / 'bin/test-openbsd-network'])
         elif name in NATIVE:
             extra = self.target_args() + [
                 '--arg', 'cores', os.environ.get('NIX_VM_CORES', '8'),
@@ -261,7 +260,7 @@ class Runtime:
             if self.args.keep:
                 command.append('--keep')
             self.command(command)
-        elif name in ['dhcp', 'slaac']:
+        elif name in ['dhcp', 'slaac', 'network']:
             inputs = self.ensure_prepared()
             command = [sys.executable, '-B', self.source / ('tests/' + name + '/run.py'),
                        '--source', self.source, '--launcher', self.launcher,

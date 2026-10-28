@@ -89,6 +89,8 @@ LLVM 23.1.3 still needs the header fixes and encoding backport.
 | [dhcpleased and slaacd dependencies](../overlays/nixbsd.nix) | Nixpkgs: OpenBSD 8.0 uses libutil's `getexecpath` to re-execute these daemons. |
 | DHCP DNS renewal | OpenBSD follow-up: `dhcpleased` records renewed DNS servers, but publishes a resolver proposal only when acquiring or reacquiring the lease. This integration preserves that behavior. |
 | [sysctl startup](../modules/system/openbsd.nix) | NixBSD: OpenBSD's `sysctl -f` does not accept FreeBSD's `-i` flag. |
+| [Static IPv6 startup](../modules/system/openbsd.nix) | NixBSD: follow OpenBSD `netstart`'s bounded DAD wait before starting daemons that bind static IPv6 addresses. Native BGP boot reproduced the bind failure without it. |
+| [BGP, IKE and PF rc hooks](../modules/services) | Keep configuration checks in `rc_configtest`, following OpenBSD's daemon scripts, so invalid restarts preserve running daemons. PF reloads rules through `pfctl`. Native routing tests cover both IP versions and recovery. |
 | [Version, dev.db and service startup fixes](../upstream/nixbsd/README.md) | Three proposed NixBSD patches with regression checks. Keep local adapters until the updated dependency passes FreeBSD evaluation and OpenBSD runtime tests. |
 | [Boot overlay](../overlays/openbsd.nix), [system module](../modules/system/openbsd.nix), [services](../modules/services) | NixBSD for system integration; OpenBSD for base-source defects. Preserve service start, check and stop behavior. |
 | [Generation manager](../modules/system/generations.nix) | Keep locally while stabilizing switching, failure recovery, rollback and reboot behavior. |

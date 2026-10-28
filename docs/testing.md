@@ -17,7 +17,7 @@ nix run .#test -- --list
 ```
 
 VM suites run on x86_64 Linux with KVM. Local tests also run on the other
-supported hosts. Suites run sequentially; networking uses two small guests.
+supported hosts. Suites run sequentially; DHCP, SLAAC and routing use two guests.
 
 | Suite | Coverage |
 | --- | --- |
@@ -36,7 +36,7 @@ supported hosts. Suites run sequentially; networking uses two small guests.
 | `mail` | Local submission, aliases, mailbox permissions, cron output, queues and rollback. |
 | `maintenance` | OpenBSD maintenance scripts, local hooks, reports, locate/manual databases and rollback. |
 | `cron-fallback` | Generation checks without `cronctl`. |
-| `network` | Routing, BGP and IPsec between isolated guests. |
+| `network` | Native IPv4/IPv6 transit forwarding, PF allow/drop policies, BGP withdrawal and IPsec recovery across restarts and reboots. |
 
 These are the default suites. `--all` also runs `native`, which combines the
 native bootstrap, toolchain, C++ and Nix checks. Use `--suite bootstrap`,
@@ -75,6 +75,11 @@ automatic discovery independently of static IPv4, static IPv6 exclusion and
 explicit opt-in, regular-user DNS lookups over IPv6, and temporary-address
 configuration across reboots. Pausing the advertisement daemon checks natural
 address, router and DNS expiry without a graceful withdrawal advertisement.
+Routing checks use native `pair(4)` interfaces and routing domains to isolate
+a LAN endpoint behind each router. They verify actual transit forwarding,
+PF policy for routed and encrypted traffic, route withdrawal, invalid
+configuration handling, service restart and independent router reboots.
+See the [network suite](../tests/network/README.md) for the topology and limits.
 
 Native guests use `NIX_VM_CORES` and `NIX_VM_MEMORY` (MiB) when set. Regular guests
 default to two CPUs and 4 GiB; the bootstrap suites default to eight CPUs and

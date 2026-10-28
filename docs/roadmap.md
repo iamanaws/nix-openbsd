@@ -8,8 +8,10 @@ FreeBSD and OpenBSD compatibility has been tested for upstream changes.
 
 | Order | Work | Validation |
 | --- | --- | --- |
-| 1 | Broader network coverage. | IPv4/IPv6 forwarding, PF policies, routing and VPN recovery across restarts and reboots. |
-| 2 | Build isolation. | Investigate restrictions on filesystem and network access while preserving working native builds. |
+| 1 | Build isolation. | Investigate restrictions on filesystem and network access while preserving working native builds. |
+
+Native IPv4/IPv6 transit, PF policies, BGP and IKEv2 recovery across restarts and
+independent router reboots are covered by the [network tests](../tests/network/README.md).
 
 Package and toolchain cleanup is tracked in [upstream work](upstream.md).
 

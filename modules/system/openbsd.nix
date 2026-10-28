@@ -9,6 +9,7 @@ let
   cfg = config.networking;
   interfaces = builtins.attrValues cfg.interfaces;
   mtuInterfaces = builtins.filter (i: i.mtu != null) interfaces;
+  hasStaticIPv6 = lib.any (i: i.ipv6.addresses != [ ]) interfaces;
   gateway = cfg.defaultGateway6;
   hasGateway = gateway != null && gateway.address != "";
   dhcp = cfg.dhcpcd.enable && (cfg.useDHCP || lib.any (i: i.useDHCP == true) interfaces);
@@ -41,6 +42,15 @@ let
           ${pkgs.openbsd.route}/bin/route -n change ${args}
       ''
     )}
+    ${lib.optionalString hasStaticIPv6 ''
+      # Match netstart(8): allow IPv6 Duplicate Address Detection to finish
+      # before daemons bind their configured listen addresses.
+      count=0
+      while [ "$count" -lt 10 ] && [ "$(${pkgs.openbsd.sysctl}/bin/sysctl -n net.inet6.ip6.dad_pending)" != 0 ]; do
+        sleep 1
+        count=$((count + 1))
+      done
+    ''}
   '';
 in
 {
@@ -108,7 +118,9 @@ in
     # NixBSD configures the addresses; apply the missing options afterward.
     init.services = lib.mkMerge [
       {
-        network_interfaces.postStart = lib.mkIf (mtuInterfaces != [ ] || hasGateway) "${networkOptions}";
+        network_interfaces.postStart =
+          lib.mkIf (mtuInterfaces != [ ] || hasGateway || hasStaticIPv6)
+            "${networkOptions}";
       }
       # OpenBSD has no FreeBSD -i flag. rc also loads this file before networking.
       (lib.mkIf (config.boot.kernel.sysctl != { }) (

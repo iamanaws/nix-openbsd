@@ -71,6 +71,9 @@ in
 
     # iked replaces its command line with a process title after starting.
     openbsd.rc.services.iked.shellVariables.pexp = "iked: parent.*";
+    openbsd.rc.services.iked.hooks.rc_configtest = ''
+      rc_exec "''${daemon} -n ''${daemon_flags}"
+    '';
 
     init.services.iked = {
       description = "OpenBSD IKEv2 daemon";
@@ -91,7 +94,6 @@ in
             -genkey -name prime256v1 -out /etc/iked/private/local.key) || return 1
         fi
         rm -f /var/run/iked.sock
-        ${iked} -n -f ${configPath}
       '';
     };
   };

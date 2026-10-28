@@ -54,6 +54,9 @@ in
       description = "OpenBSD BGP daemon";
     };
     users.groups._bgpd.gid = 75;
+    openbsd.rc.services.bgpd.hooks.rc_configtest = ''
+      rc_exec "''${daemon} -n ''${daemon_flags}"
+    '';
 
     services.tempfiles.directories = {
       "/var/empty".mode = "0555";
@@ -74,7 +77,6 @@ in
       ++ cfg.extraFlags;
       preStart = ''
         rm -f /var/run/bgpd.sock*
-        ${bgpd} -n -f ${configPath} ${lib.escapeShellArgs cfg.extraFlags}
       '';
     };
   };
