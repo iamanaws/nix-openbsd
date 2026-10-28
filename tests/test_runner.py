@@ -30,9 +30,12 @@ class SelectionTests(unittest.TestCase):
         regular = runner.select_suites(runner.arguments([]))
         self.assertEqual(set(regular), set(runner.REGULAR))
         self.assertFalse(set(regular) & set(runner.NATIVE))
+        self.assertNotIn('sandbox-packages', regular)
+        self.assertEqual(runner.select_suites(runner.arguments(['--suite', 'sandbox-packages'])),
+                         ['sandbox-packages'])
         for flag in ['--all', '--full']:
             all_suites = runner.select_suites(runner.arguments([flag]))
-            self.assertEqual(set(all_suites), set(regular) | {'native'})
+            self.assertEqual(set(all_suites), set(regular) | {'native', 'sandbox-packages'})
             self.assertEqual(len(all_suites), len(set(all_suites)))
 
     def test_all_and_focus_cannot_silently_override_each_other(self):

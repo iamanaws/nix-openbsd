@@ -91,3 +91,8 @@ account lookups, private IPv4/IPv6 loopback, C/C++/Go/cgo consumers, fixed-outpu
 fetches and strict/relaxed policy. Lifecycle checks cover concurrency, exhausted
 pools, failures, retained directories, cancellation, timeouts, detached children,
 IPC cleanup and abandoned workers. See [recorded results](status.md).
+
+The separate `sandbox-packages` suite builds Hello, fmt, inih, MarkupSafe, shfmt
+and dbmate from their native Nixpkgs recipes with fresh outputs. It preserves
+their existing checks, verifies concurrent build isolation and exercises the
+installed packages as a regular user. See [suite commands](testing.md#development-runs).

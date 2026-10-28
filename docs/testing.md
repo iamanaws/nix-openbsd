@@ -32,9 +32,10 @@ supported hosts. Suites run sequentially.
 | `generations`, `dns`, `logging`, `doas`, `mail`, `maintenance`, `cron-fallback` | [Generation checks](../tests/generations/README.md), including failure recovery, rollback, GC and boot recovery. |
 | `network` | [Two-router transit, BGP, PF and IPsec](../tests/network/README.md). |
 | `isolation` | [Nix sandbox](build-isolation.md): filesystem/network isolation, compiler consumers, daemon policy and lifecycle cleanup. |
+| `sandbox-packages` | Fresh Hello, fmt, inih, MarkupSafe, shfmt and dbmate builds through a sandboxed daemon, with parallel builds and regular-user consumers. |
 | `native` | [Bootstrap, toolchain, C++ and Nix](../tests/native/README.md). Also selectable as `bootstrap`, `toolchain`, `cxx` or `nix`. |
 
-The default run includes every row except `native`; `--all` adds it.
+The default run excludes `native` and `sandbox-packages`; `--all` adds both.
 `--full` aliases `--all`. For selected generation suites, `--live-only` skips
 reboot, GC and console recovery:
 
@@ -62,6 +63,17 @@ Isolation checks enable the OpenBSD sandbox in a temporary daemon inside one
 disposable VM. They cover regular-user builds, concurrent domains, cancellation,
 timeouts, abandoned workers and cleanup. The reference system keeps sandboxing
 disabled by default.
+
+To build the package recipes with fresh outputs and their existing checks:
+
+```sh
+nix run .#test -- --suite sandbox-packages --vm-state ./openbsd-native-vm --keep
+```
+
+The suite preloads build inputs, adds a unique nonce, and rejects substituted
+outputs. Build hooks verify the UID, routing domain, hidden host files and
+blocked host listeners. Installed consumers check C/C++ linkage, the Python
+C extension, shell formatting and SQLite migrations through cgo.
 
 DHCP uses a private two-guest link, short leases and a local DNS fixture.
 It checks renewed leases, then DNS refresh after carrier recovery, matching

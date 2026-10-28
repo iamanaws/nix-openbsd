@@ -20,6 +20,7 @@ in
     slaac = (import ./slaac { inherit flake; }).all;
     network = (import ./network { inherit flake; }).all;
     isolation = (import ./isolation { inherit flake; }).all;
+    sandbox-packages = (import ./sandbox-packages { inherit flake; }).all;
     go-bootstrap = pkgs.go.goBootstrap;
     go-toolchain = pkgs.go;
     shfmt = pkgs.shfmt;

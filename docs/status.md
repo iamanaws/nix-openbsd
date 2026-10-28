@@ -22,6 +22,7 @@ A cached test can reuse their outputs.
 | --- | --- |
 | Nix 2.35.2 | Signed cache downloads, store verification, daemon restart, GC and PTY checks locally and through the regular-user daemon passed. |
 | [Nix sandbox](build-isolation.md) | All 17 integration phases passed on 2026-10-28: filesystem/network isolation, C/C++/Go/cgo consumers, daemon policy, concurrency, cancellation, timeouts, detached children, IPC cleanup and worker recovery. |
+| [Sandbox package builds](testing.md#development-runs) | Fresh Hello, fmt, inih, MarkupSafe, shfmt and dbmate builds passed on 2026-10-28, preserving recipe checks. Parallel isolation, store verification, regular-user consumers and cleanup passed, including C/C++ linkage, the Python C extension and SQLite cgo migrations. |
 | LLVM 22 X86 `check-all` | 36,274 passed; 34,443 unsupported; 62 expected failures; 414 skipped. LLVM 21 had one lit timeout that passed twice alone, without a full rerun. |
 | Clang and LLD | Full suites disabled; focused compile/link and OpenBSD library-search checks pass. Userland uses LLVM 21.1.8; the kernel uses 22.1.8. |
 | libffi | 1,750 passed. |
