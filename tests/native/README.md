@@ -1,57 +1,39 @@
-# Native OpenBSD package test
+# Native package and toolchain tests
 
-Run from the project root on x86_64 Linux:
+From the project root on x86_64 Linux with KVM:
 
 ```sh
 nix run .#test -- --suite native
 ```
 
-The host supplies cross-built seed tools and sources to an OpenBSD VM.
-The guest builds the native stdenv and test packages, using the
-[binary cache](../../docs/vm.md#binary-cache) when available.
-See the [stdenv status](../../docs/status.md) for results and limitations.
+The host transfers recipes, sources and seed tools after boot. The guest builds
+the stdenv and packages, then imports outputs into the host store.
+Recipe/source edits need another run; installed-tool or configuration changes
+rebuild the base image.
 
-The runner imports recipes, sources and seed tools after boot over a local
-connection. Rerun the build command after editing them. Changes to the VM's
-installed tools or configuration rebuild the base image.
+| Suite | Work |
+| --- | --- |
+| `native` | Toolchain, C++, Nix, package checks and a native system build in one VM. |
+| `bootstrap` | Stdenv and package builds. |
+| `toolchain` | LLVM, Clang and LLD. |
+| `cxx` | libc++ and libc++abi. |
+| `nix` | Native CLI/daemon builds as root and bestie, closure checks, signed local-cache downloads and disposable-store GC. Restores the original daemon afterward. |
 
-Use `--suite bootstrap` for the stdenv and package builds, `--suite cxx` for
-the C++ suites, or `--suite toolchain` for native LLVM, Clang and LLD.
-Use `--suite nix` to build the native Nix CLI and daemon,
-then run the package checks through that daemon as root and `bestie`. It also
-checks for bootstrap references, downloads from a local signed cache, and tests garbage
-collection in a disposable store. The original daemon is restored afterward.
+Resources, retention and reports are in the [testing guide](../../docs/testing.md).
+The lower-level runner supports `--prepare-only` and
+`--all --state-dir DIR` for recipe debugging and build reuse.
 
-The VM defaults to eight vCPUs, 16 GiB of RAM and a 64 GiB root filesystem.
-Set `NIX_VM_CORES` and `NIX_VM_MEMORY` to override its resources.
+## Package checks
 
-The `native` suite runs the toolchain, C++ and Nix checks, then package checks
-and a native system build in the same VM. It imports the outputs into the host store.
-The lower-level runner still supports `--prepare-only` and `--all --state-dir DIR`
-for recipe debugging and reuse of completed builds.
-
-Failed runs keep logs, disks and failed build directories. Add `--keep` to retain
-successful disks. See the [testing guide](../../docs/testing.md) for reports and timeouts.
-
-## Checks
-
-Root and `bestie` request builds through the daemon. The test checks:
-
-- Non-root `nixbld` builders and use of the rebuilt tools.
-- A final stdenv closure without bootstrap seed outputs.
-- C/C++ compilation, response files, compression and coreutils operations.
-- Dynamic and static PIE libc consumers, compiler builtins and C++ thread-local storage.
-- Private and shared semaphores, timed waits and thread cancellation.
-- Libunwind's upstream tests and C++ exception cleanup across a shared library.
-- Dynamic and static PIE C++ consumers using the rebuilt runtimes.
-- Archive extraction, patching and awk's in-place editing extension.
-- Native Perl threads, subsecond timestamps and zlib extensions.
-- Native Python hashing, file I/O, subprocesses, compression, ctypes callbacks and psutil.
-- UTF-8 locales, character case conversion and display widths.
-- Native ncurses tools and the generated terminfo database.
-- Libagentx shared-library and static-archive consumers, including store
-  references and RPATH.
-- Nixpkgs' hello, zlib and pigz recipes, plus local-file fetching.
+- Non-root builders, rebuilt tools and closures without bootstrap seed outputs.
+- C/C++ compilation, response files, dynamic/static PIE, builtins, TLS,
+  exceptions across shared libraries and upstream libunwind tests.
+- Private/shared semaphores, timed waits and cancellation.
+- Compression, coreutils, archives, patches, awk extensions and UTF-8 conversion.
+- Perl threads, precise timestamps and zlib; Python files, subprocesses,
+  hashing, compression, ctypes callbacks and psutil.
+- Ncurses tools/terminfo, libagentx shared/static consumers, references and RPATH.
+- Nixpkgs hello/zlib/pigz recipes and local-file fetching.
 
 ## Focused runtime probes
 

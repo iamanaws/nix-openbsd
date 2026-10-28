@@ -1,13 +1,12 @@
 # Upstream work
 
-Track remaining patches, their destination, and when they can be removed.
-Candidate fixes still need review against current upstream sources.
+Keep backports until the pin includes the fix and native checks pass without it.
+Candidate fixes need review against upstream sources before submission.
 
 ## Local patches
 
 Paths are relative to [pkgs/openbsd](../pkgs/openbsd), except the test patch.
-Keep backports until the pinned source includes the fix and the relevant checks
-pass without it. See [native probes](../tests/native/README.md#focused-runtime-probes).
+[Native probes](../tests/native/README.md#focused-runtime-probes) check runtime fixes.
 
 | Patch | Purpose | Status / next step |
 | --- | --- | --- |
@@ -45,15 +44,14 @@ pass without it. See [native probes](../tests/native/README.md#focused-runtime-p
 
 ## LLVM review
 
-Checked LLVM main `4bd435d59f89`, LLVM 23.1.3 and PR #200940 at `e518ff874288`
-on OpenBSD/amd64 on 2026-10-17. The installed LLVM 21 headers pass 42 compile/run
-checks. These are focused probes; the full upstream suites were not rerun.
-Keep LLVM 21.1.8 for userland; the kernel uses LLVM 22.1.8.
-LLVM 23.1.3 still needs the header fixes and encoding backport.
+The 2026-10-17 review checked LLVM main `4bd435d59f89`, LLVM 23.1.3 and
+PR #200940 at `e518ff874288` on OpenBSD/amd64. Installed LLVM 21 headers passed
+42 compile/run probes; full upstream suites were not rerun. Keep userland
+21.1.8 and kernel 22.1.8. LLVM 23.1.3 still needed headers and encoding fixes.
 
-- Start with the libc++abi futex constants, then child-specific reaping in
-  LLVM Support. The timeout redesign needs separate review: process-wide alarms
-  are unsafe with concurrent waits, but fixed 10 ms polling also has a cost.
+- Submit futex constants, then child-specific reaping. Review timeout handling
+  separately; process-wide alarms conflict with concurrent waits, while fixed
+  10 ms polling has a cost.
 - The [#200940](https://github.com/llvm/llvm-project/pull/200940) follow-up fixes
   a repeated C++03 module-map path and a 0/1 configuration flag tested with
   `defined`. A similar proposal,
@@ -100,11 +98,9 @@ LLVM 23.1.3 still needs the header fixes and encoding backport.
 ## Working order
 
 1. Submit small, independently tested fixes.
-2. Retire backports as source updates make them unnecessary. Keep kernel, libc
-   and headers compatible.
-3. Replace local integration adapters with tested NixBSD support.
-4. Simplify bootstrap code after package and integration changes settle.
+2. Keep source updates, refactoring and behavior changes separate.
+3. Preserve compatibility between the kernel, libc and headers.
+4. Check bootstrap closures before removing seeds.
+5. Run service, activation and boot tests before replacing integration adapters.
 
-Keep source updates, refactoring and behavior changes separate. Check affected
-packages before removing a workaround; use closure checks for bootstrap changes
-and VM tests for service, activation and boot changes. See [testing](testing.md).
+See [testing](testing.md) and [cache maintenance](development.md#cache-maintenance).

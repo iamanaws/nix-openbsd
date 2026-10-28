@@ -1,59 +1,25 @@
 # OpenBSD modules
 
-These modules use NixBSD's `init.services` interface to generate OpenBSD
-`rc.d` services. Import the modules you need and apply the
-[OpenBSD package overlay](../overlays/openbsd.nix). See [flake.nix](../flake.nix)
-for a complete demo configuration.
+Native configurations use `lib.mkNativeSystem` from this flake.
+The [template](../templates/native-system) supplies native packages and the
+generation manager; choose services in `configuration.nix`.
+See [service usage](../docs/services.md) and [networking](../docs/networking.md)
+for options, examples and precautions.
 
-For native VM configurations, use `lib.mkNativeSystem` from this flake, as in
-the [configuration template](../templates/native-system). It supplies the native
-packages, service options and generation manager; choose services in your module.
+For other NixBSD configurations, import the required [service modules](services)
+and apply the [OpenBSD package overlay](../overlays/openbsd.nix).
+They use `init.services` to generate rc.d scripts, declare users and directories,
+and validate configuration where the daemon supports it.
+[flake.nix](../flake.nix) contains the reference demo.
 
-[Service modules](services) cover HTTP, DHCP, DNS, NTP, PF, routing, VPNs,
-logging, local mail, SNMP and sensors. [ACME renewal](security/acme-client.nix) uses cron.
-The modules declare options, service users and runtime directories. They
-check configuration before startup where the daemon supports it.
-Use each daemon's OpenBSD configuration format.
+[OpenBSD integration](system/openbsd.nix) supplies PF defaults, DHCP, SLAAC,
+MTU and IPv6 routes. It applies only to OpenBSD; the adapters remain local pending
+upstream compatibility checks. See [upstream work](../docs/upstream.md).
 
-Native systems also provide `security.doas`, reusing the NixOS module with
-OpenBSD's BSD authentication. See [administrative commands](../docs/configuration.md#administrative-commands).
-Native systems enable local mail through `services.smtpd`; see
-[local mail](../docs/configuration.md#local-mail) for aliases and delivery.
-`services.maintenance` optionally configures OpenBSD's maintenance scripts
-and local hooks; see [scheduled maintenance](../docs/configuration.md#scheduled-maintenance).
+## Live service handlers
 
-The flake and tests import [OpenBSD integration fixes](system/openbsd.nix)
-for PF defaults, native IPv4 DHCP, IPv6 SLAAC, MTU and IPv6 default routes. DHCP uses
-`networking.dhcpleased` and the existing global and per-interface `useDHCP`
-options. SLAAC uses `networking.slaacd` and global and per-interface `useSLAAC`
-options; see [networking](../docs/configuration.md#networking). This module
-only applies on OpenBSD. The fixes remain here pending upstream compatibility testing.
-
-## Before enabling services
-
-- Configuration text goes into the readable Nix store. Do not put real
-  passwords or VPN pre-shared keys in these options. Runtime file permissions
-  do not protect the store copy.
-- PF loads kernel rules through `pfctl`. Use explicit
-  rules before exposing services or enabling forwarding.
-- Routing modules do not enable IP forwarding. Enable it separately with
-  `boot.kernel.sysctl."net.inet.ip.forwarding" = 1` for IPv4 and
-  `boot.kernel.sysctl."net.inet6.ip6.forwarding" = 1` for IPv6 when needed.
-- BGP and IKE validate their configuration before a restart stops the running
-  daemon. PF validates rules before loading them; `/etc/rc.d/pf start` loads
-  the configured rules through `pfctl`, which exits afterward.
-- `services.iked` provides IKEv2; `services.isakmpd` provides legacy IKEv1.
-  `isakmpd -n` is not a configuration check, so its module does not use it
-  for pre-start validation. See the [two-VM tests](../tests/network/README.md)
-  for BGP and IPsec examples.
-- `services.newsyslog` runs log rotation through cron and prepares log files
-  for syslogd. It does not start a separate daemon.
-- The demo's SNMP service listens only on localhost with a public test
-  community. Use the `snmp` client.
-- QEMU may expose no hardware sensors, so a running `sensorsd` alone does not
-  validate sensor readings.
-- ACME certificate issuance requires public access to the HTTP-01 challenge.
-  Test against a staging authority before requesting real certificates.
-
-See the [configuration guide](../docs/configuration.md) for supported live
-updates, rollback and adding service handlers.
+The local generation manager supports selected service changes. Add handlers
+through `openbsd.system.services`; see
+[generations.nix](system/generations.nix) for built-in checks, reloads and restarts.
+Unhandled changes require reboot. Validate startup, failed activation, rollback
+and reboot with the [generation tests](../tests/generations/README.md).

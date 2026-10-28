@@ -1,68 +1,49 @@
 # Run the native VM
 
-Start with the [quick start](../README.md#quick-start). The launcher runs an
-amd64 OpenBSD guest and assembles its image from cached packages.
-The first package build inside the guest also fetches sources and build inputs,
-which can take a few minutes.
+Start with the [quick start](../README.md#quick-start).
+The launcher assembles an amd64 image from package outputs; images stay outside
+the binary cache. The first guest package build may also fetch sources and inputs.
 
 ## Hosts
 
-| Host | Execution | Status |
+| Host | Execution | Validation |
 | --- | --- | --- |
-| x86-64 Linux | KVM when accessible; otherwise TCG emulation. | Boot, services and cache checks passed with both. |
-| ARM64 Linux | TCG emulation of the amd64 guest. | Experimental; evaluation checked, host testing pending. |
-| Apple Silicon macOS | TCG emulation of the amd64 guest. | Experimental; evaluation checked, host testing pending. |
+| x86_64 Linux | KVM when accessible, otherwise TCG. | Boot, services and persistence passed with both on 2026-10-26. |
+| ARM64 Linux | TCG emulating amd64. | Evaluation only; hardware testing pending. |
+| Apple Silicon macOS | TCG emulating amd64. | Evaluation only; hardware testing pending. |
 
-All hosts use the same cached amd64 OpenBSD packages. Emulated builds are slower.
-Native arm64 OpenBSD is [later work](roadmap.md#arm64-openbsd-later).
-
-Image assembly runs on Linux. ARM Linux assembles locally; Apple Silicon macOS
-needs an `aarch64-linux` Nix builder, such as nix-darwin's Linux builder.
-The macOS launcher and QEMU run on macOS. Images remain outside the binary cache.
+All hosts share the amd64 package set. Emulation is slower. Image assembly runs
+on Linux; macOS needs an `aarch64-linux` builder, such as nix-darwin's Linux
+builder. Its launcher and QEMU run on macOS.
+Native arm64 OpenBSD is [future work](roadmap.md#host-validation-and-arm64-openbsd).
 
 ## Releases
 
-The current validated release is OpenBSD 8.0. Use its `openbsd-8.0` tag if
-`main` is undergoing changes:
+The validated baseline is OpenBSD 8.0. To stay on that release:
 
 ```sh
 nix run github:iamanaws/nix-openbsd/openbsd-8.0#native-vm
 ```
 
-Use the same tag in package references to stay on this release.
-New OpenBSD versions receive their own tags after validation. This guide will
-point to the latest validated release.
+Use the same tag in package references. New OpenBSD releases get separate tags
+after validation.
 
 ## Access and shutdown
 
-Both `bestie` and `root` use password `toor`. These are public test accounts.
-From the host, connect over SSH with:
+Both `bestie` and `root` use the public password `toor`.
+Connect from the host with:
 
 ```sh
 ssh -p 2222 bestie@127.0.0.1
 ```
 
 The reference web demo is at http://127.0.0.1:8080/, through relayd to httpd.
-The VM also enables PF, DNS configuration, NTP, cron, logging and monitoring.
-
-Inside the VM, shut down with:
-
-```sh
-shutdown -p now
-```
-
-If it is unresponsive, press **Ctrl+A**, release, then **X** to force QEMU to exit.
+Inside the VM, run `shutdown -p now` to stop it. If unresponsive, press Ctrl+A,
+release, then X to force QEMU to exit.
 
 ## Resources
 
-The defaults are 2 CPUs and 4 GiB RAM. For 8 CPUs and 8 GiB RAM:
-
-```sh
-NIX_VM_CORES=8 NIX_VM_MEMORY=8192 nix run github:iamanaws/nix-openbsd#native-vm
-```
-
-Set these before starting the VM. Guest builds use the available CPUs,
-one package at a time.
+Set these variables before launching:
 
 | Variable | Default |
 | --- | --- |
@@ -72,34 +53,38 @@ one package at a time.
 | `NIX_VM_SSH_PORT` | `2222` |
 | `NIX_VM_STATE_DIR` | `openbsd-native-vm/` |
 | `NIX_VM_ACCEL` | `auto`: KVM on compatible Linux hosts, otherwise TCG |
-| `NIX_VM_DISK_READ_BPS` | 40 MiB/s, expressed in bytes/s |
-| `NIX_VM_DISK_WRITE_BPS` | 20 MiB/s, expressed in bytes/s |
+| `NIX_VM_DISK_READ_BPS` | `41943040`, or 40 MiB/s |
+| `NIX_VM_DISK_WRITE_BPS` | `20971520`, or 20 MiB/s |
 
-Disk limits apply to the running VM. Image builds run through the host Nix daemon.
-Set `NIX_VM_ACCEL=tcg` to test software emulation on x86-64 Linux.
+For example:
+
+```sh
+NIX_VM_CORES=8 NIX_VM_MEMORY=8192 nix run github:iamanaws/nix-openbsd#native-vm
+```
+
+Guest builds use available CPUs, one package at a time. Disk limits apply to the
+running VM; image builds use the host Nix daemon. Set `NIX_VM_ACCEL=tcg` to test
+emulation on x86_64 Linux.
 
 ## Persistent state
 
-The state directory holds the writable disk. Its `base-image` link protects
-the backing image from garbage collection. Rebuilding the launcher preserves
-existing state; use [system updates](configuration.md) to update that VM.
+The state directory holds the writable disk. Its `base-image` link retains the
+backing image through GC. A new launcher preserves existing state; use
+[system updates](configuration.md#update) to update an installed VM.
 
-To start fresh, shut down the VM and run the following from its launch directory.
-**This deletes the VM and all files saved inside it.**
+To start fresh, shut down and run from the launch directory.
+This deletes the VM and every file saved inside it:
 
 ```sh
 rm -rf openbsd-native-vm/
 nix run --refresh github:iamanaws/nix-openbsd#native-vm
 ```
 
-If you set `NIX_VM_STATE_DIR`, use that directory instead.
+Use your chosen directory if you set `NIX_VM_STATE_DIR`.
 
 ## Binary cache
 
-Use [nix-openbsd.cachix.org](https://nix-openbsd.cachix.org) alongside the standard
-Nix cache. When prompted, accept the flake's cache URL and signing key and
-remember both settings. The guest daemon already configures these caches.
-
-The cache holds cross-built seeds and the validated native system, Nix, stdenv,
-Clang, LLD and runtimes. Important outputs are pinned. VM images and build
-history stay local.
+The guest daemon configures the standard Nix cache and `nix-openbsd.cachix.org`.
+The project cache holds cross-built seeds and native packages, including the
+system, Nix and toolchains. Release outputs are pinned; images and build history
+stay local.

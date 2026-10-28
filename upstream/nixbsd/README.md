@@ -1,25 +1,23 @@
 # NixBSD fixes for review
 
-Three independent patches against the pinned NixBSD `c292e27`. They are not
-applied by this project; the working local adapters remain in place.
+Three independent patches against pinned NixBSD `c292e27`.
+They are not applied here; local adapters remain active.
 
-| Patch | Scope | Local adapter to retire after updating the pin |
+| Patch | Change | Adapter to retire after updating the pin |
 | --- | --- | --- |
-| [version-revision.patch](version-revision.patch) | Shared installer tools: substitute known revisions and preserve unknown revisions. | Version wrapper in `modules/system/nixpkgs.nix`. |
-| [rc-dev-db.patch](rc-dev-db.patch) | OpenBSD only: create `/var/run`, leaving `dev.db` for `dev_mkdb`. | Rc source substitution in `modules/system/openbsd.nix`. |
-| [rc-start-failure.patch](rc-start-failure.patch) | OpenBSD only: return daemon startup errors before `postStart`. | Network `rc_start` override in `modules/system/openbsd.nix`. |
+| [version-revision.patch](version-revision.patch) | Substitute known installer revisions and preserve unknown ones. | Version wrapper in [nixpkgs.nix](../../modules/system/nixpkgs.nix). |
+| [rc-dev-db.patch](rc-dev-db.patch) | Create `/var/run`; leave `dev.db` to `dev_mkdb` on OpenBSD. | Rc substitution in [openbsd.nix](../../modules/system/openbsd.nix). |
+| [rc-start-failure.patch](rc-start-failure.patch) | Return startup errors before `postStart` on OpenBSD. | Network `rc_start` override in [openbsd.nix](../../modules/system/openbsd.nix). |
 
-Run from the project root, with Nix, Git, Bash and Python 3 available:
+With Nix, Git, Bash and Python 3, run from the project root:
 
 ```sh
 python3 tests/upstream/nixbsd.py
 ```
 
-The checks apply the patches to a temporary copy of the pinned source. They
-exercise version substitutions for both BSD platforms, directory creation, and
-startup-hook exit statuses. Each check fails on the original and passes after
-patching. No packages are built or repository files modified by the checks.
+Checks patch a temporary source copy and test both BSD version substitutions,
+directory creation and startup status. Each fails before patching and passes
+afterward. They build no packages or modify repository files.
 
-These are host-side regression checks, not BSD VM tests. Before removing the
-adapters, validate the updated pin with FreeBSD evaluation and OpenBSD boot,
-service startup and shutdown tests. Submit each patch separately.
+Before retiring adapters, validate FreeBSD evaluation and OpenBSD boot,
+service startup and shutdown with the updated pin. Submit patches separately.

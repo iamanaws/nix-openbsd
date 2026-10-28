@@ -1,130 +1,49 @@
-# Validation status
+# Status and limitations
 
-The native stdenv, Nix, system packages and SMP kernel pass VM validation on
-amd64 OpenBSD 8.0. Validated native runtime closures contain no declared
-bootstrap seed outputs. The EFI loader remains cross-built.
+Recorded VM runs validate the native stdenv, Nix 2.34.8, packages and SMP kernel
+on amd64 OpenBSD 8.0. Native runtime closures contain no declared bootstrap seed
+outputs. EFI remains cross-built.
 
-The amd64 guest passed launcher checks with KVM and TCG on x86-64 Linux on
-2026-10-26: boot, services, HTTPS, cached packages and persistent state across
-an accelerator change. ARM Linux and Apple Silicon macOS launchers evaluate;
-runtime checks on those hosts remain pending. See [VM hosts](vm.md#hosts).
+Fresh-image boot and reboot passed on 2026-10-25, including all 11 configured
+services, console/SSH login, HTTPS, a regular-user build and store integrity.
+Generation checks passed live updates, failed-update recovery, rollback, GC and
+boot-console recovery. Local mail and maintenance passed all five generation
+phases on 2026-10-27.
 
-## Validated workflows
+See [tests](testing.md) for workflow coverage and [VM hosts](vm.md#hosts) for
+launcher validation.
 
-- Native toolchain and package tests through the Nix daemon, requested by root
-  and a regular user, with non-root builders.
-- SQLite transactions and locking, tmux sessions, libevent and fmt consumers,
-  Python TLS and SQLite, and CFFI extension builds with `extern "Python"` callbacks.
-- sqlite-utils JSON/CSV imports, queries, exports and persistence as a regular user.
-- Native UTF-8 locale data, including Unicode in Python subprocesses and CSV output.
-- Native Go 1.26.8: direct compiler use, regular-user daemon builds, pure Go
-  and SQLite cgo consumers, and shfmt 3.14.1 built through the Nixpkgs recipe.
-- Native Nix 2.34.8: signed cache downloads, store verification, daemon restart
-  and garbage collection.
-- Native build-isolation proof: filesystem escape attempts, read-only inputs,
-  IPv4/IPv6 routing-domain separation and private loopback, with C/C++/Go/cgo
-  consumers and regular-user daemon controls. These are controlled primitive
-  tests; production builds still require a Nix sandbox backend.
-  See [build isolation](build-isolation.md).
-- Native VM: boot, clean restart, persistent state, EFI mounting, services,
-  HTTP and SSH access.
-- Cron: validation and immediate reload with `cronctl`, automatic reload without it,
-  service-account jobs, failure recovery and persistent data across updates and rollback.
-- NTP: configuration checks, restart recovery, preserving stopped services and
-  rollback across reboots. These checks use loopback peers and do not test clock accuracy.
-- DNS: lookups through `unwind` and libc, atomic resolver-file updates, cached answers
-  across blocklist reloads, failure recovery, stopped services and rollback across
-  reboots. These checks use a local DNS server and do not test DNSSEC validation.
-- Native IPv4 DHCP: automatic boot configuration, lease renewal, static-interface
-  exclusion, DNS refresh after carrier recovery, regular-user lookups,
-  configuration checks, complete daemon shutdown and reboot persistence.
-- Native IPv6 SLAAC: automatic boot configuration, preferred/valid address
-  lifetimes, router and DNS expiry, prefix and DNS changes, carrier recovery,
-  regular-user DNS lookups over IPv6, complete daemon shutdown and reboot.
-  Static-interface exclusion, explicit opt-in alongside static IPv6 addresses
-  and disabling temporary addresses passed in two native VMs.
-- Native routing and VPNs: IPv4/IPv6 transit between isolated LANs, PF allow/drop
-  policies for routed and decrypted traffic, BGP withdrawal and recovery,
-  invalid-configuration handling, IKE restart and independent router reboots.
-  WAN captures require ESP and exclude exposed LAN packets; removing forwarding
-  or IPsec blocks transit traffic. Static IPv6 startup waits for DAD before BGP
-  binds its listen addresses. See the [network tests](../tests/network/README.md).
-- Logging: log delivery and rotation, file ownership and permissions, stopped
-  services, failed-update recovery and rollback across reboots.
-- Native doas: password authentication, command restrictions, environment handling,
-  configuration checks, live rule updates and rollback across reboots.
-- Local mail: regular-user submission, aliases, mailbox permissions, service-account
-  cron output, offline queuing, failed-update recovery and delivery across reboot.
-  The five mail generation phases passed on 2026-10-27, including garbage collection
-  and boot-console recovery.
-- OpenBSD maintenance: daily, weekly and monthly scripts, reports,
-  local hook permissions, calendar mail, locate and manual-index databases,
-  configuration checks, live updates and disabled schedules. All five generation
-  phases passed on 2026-10-27, including report persistence through reboot,
-  rollback, garbage collection and boot-console recovery.
-- System generations: live updates, rollback, failed-update recovery,
-  garbage collection and boot-console recovery.
+## Recorded suite results
 
-Fresh-image boot and reboot passed on 2026-10-25, including console and SSH
-login, all 11 configured services, HTTPS, a regular-user native Nix build,
-store integrity and persistent state. Image assembly used RAM staging to
-limit host disk I/O.
+These are saved run results, not a new full-suite validation on every commit.
+A cached test can reuse their outputs.
 
-OpenBSD 8.0 generation tests passed on 2026-10-25: live updates, rollback,
-failed-update recovery, garbage collection and console boot recovery.
-See the [testing guide](testing.md) for commands and suite coverage.
-
-## Suite results
-
-These counts come from the recorded VM runs. A cached test run can reuse their outputs.
-
-- LLVM 22's X86 `check-all` has 36,274 passes, 34,443 unsupported tests,
-  62 expected failures and 414 skipped tests. LLVM 21 had one lit timeout;
-  that test passed twice in isolation, without a full-suite rerun.
-  Full Clang and LLD suites are disabled; focused tests cover compilation,
-  linking and OpenBSD library lookup. Userland uses LLVM 21.1.8; the kernel
-  uses LLVM 22.1.8.
-- libffi has 1,750 passes. fmt passes 21 test groups; CFFI passes the ten
-  selected upstream `extern "Python"` tests. libevent's suite passes with the
-  [test-only adjustments](../tests/packages/default.nix).
-- sqlite-utils passes 1,458 upstream tests, with 16 skipped. Two Hypothesis test
-  modules are excluded because native Rust is unavailable.
-- Go 1.26.8 passes 249 standard-library package tests in short mode;
-  112 packages have no tests. Shfmt passes its packaged upstream command tests
-  and formatting checks.
-- libc++abi has 58 passes and 22 unsupported tests.
-- libc++ has 9,948 passes, 782 unsupported tests and 49 expected failures.
-  This includes all 393 header-visibility tests after the OpenBSD declaration fix.
-  Floating-point atomic stress tests run serially to avoid exhausting
-  OpenBSD's thread table.
+| Component | Result and scope |
+| --- | --- |
+| LLVM 22 X86 `check-all` | 36,274 passed; 34,443 unsupported; 62 expected failures; 414 skipped. LLVM 21 had one lit timeout that passed twice alone, without a full rerun. |
+| Clang and LLD | Full suites disabled; focused compile/link and OpenBSD library-search checks pass. Userland uses LLVM 21.1.8; the kernel uses 22.1.8. |
+| libffi | 1,750 passed. |
+| fmt, CFFI, libevent | 21 fmt groups and ten selected CFFI `extern "Python"` tests pass. Libevent uses [test adjustments](../tests/packages/default.nix). |
+| sqlite-utils | 1,458 passed, 16 skipped. Two Hypothesis modules excluded because native Rust is unavailable. |
+| Go 1.26.8 | 249 standard-library packages pass in short mode; 112 have no tests. Pure Go, SQLite cgo and regular-user builds pass. Shfmt 3.14.1 passes packaged tests. |
+| libc++abi | 58 passed, 22 unsupported. |
+| libc++ | 9,948 passed, 782 unsupported, 49 expected failures. Includes all 393 header-visibility tests. Floating-point atomic stress runs serially to fit OpenBSD's thread table. |
 
 ## Limitations
 
-Builds use separate users without sandboxing. Full upstream Nix suites have
-not been run; BLAKE3 uses its non-TBB implementation. Native package coverage
-is still experimental. The cross-built reference demo is a separate target.
-Go's `cmd` and race suites, and standard-library tests without `-short`,
-have not been run.
-OpenBSD 8.0 refreshes DHCP DNS proposals on lease reacquisition. Renewals record
-changed servers in the lease; see [networking](configuration.md#networking).
-OpenBSD 8.0's SLAAC client does not process advertised DNS search domains;
-configure them through `services.resolvd.config`.
-Mail tests cover local delivery through the Unix socket. Custom TCP listeners,
-outbound relaying, TLS and filters have not been validated.
-Maintenance tests do not exercise root-device backups, process accounting or
-optional rdist jobs. The maintenance mtree policy covers mutable account files
-and local hooks; it does not verify the Nix store.
-Routing tests cover BGP and PSK-authenticated IKEv2. OSPF, RIP, IKEv1,
-certificate authentication, timed rekeying and live network switching remain untested.
+| Area | Remaining limits |
+| --- | --- |
+| Isolation | Builds use separate users without sandboxing. The [native proof](build-isolation.md) is not a Nix sandbox backend. |
+| Hosts | ARM Linux and Apple Silicon launcher runtime checks are pending. |
+| Nix | Full upstream suites have not run. BLAKE3 uses its non-TBB implementation. |
+| Toolchains | Go `cmd`, race and non-short standard tests have not run. Compiler-rt coverage is limited to builtins, excluding sanitizers. |
+| libc++ | OpenBSD has C-locale formatting and UTF-8 conversion; regional locale and missing `quick_exit` tests are unsupported. |
+| Networking | DHCP renewals record DNS changes but refresh proposals on reacquisition. SLAAC ignores advertised search domains. See [networking](networking.md). |
+| Routing/VPNs | BGP and PSK IKEv2 are tested; OSPF, RIP, IKEv1, certificates, timed rekeying and live network switching are not. |
+| DNS/NTP | Local fixtures do not validate DNSSEC or clock accuracy. |
+| Mail | Local Unix-socket delivery only; custom TCP listeners, relaying, TLS and filters are unvalidated. |
+| Maintenance | No root-device backups, accounting or optional rdist validation. Mtree does not verify the store. |
+| Other packages | Bootstrap Perl disables crypt to break its libxcrypt cycle. Texinfo uses its Perl parser. Nixpkgs disables full coreutils checks on BSD; GNU make skips one `/bin/echo` test. AgentX exchanges are untested. |
 
-OpenBSD provides C-locale formatting and UTF-8 character conversion. Tests
-requiring regional locales or the absent `quick_exit` API report unsupported.
-The tests cover compiler builtins, but not sanitizers or other compiler-rt libraries.
-Bootstrap Perl has crypt disabled to break its dependency cycle with libxcrypt.
-Texinfo loads native helper extensions but uses its Perl parser.
-Nixpkgs disables coreutils' full check phase on BSD. GNU make skips one test
-that requires `/bin/echo`.
-
-The native package test does not cover AgentX exchanges with an SNMP daemon.
-HTTP/TLS cache fetching is covered by `--nix`. See [package fixes](../pkgs/openbsd) and the
-[next steps](roadmap.md).
+Package coverage remains experimental. [Upstream work](upstream.md) tracks local
+fixes; [the roadmap](roadmap.md) lists remaining integration work.

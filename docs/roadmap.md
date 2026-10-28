@@ -1,65 +1,42 @@
 # Roadmap
 
-The focus is native package builds and usable native systems. The cross-built
-demo remains a reference. OpenBSD integration fixes stay in this project until
-FreeBSD and OpenBSD compatibility has been tested for upstream changes.
+## Nix sandbox backend
 
-## Next features
+Integrate the [native isolation proof](build-isolation.md) with Nix's builder.
+Required work includes input/output handling, concurrent builds, routing-domain
+allocation, cleanup and failure recovery. Production builds remain unsandboxed.
 
-| Order | Work | Validation |
-| --- | --- | --- |
-| 1 | OpenBSD Nix sandbox backend. | Integrate the [native isolation proof](build-isolation.md) with Nix input/output handling, concurrent builds, routing-domain allocation and cleanup. |
+## Host validation and arm64 OpenBSD
 
-Native IPv4/IPv6 transit, PF policies, BGP and IKEv2 recovery across restarts and
-independent router reboots are covered by the [network tests](../tests/network/README.md).
+Validate amd64 guest boot, networking, cache commands and persistence on ARM
+Linux and Apple Silicon hardware. The [launchers evaluate](vm.md#hosts), but
+hardware runs are pending.
 
-Package and toolchain cleanup is tracked in [upstream work](upstream.md).
+Defer native arm64 OpenBSD until amd64 and the host launchers are stable.
+It needs its own bootstrap, stdenv, AArch64 LLVM, Nix, kernel and EFI loader.
+Share sources, build separate outputs, and validate packages, services, updates
+and rollback before publishing a release. Preserve amd64 release pins.
 
-## OpenBSD 8.0
+## OpenBSD upgrades
 
-[OpenBSD 8.0](https://www.openbsd.org/80.html) was released on October 20, 2026.
-The [validated baseline](status.md) is OpenBSD 8.0.
+OpenBSD 8.0 is the [validated baseline](status.md). Check the 7.9-to-8.0 path
+separately against [upgrade notes](https://www.openbsd.org/faq/upgrade80.html)
+and [errata](https://www.openbsd.org/errata80.html). The project uses release
+sources; difftime and kernel Clang backports are removed, while the private
+semaphore fix remains.
 
-The project uses the 8.0 release sources. The `difftime`
-and kernel Clang backports have been removed. The private semaphore fix remains.
-Native packages, the toolchain and system workflows pass VM validation.
+## Upstream integration
 
-- Check the 7.9-to-8.0 upgrade path separately, following the
-  [upgrade notes](https://www.openbsd.org/faq/upgrade80.html) and
-  [errata](https://www.openbsd.org/errata80.html).
+[Patch review](upstream.md) tracks package and toolchain cleanup.
+Keep local NixBSD adapters until FreeBSD evaluation and OpenBSD runtime checks
+pass with their replacements.
 
-The kernel uses LLVM 22.1.8; userland stays on LLVM 21.1.8.
-Build frozen snapshots so development can continue independently.
-
-## VM hosts
-
-Run the cached amd64 guest on additional hosts before adding another OpenBSD
-architecture. Host launchers and Linux image builders are separate from the
-shared guest package set, preserving the existing bootstrap and native cache.
-See [host requirements](vm.md#hosts). Validate boot, networking, cached package
-commands and persistent state on ARM Linux and Apple Silicon macOS hardware.
-
-## arm64 OpenBSD (later)
-
-Defer this until the amd64 system and host launchers are stable. OpenBSD's arm64
-port needs a separate bootstrap, native stdenv, AArch64 LLVM, Nix, kernel and EFI
-loader in this project. Validate package builds, services, updates and rollback
-before publishing an arm64 release and cache pins. Sources can be shared with
-amd64; compiled outputs need their own builds. Preserve the amd64 release.
-
-## Live configuration switching
-
-The native system uses a [local generation manager](../modules/system/generations.nix).
-It handles supported service updates, boot selection and rollback. Networking
-and other unsupported live changes require a reboot.
-
-The inherited `system.switch.enable` implementation stays disabled. Its
-OpenBSD service ordering and checks need separate work before upstream use.
+The [local generation manager](../modules/system/generations.nix) handles supported
+live changes. The inherited `system.switch.enable` stays disabled until OpenBSD
+service ordering and checks have separate validation.
 
 ## Raw disk export
 
-The flake exposes `system-image`. Add a raw
-`disk.img` output using build-host `qemu-img`, as in the
-[Obsidian phase6 follow-up](https://github.com/nix-community/nixbsd/compare/openbsd-phase6...obsidiansystems:nixbsd:openbsd-phase6).
-Check the exported partition layout and boot the image before writing it to
-a physical disk. QEMU boots the existing image format.
+Add a raw `disk.img` alongside `system-image`, using build-host `qemu-img` as in
+the [NixBSD follow-up](https://github.com/nix-community/nixbsd/compare/openbsd-phase6...obsidiansystems:nixbsd:openbsd-phase6).
+Validate partition layout and boot before writing it to physical media.

@@ -10,20 +10,18 @@ cd my-openbsd
 nix flake init -t github:iamanaws/nix-openbsd#native-system
 ```
 
-Edit `configuration.nix` to choose packages and [services](../modules/README.md).
-The template uses `lib.mkNativeSystem`, the native package set and the VM's
-existing disks and root/bestie accounts. It does not enable the web demo.
+Edit `configuration.nix` to choose packages, [networking](networking.md) and
+[services](services.md). The template uses `lib.mkNativeSystem`, native packages,
+and the VM's existing disks and root/bestie accounts. It omits the web demo.
 
-Keep `flake.lock` with your configuration. Run `nix flake update nix-openbsd`
-to update the project input. If you use Git, add new files before building.
+Keep `flake.lock`. Run `nix flake update nix-openbsd` to update the project input.
+In a Git checkout, add new configuration files before building.
 
-Build as a regular user:
+Build as a regular user, then select and reboot as root:
 
 ```sh
 nix build .#nixosConfigurations.my-openbsd.config.system.build.toplevel -o result-system
 ```
-
-Then select the system and reboot as root:
 
 ```sh
 ./result-system/bin/switch-to-configuration boot
@@ -32,259 +30,60 @@ shutdown -r now
 
 ## Update
 
-After that first boot, run from your configuration directory:
+After the first boot, run from your configuration directory:
 
 ```sh
 openbsd-rebuild build --flake .#my-openbsd
-# As root:
+```
+
+As root:
+
+```sh
 openbsd-rebuild dry-activate --flake .#my-openbsd
 openbsd-rebuild switch --flake .#my-openbsd
 ```
 
-With `--flake`, `openbsd-rebuild` builds into `result-system` and activates only
-if the build succeeds. `--store-path` and `--rollback` use existing builds.
-All actions except `build` require root.
-
 | Action | Effect |
 | --- | --- |
-| `build` | Build without activation. |
+| `build` | Build into `result-system` without activation. |
 | `dry-activate` | Check and preview changes. |
-| `test` | Apply changes for the current boot. |
-| `switch` | Apply changes and select them for future boots. |
-| `boot` | Select the next boot configuration without changing the running system. |
+| `test` | Apply for the current boot. |
+| `switch` | Apply now and select for future boots. |
+| `boot` | Select for the next boot without changing the running system. |
 
-Packages, HTTP, relayd, DNS, NTP, logging, local mail and cron schedules support live updates.
-`resolvd` watches atomic updates to `resolv.conf`; it has no syntax checker.
-`unwind` checks its configuration before reloading. NTP checks before restarting.
-Cron validates and reloads schedules without restarting or rerunning `@reboot` jobs.
-Logging updates restart `syslogd`; it has no configuration-check mode.
-Rotation rules are checked with `newsyslog -n`. Updating rotation rules alone
-keeps syslogd and cron running. Boot and activation create declared log files as
-`root:wheel` with mode `0640`, preserving existing contents.
-Other services can opt in through `openbsd.system.services`. Kernel, filesystem,
-networking and unhandled service changes require `boot` followed by a reboot.
+All actions except `build` require root. Flake activation proceeds only after
+a successful build. Use `--store-path PATH` for an existing build.
+To update the reference demo, build `.#native-system` in the project checkout,
+then run `openbsd-rebuild ACTION --store-path ./result`. An older VM needs one
+boot into the new system before live switching.
 
-Set `services.cron.controlPackage = null` to omit `cronctl`. Cron then detects
-schedule changes and rollback at its next minute check, without pre-activation
-validation. This is also the default when `pkgs.openbsd.cronctl` is absent.
+| Change | Live behavior |
+| --- | --- |
+| Packages, httpd, relayd | Supported. |
+| `resolvd`, `unwind` | resolvd watches atomic file updates without a syntax checker; unwind validates before reload. |
+| NTP | Validate before restart. |
+| Cron | Validate and reload without restarting or rerunning `@reboot` jobs. |
+| Syslog | Restart; syslogd has no configuration-check mode. |
+| Log rotation | Check with `newsyslog -n`; keep syslogd and cron running. |
+| Local mail | Validate configuration and restart smtpd. |
+| Doas rules | Validate before activation. Wrapper changes require reboot. |
+| Kernel, filesystems, networking, privileged wrappers, other services | Use `boot` and reboot. |
 
-To update the reference demo instead, run `nix build .#native-system` from a
-[project checkout](development.md), then run
-`openbsd-rebuild ACTION --store-path ./result` as root, using an activation action
-from the table. An older VM needs one boot into the new system before live switching.
+Other services can declare [live handlers](../modules/README.md#live-service-handlers).
+Log files and [service directories](services.md#service-directories) are prepared
+at boot and activation without truncating existing contents.
 
-## Networking
+## Rollback and recovery
 
-OpenBSD systems use `dhcpleased` for IPv4 DHCP, `slaacd` for IPv6 SLAAC and
-`resolvd` to apply DNS proposals. With the default `networking.useDHCP = true`, DHCP is enabled on
-Ethernet interfaces without a declared static IPv4 address. Select interfaces
-explicitly when mixing DHCP and static addresses:
-
-```nix
-networking.useDHCP = false;
-networking.interfaces.vio0.useDHCP = true;
-networking.interfaces.vio1 = {
-  useDHCP = false;
-  ipv4.addresses = [ { address = "192.0.2.1"; prefixLength = 24; } ];
-};
-```
-
-The module sets OpenBSD's `inet autoconf` flag on selected interfaces. The
-daemon handles leases and link changes; lease files persist in
-`/var/db/dhcpleased`. Inspect a lease with `dhcpleasectl -l vio0`, or request
-a new lease and wait up to 30 seconds with `dhcpleasectl -w 30 vio0`.
-
-`networking.dhcpleased.config` accepts
-[dhcpleased.conf(5)](https://man.openbsd.org/dhcpleased.conf) syntax, for example
-`interface vio1 { ignore dns }`. Its default is empty. Additional resolver
-settings go in `services.resolvd.config`. Set `services.resolvd.enable = false`
-to manage the resolver file yourself.
-
-OpenBSD 8.0 records changed DNS servers in renewed leases, but refreshes its
-resolver proposal when reacquiring the lease, such as after a link change.
-Use `dhcpleasectl -w 30 vio0` to request that refresh immediately.
-
-IPv6 SLAAC defaults to enabled with `networking.useSLAAC = true`. It discovers
-Ethernet interfaces without static IPv6 addresses, independently of IPv4 DHCP
-and static IPv4 configuration. Select interfaces explicitly when needed:
-
-```nix
-networking.useSLAAC = false;
-networking.interfaces.vio0.useSLAAC = true;
-networking.interfaces.vio1 = {
-  useSLAAC = false;
-  ipv6.addresses = [ { address = "2001:db8::1"; prefixLength = 64; } ];
-};
-```
-
-The module sets `inet6 autoconf` on selected interfaces. OpenBSD's `slaacd`
-handles addresses, default routers, lifetimes, link changes and DNS server
-proposals. It needs no configuration file. Inspect state with
-`slaacctl show interface vio0`, or request a router advertisement with
-`slaacctl send solicitation vio0`.
-
-An explicit per-interface `useSLAAC = true` also permits SLAAC alongside static
-IPv6 addresses. Excluded interfaces have both stable and temporary address
-autoconfiguration disabled. OpenBSD normally generates and prefers temporary
-addresses; `networking.tempAddresses = "disabled"` disables their generation.
-The other values retain OpenBSD's source-address selection.
-`networking.enableIPv6 = false` or `networking.slaacd.enable = false` disables
-the native SLAAC service. Advertised DNS search domains are not processed by
-OpenBSD 8.0's `slaacd`; configure search domains through `services.resolvd.config`.
-
-With static IPv6 addresses, network startup follows OpenBSD `netstart` and waits
-up to ten seconds for Duplicate Address Detection before starting dependent services.
-
-Networking changes require `boot` followed by a reboot. The DHCP service checks
-configuration before startup and restart; OpenBSD does not support reloading it.
-Explicitly setting `networking.dhcpcd.enable = true` selects the existing dhcpcd
-client instead of the native DHCP and SLAAC daemons. They cannot be enabled
-together with dhcpcd. The SLAAC service supports start, stop and restart, without reload.
-
-## Service directories
-
-Declare directories in your configuration:
-
-```nix
-services.tempfiles.directories."/var/lib/my-service" = {
-  mode = "0750";
-  user = "my-service";
-  group = "my-service";
-};
-```
-
-Define the user and group through `users.users` and `users.groups`.
-Directories default to `0755`, owned by `root:wheel`. Boot, live activation and
-rollback apply their ownership and permissions without changing existing contents.
-Removing a declaration leaves its directory and data in place.
-
-## Administrative commands
-
-Native systems enable OpenBSD's `doas`, using the NixOS `security.doas` options.
-Members of `wheel` must authenticate with their own password by default.
-
-```nix
-security.doas.extraRules = [
-  {
-    users = [ "alice" ];
-    cmd = "/run/current-system/sw/bin/openbsd-rebuild";
-    args = [ "list-generations" ];
-    noPass = true;
-  }
-];
-```
-
-Rules are checked when building and before live activation. Rule changes support
-live updates and rollback. Enabling or disabling the setuid wrapper requires a
-reboot. Set `security.sudo.enable = false` if you only want `doas`.
-
-## Local mail
-
-Native systems enable OpenBSD's `smtpd` for local submission and delivery to
-`/var/mail/USER`. The default opens a Unix socket and has no TCP listener or
-outbound relay. Cron sends job output through the wrapped `sendmail` command;
-set `MAILTO` in `services.cron.systemCronJobs` to choose the recipient.
-
-Route administrative mail to an existing account with aliases:
-
-```nix
-services.smtpd.aliases = ''
-  root: alice
-  postmaster: root
-  MAILER-DAEMON: postmaster
-'';
-```
-
-Submit mail with `sendmail alice` or `sendmail -t` and read the user's mbox at
-`/var/mail/alice`. `smtpctl show queue` inspects pending delivery as root.
-Submission by regular users also queues mail while smtpd is stopped.
-OpenSMTPD returns `EX_TEMPFAIL` (75) after offline queuing and processes the
-message when the daemon starts again.
-
-Aliases use a text table in the Nix store, so changes need no `newaliases`
-command. The default configuration references that generation's table directly.
-Use `services.smtpd.config` for a custom smtpd.conf; reference
-`/etc/mail/aliases` explicitly if the custom rules need the declared aliases.
-Configuration and alias changes restart smtpd during live updates. Queues and
-mailboxes persist across updates and rollback; rollback does not undo delivered
-mail. Enabling or disabling the privileged wrappers requires a reboot.
-
-## Scheduled maintenance
-
-`services.maintenance` configures OpenBSD's
-[daily, weekly and monthly scripts](https://man.openbsd.org/daily). It is
-disabled by default. The module installs the scripts, declares cron entries and
-writes the corresponding `*.local` files. The `pkgs.openbsd.maintenance-scripts`
-package installs the scripts and supporting files. Utilities such as `calendar`,
-`locate` and `mail` are separate OpenBSD packages used by the scripts.
-
-```nix
-services.maintenance = {
-  enable = true;
-  daily.config = ''
-    CALENDAR=0
-    SUIDSKIP="/nix"
-  '';
-  monthly.schedule = "30 5 1 * *";
-  monthly.config = ''
-    echo 'Local monthly maintenance'
-  '';
-};
-```
-
-The example disables calendar notifications and excludes `/nix` from the daily
-setuid/device scan, using OpenBSD's configuration variables. These settings are
-individual choices; the module's daily hook is empty by default.
-
-| Job | Default schedule | Local configuration |
-| --- | --- | --- |
-| Daily | 01:30 every day | `services.maintenance.daily.config` → `/etc/daily.local` |
-| Weekly | 03:30 on Saturday | `services.maintenance.weekly.config` → `/etc/weekly.local` |
-| Monthly | 05:30 on the first day | `services.maintenance.monthly.config` → `/etc/monthly.local` |
-
-Schedules use the system timezone. Jobs use `/var/log` as their home and working
-directory, matching OpenBSD's root crontab. Set a job's `enable = false` to remove
-its schedule; its script remains available for manual execution. The cron
-entries contain the full shell command for manual runs. Set the module's
-`enable = false` to remove its scripts and configuration. Existing reports and
-backups remain in place.
-
-The `config` options are verbatim shell fragments sourced by OpenBSD's scripts.
-The module installs them as regular files owned by root, with mode `0600`, so the
-scripts' permission checks accept them. Live updates validate their shell syntax
-and reload cron; configuration rollback restores the previous hooks and schedules.
-
-OpenBSD's scripts save reports at `/var/log/daily.out`, `weekly.out`, `monthly.out`
-and `security.out`, retaining previous versions with the `.old` suffix. They mail
-nonempty reports to `root`; configure a [local mail alias](#local-mail) for the
-administrator. Monthly maintenance has no standard tasks beyond its local hook.
-
-The weekly hook defaults to `MAKEWHATISARGS=-n`:
-[`makewhatis`](https://mandoc.bsd.lv/man/makewhatis.8.html) scans manuals without
-writing databases into the Nix store. To rebuild a writable manual tree, replace
-that setting with its directory. The locate database is rebuilt only when
-`/var/db/locate.database` already exists.
-
-The `security` script checks accounts, home directories, mailboxes,
-setuid files, devices and configuration changes. `services.maintenance.mtreeConfig`
-configures its `/etc/mtree/special` policy; the default covers mutable account
-files and this module's hooks, using NixBSD ownership. It does not verify Nix
-store contents. Security diagnostics appear in `/var/log/security.out`.
-
-Use `services.cron.systemCronJobs` directly for other site-specific jobs. The
-module adds no Nix garbage collection, generation pruning or custom health checks.
-
-## Rollback
-
-As root, list generations or return to the previous one:
+As root:
 
 ```sh
 openbsd-rebuild list-generations
 openbsd-rebuild switch --rollback
 ```
 
-For rollback at the next boot, use `openbsd-rebuild boot --rollback` and reboot.
-To use a specific older configuration, replace `--rollback` with
+Use `openbsd-rebuild boot --rollback` for rollback at the next reboot.
+To choose a specific generation, replace `--rollback` with
 `--store-path /nix/var/nix/profiles/system-N-link`.
 After a temporary `test`, return to the boot selection with:
 
@@ -293,6 +92,18 @@ openbsd-rebuild test --store-path /nix/var/nix/profiles/system
 ```
 
 Failed live updates attempt to restore the previous configuration and services.
-Logs are in `/var/log/openbsd-system.log`. Rollback covers packages and
-configuration, not application data. See [boot-console recovery](../tests/generations/README.md#boot-console-recovery)
-if the selected generation cannot boot.
+Logs are in `/var/log/openbsd-system.log`. Rollback restores packages and
+configuration, not application data.
+
+If a selection cannot boot, choose a retained generation at the VM's `boot>`
+prompt, using its store path:
+
+```text
+set init /nix/store/GENERATION/bin/activate-init-native
+boot /nix/store/GENERATION/kernel
+```
+
+This affects one boot. After login, select it permanently with
+`openbsd-rebuild boot --store-path /nix/var/nix/profiles/system-N-link`.
+Boot files live in `/boot/nixos/N.conf`; record a working generation's path
+before testing boot changes.

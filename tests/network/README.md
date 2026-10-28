@@ -1,58 +1,48 @@
 # Routing and VPN tests
 
-Run from the project root on x86_64 Linux with KVM:
+From x86_64 Linux with KVM:
 
 ```sh
 nix run .#test -- --suite network
 nix run .#test -- --suite network --vm-state ./openbsd-native-vm --keep
 ```
 
-The runner builds fixtures inside OpenBSD, then boots private copies of the
-prepared native disk. Each guest defaults to two CPUs and 4 GiB RAM, with
-40 MiB/s disk reads and 20 MiB/s writes. A private Ethernet link uses temporary
-UDP ports on host loopback. The test changes no host interfaces, routes or
-firewall rules, and stops only its own VMs.
+The runner builds fixtures in OpenBSD and boots private copies of the prepared
+disk. Each guest uses the [regular test resources](../../docs/testing.md#development-runs).
+A private Ethernet link uses temporary host-loopback UDP ports without changing
+host interfaces, routes or firewall rules.
 
-Each VM is a router with an isolated LAN endpoint in routing domain 1.
-OpenBSD `pair(4)` interfaces connect that endpoint to the router in domain 0.
-The two LANs use `198.51.100.0/24`, `203.0.113.0/24` and separate IPv6 /64s.
-Endpoint traffic must traverse both routers; disabling IPv4 or IPv6 forwarding
-checks that this is actual transit traffic. The launcher's NAT interface remains
-present for fixture installation; PF blocks it during runtime checks.
+## Topology
 
-The test checks:
+Each VM is a router with a LAN endpoint isolated in routing domain 1.
+`pair(4)` connects it to the router in domain 0. LANs use `198.51.100.0/24`,
+`203.0.113.0/24` and separate IPv6 /64s. Transit must cross both routers;
+disabling forwarding proves this path. NAT remains for fixture installation,
+then PF blocks it during runtime checks.
 
-- Declarative hostnames, static IPv4/IPv6 addresses, forwarding sysctls and both
-  supported default-gateway forms, including an explicit metric.
-- BGP exchange and kernel installation of both LAN routes, with bidirectional
-  ping and UDP echo traffic through the isolated endpoints.
-- PF allows UDP port 9000 and drops port 9001, with rule counters and positive
-  local checks that both endpoint listeners work.
-- Repeating network startup preserves working interfaces and routes.
-- Invalid BGP/IKE restart configurations preserve the running daemons; an invalid
-  PF rule load preserves the installed rules and working traffic.
-- Stopping BGP withdraws the learned routes and blocks transit traffic;
-  restarting it restores routes and traffic without manual route insertion.
-- IKEv2 protects both IPv4 and IPv6 LAN traffic. PF blocks LAN cleartext on the
-  external interface and applies the UDP policy to decrypted traffic on `enc0`.
-  A WAN packet capture requires ESP and rejects exposed LAN packets.
-- Removing IPsec blocks traffic while the BGP routes remain. Restarting IKE
-  restores protection and preserves its local private key.
-- Rebooting each router while its peer stays running restores BGP, IPsec and
-  PF policy, preserves the key and recreates the isolated endpoint interfaces.
+## Checks
 
-The UDP responder is a test fixture in the endpoint routing domain. The service
-modules use OpenBSD's `bgpd`, `iked`, `pfctl` and rc scripts. The public test PSK
-is used only on the private guest link; read the
-[service configuration precautions](../../modules/README.md#before-enabling-services)
-before configuring real credentials.
+- Declarative hostnames, static IPv4/IPv6, forwarding and both default-gateway
+  forms, including metrics.
+- BGP route installation and bidirectional ping/UDP transit. Stopping BGP
+  withdraws routes and blocks traffic; restarting restores both without manual routes.
+- PF permits UDP 9000 and drops 9001, with counters and controls proving both
+  endpoint listeners work.
+- Repeated startup preserves interfaces/routes. Invalid BGP/IKE restarts and
+  PF loads preserve running daemons, installed rules and traffic.
+- IKEv2 protects both LAN protocols. PF rejects external cleartext and applies
+  UDP policy on `enc0`. WAN captures require ESP and reject exposed LAN packets.
+- Removing IPsec blocks traffic while BGP routes remain. IKE restart restores
+  protection without replacing its private key.
+- Independent router reboots restore BGP, IPsec, PF and endpoint interfaces.
 
-The runner writes per-phase results and console logs beneath the test work
-directory. Failed runs keep their disks; `--keep` retains successful disks too.
-`--timeout` sets the suite limit, including native fixture preparation.
-Reboot recovery allows OpenBSD's five-minute IKE exchange timeout and subsequent
-automatic retry when a negotiation starts while the peer is offline.
+The UDP responder is a fixture; modules use native bgpd, iked, pfctl and rc scripts.
+The public PSK is only for the private link. See
+[credential precautions](../../docs/services.md) before using real keys.
 
-Coverage does not include OSPF, RIP, IKEv1, certificate authentication, timed
-rekeying or live network generation switching. See the
-[roadmap](../../docs/roadmap.md) and [validation status](../../docs/status.md).
+Results and consoles live under the test work directory.
+`--timeout` includes fixture preparation. Peer reboot recovery allows the
+five-minute IKE exchange timeout and automatic retry.
+
+Coverage excludes OSPF, RIP, IKEv1, certificates, timed rekeying and live network
+generation switching. See [status](../../docs/status.md).

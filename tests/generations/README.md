@@ -1,84 +1,37 @@
-# Native system generations
+# System generation tests
 
-The tests use one persistent VM disk. They cover boot selection, rollback,
-garbage collection and recovery through the boot console. The live fixtures
-also check package updates, HTTP content, adding/removing a daemon, unchanged
-SSH processes, invalid configurations and recovery after activation or service
-startup fails.
-Directory checks cover ownership, permissions, drift repair, preserved contents
-and recovery when a path cannot be created.
-Cron checks cover schedule validation, SQLite writes as a locked service account,
-reload failure recovery and rollback without restarting cron or rerunning `@reboot` jobs.
-Building the fixtures with `withCronctl = false` tests automatic reload without
-the helper; parser checks and the injected reload failure are omitted in that mode.
-NTP checks use loopback peers and cover configuration validation, restart failures,
-stopped services, rollback and persistence after reboot. They do not test clock accuracy.
-
-Run from the project root on x86_64 Linux:
+From the project root on x86_64 Linux with KVM:
 
 ```sh
 nix run .#test -- --suite generations
-nix run .#test -- --suite cron-fallback
-nix run .#test -- --suite dns
 nix run .#test -- --suite dns --live-only
-nix run .#test -- --suite logging
-nix run .#test -- --suite doas
-nix run .#test -- --suite mail
-nix run .#test -- --suite maintenance
 ```
 
-The runner builds and transfers the fixtures automatically. See the
-[testing guide](../../docs/testing.md) for prepared VMs, logs and resource limits.
+The runner prepares and transfers fixtures. Each suite uses a persistent test
+disk for live changes, reboot, rollback, GC and console recovery.
+See [runner options](../../docs/testing.md) for resources, prepared VMs and logs.
 
-DNS checks use a local server and cover lookups, resolver-file updates,
-blocklist reloads, cache preservation,
-failed-update recovery, stopped services and rollback across reboots. They do not
-test DNSSEC validation.
+| Suite | Checks |
+| --- | --- |
+| `generations` | Packages, HTTP, daemon addition/removal, unchanged SSH processes, invalid configurations and activation/startup recovery. Directories check ownership, permissions, drift repair and retained contents. Cron checks SQLite jobs as locked accounts, reload recovery and no repeated `@reboot` jobs. NTP uses loopback peers. |
+| `cron-fallback` | Generation fixtures with `withCronctl = false`. Checks automatic minute-based reload; omits parser checks and injected reload failures. |
+| `dns` | Local DNS lookups, resolver updates, blocklists, cache preservation and failed-update recovery. |
+| `logging` | Delivery, rotation, file creation, stopped services and persistent history. Rotation-only changes preserve syslogd/cron. Equal-size syslog configs with fixed timestamps still trigger restart. |
+| `doas` | Passwords, command/argument restrictions, environment handling and rule rollback, with sudo disabled. |
+| `mail` | Regular-user submission, aliases, mbox modes, service-account cron output, offline queues and delivery across reboot. Requires no port-25 listener. |
+| `maintenance` | Daily/weekly/monthly execution, reports, mail, hook modes, calendar, locate/manual databases, disabled schedules, persistence and console recovery. |
+| `workflow` | Personal configuration template and `openbsd-rebuild` against project inputs. |
 
-Logging checks cover real messages, rotation, new log files, stopped services,
-failed-update recovery and persistence across reboots and rollback. Rotation-only
-changes keep syslogd and cron running. Syslog configuration changes restart the
-daemon, including equal-size files with fixed store timestamps. Only rotation
-rules have a pre-activation syntax check; OpenBSD syslogd provides none.
+Service suites also check stopped daemons, failed updates and rollback.
+NTP does not measure clock accuracy; DNS does not check DNSSEC.
+Only newsyslog rotation rules have a preflight syntax checker; syslogd has none.
 
-Doas checks cover password authentication, command and argument restrictions,
-environment handling, live rule updates and rollback. The test VM disables sudo.
-
-Mail checks cover regular-user submission, aliases, mbox permissions, cron output
-from a locked service account, offline submission, queued delivery across reboot,
-failed-update recovery, stopped services and rollback. They use local delivery
-through the Unix socket and check that port 25 has no listener.
-
-The maintenance suite executes OpenBSD's daily, weekly and monthly
-scripts. It checks reports and mail, local hook permissions, locate and
-manual databases, invalid configuration, live updates, disabled schedules,
-report persistence, garbage collection and console recovery. Calendar and locate
-are tested through their separate packages, including locate database generation
-with a minimal shell path.
-
-Local failure tests need Bash, jq, GNU coreutils and Python:
+Local failure tests require Bash, jq, GNU coreutils and Python:
 
 ```sh
 python3 -m unittest discover -s tests/generations -p 'test_*.py'
 ```
 
-Use `--suite workflow` to check the personal configuration template and
-`openbsd-rebuild` against project inputs. Add `--live-only` to skip reboot, GC
-and console recovery. The lower-level `run.py` also supports
-`--recovery-state DIR/state` for console recovery.
-
-## Boot-console recovery
-
-Retained generations live under `/nix/var/nix/profiles/system-N-link` and have
-boot files in `/boot/nixos/N.conf`. Record the desired generation's store path
-before testing boot changes. At the VM's `boot>` prompt, select both its init
-and kernel:
-
-```text
-set init /nix/store/GENERATION/bin/activate-init-native
-boot /nix/store/GENERATION/kernel
-```
-
-This changes that boot only. Once logged in, use
-`openbsd-rebuild boot --store-path /nix/var/nix/profiles/system-N-link`
-to select the retained configuration for future boots.
+`--live-only` skips reboot, GC and console recovery for selected generation
+suites. The lower-level `run.py` also accepts `--recovery-state DIR/state`.
+For manual rescue, see [boot-console recovery](../../docs/configuration.md#rollback-and-recovery).
