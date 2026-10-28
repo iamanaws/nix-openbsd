@@ -18,6 +18,7 @@ SUITES = {
     'local': 'Local unit tests and configuration evaluation',
     'base': 'Base VM service and network startup checks',
     'packages': 'Native package consumers and package regression checks',
+    'go': 'Native Go standard tests, cgo, shfmt and regular-user builds',
     'vm': 'Fresh native VM, cache downloads and restart',
     'workflow': 'Regular-user builds, personal configuration and live rollback',
     'generations': 'HTTP, cron, NTP, directories, failure recovery and boot recovery',
@@ -34,7 +35,7 @@ SUITES = {
     'cxx': 'Focused libc++ and libc++abi suites (slow)',
     'nix': 'Focused native Nix CLI and daemon checks',
 }
-REGULAR = ('local', 'base', 'packages', 'vm', 'workflow', 'generations',
+REGULAR = ('local', 'base', 'packages', 'go', 'vm', 'workflow', 'generations',
            'dns', 'logging', 'doas', 'mail', 'maintenance', 'cron-fallback', 'network')
 GENERATIONS = {'generations', 'dns', 'logging', 'doas', 'mail', 'maintenance', 'cron-fallback'}
 NATIVE = {'native': '--all', 'bootstrap': None, 'toolchain': '--toolchain',
@@ -181,7 +182,7 @@ class Runtime:
             raise RuntimeError(self.prepare_error)
         if self.prepared is not None:
             return self.prepared
-        wanted = [s for s in self.suites if s in GENERATIONS or s == 'packages']
+        wanted = [s for s in self.suites if s in GENERATIONS or s in ['packages', 'go']]
         if any(s in GENERATIONS or s in ['vm', 'workflow'] for s in self.suites):
             wanted.insert(0, 'base')
         wanted = list(dict.fromkeys(wanted))
@@ -245,6 +246,15 @@ class Runtime:
             self.command(command, env=self.env | {'OPENBSD_VM_TIMEOUT': str(self.timeout)})
         elif name == 'packages':
             self.ensure_prepared()
+        elif name == 'go':
+            inputs = self.ensure_prepared()
+            command = [sys.executable, '-B', self.source / 'tests/go/run.py',
+                       '--source', self.source, '--launcher', self.launcher,
+                       '--inputs', inputs['go'], '--timeout', str(self.timeout),
+                       '--vm-state', self.work / 'native-preparation/state']
+            if self.args.keep:
+                command.append('--keep')
+            self.command(command)
         elif name in ['vm', 'workflow']:
             self.ensure_prepared()
             command = [sys.executable, '-B', self.source / 'tests/vm/run.py', self.source,

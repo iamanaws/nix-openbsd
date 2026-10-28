@@ -17,6 +17,8 @@ runtime checks on those hosts remain pending. See [VM hosts](vm.md#hosts).
   Python TLS and SQLite, and CFFI extension builds with `extern "Python"` callbacks.
 - sqlite-utils JSON/CSV imports, queries, exports and persistence as a regular user.
 - Native UTF-8 locale data, including Unicode in Python subprocesses and CSV output.
+- Native Go 1.26.8: direct compiler use, regular-user daemon builds, pure Go
+  and SQLite cgo consumers, and shfmt 3.14.1 built through the Nixpkgs recipe.
 - Native Nix 2.34.8: signed cache downloads, store verification, daemon restart
   and garbage collection.
 - Native VM: boot, clean restart, persistent state, EFI mounting, services,
@@ -68,6 +70,9 @@ These counts come from the recorded VM runs. A cached test run can reuse their o
   [test-only adjustments](../tests/packages/default.nix).
 - sqlite-utils passes 1,458 upstream tests, with 16 skipped. Two Hypothesis test
   modules are excluded because native Rust is unavailable.
+- Go 1.26.8 passes 249 standard-library package tests in short mode;
+  112 packages have no tests. Shfmt passes its packaged upstream command tests
+  and formatting checks.
 - libc++abi has 58 passes and 22 unsupported tests.
 - libc++ has 9,948 passes, 782 unsupported tests and 49 expected failures.
   This includes all 393 header-visibility tests after the OpenBSD declaration fix.
@@ -79,6 +84,8 @@ These counts come from the recorded VM runs. A cached test run can reuse their o
 Builds use separate users without sandboxing. Full upstream Nix suites have
 not been run; BLAKE3 uses its non-TBB implementation. Native package coverage
 is still experimental. The cross-built reference demo is a separate target.
+Go's `cmd` and race suites, and standard-library tests without `-short`,
+have not been run.
 Mail tests cover local delivery through the Unix socket. Custom TCP listeners,
 outbound relaying, TLS and filters have not been validated.
 Maintenance tests do not exercise root-device backups, process accounting or

@@ -23,7 +23,8 @@ supported hosts. Suites run sequentially; networking uses two small guests.
 | --- | --- |
 | `local` | Unit tests and configuration evaluation; no VM. Unit tests also run through `nix flake check`. |
 | `base` | Base VM services, outbound HTTPS, MTU, IPv6 routes and network startup failures. |
-| `packages` | Native C/C++, SQLite, tmux, Python, CFFI, libevent and sqlite-utils checks. |
+| `packages` | Native package checks for C/C++, SQLite, tmux, Python, CFFI, libevent, sqlite-utils and Go. |
+| `go` | Go standard-library tests in short mode, pure Go, SQLite through cgo, shfmt and regular-user builds. |
 | `vm` | Fresh native image, regular-user package commands, cache downloads and restart. |
 | `workflow` | Native builds, a personal configuration, live switching and rollback. |
 | `generations` | HTTP, cron, NTP, directories, failed-update recovery, rollback, GC and console recovery. |
@@ -59,6 +60,8 @@ nix run .#test -- --suite dns --vm-state ./openbsd-native-vm
 Tests use private copies and leave that VM unchanged. Focused runs stop if they
 would rebuild LLVM or the C++ runtimes; prepare those with the native suites or
 use a VM that already has the build inputs.
+Go checks supply a localhost hosts file in the private VM when `/etc/hosts`
+is absent, so libc forward and reverse lookup tests have their expected fixture.
 
 Native guests use `NIX_VM_CORES` and `NIX_VM_MEMORY` (MiB) when set. Regular guests
 default to two CPUs and 4 GiB; the bootstrap suites default to eight CPUs and

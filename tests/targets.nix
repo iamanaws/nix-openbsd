@@ -15,6 +15,10 @@ in
 {
   nativeTargets = {
     base = flake.packages.x86_64-openbsd.native-system;
+    go-bootstrap = pkgs.go.goBootstrap;
+    go-toolchain = pkgs.go;
+    shfmt = pkgs.shfmt;
+    go = (import ./go { inherit pkgs; }).all;
     packages = pkgs.linkFarm "openbsd-package-test-results" (
       pkgs.lib.mapAttrsToList (name: path: { inherit name path; }) flake.checks.x86_64-openbsd
     );

@@ -335,10 +335,14 @@
           };
         })
         // {
-          x86_64-openbsd = import ./tests/packages {
-            pkgs = nativeSystemPackages;
-            bootstrap = seedMetadata;
-          };
+          x86_64-openbsd =
+            (import ./tests/packages {
+              pkgs = nativeSystemPackages;
+              bootstrap = seedMetadata;
+            })
+            // {
+              go = (import ./tests/go { pkgs = nativeSystemPackages; }).all;
+            };
         };
 
       packages =
@@ -362,6 +366,8 @@
               tmux
               libevent
               fmt
+              go
+              shfmt
               python3
               ;
             git = nativeSystemPackages.gitMinimal;

@@ -14,6 +14,10 @@ import base.path {
         )) (import ../../overlays/nixbsd.nix) final prev;
       in
       {
+        go_1_26 = import ./native-go.nix {
+          pkgs = final;
+          go = prev.go_1_26;
+        };
         llvmPackages_22 =
           (import ./native-toolchain.nix {
             pkgs = prev;

@@ -85,6 +85,7 @@ LLVM 23.1.3 still needs the header fixes and encoding backport.
 | [Native stdenv](../pkgs/openbsd/native-stdenv.nix) and [libtool hook](../pkgs/openbsd/fix-libtool.sh) | Nixpkgs compiler wrappers, hooks and BSD scopes. Validate bootstrap closure independence after changes. |
 | [Nix runtime overrides](../pkgs/openbsd/nix-runtime-overrides.nix) | Nix for PTY, build-user and fork handling. Submit separately with focused tests. |
 | [Native Nix dependencies](../pkgs/openbsd/native-nix.nix) and [system packages](../pkgs/openbsd/native-system-packages.nix) | Nixpkgs for package recipes and dependencies. Keep disabled tests distinct from correctness fixes. |
+| [Native Go](../pkgs/openbsd/native-go.nix) and [bootstrap](../pkgs/openbsd/go-bootstrap.nix) | Nixpkgs for the OpenBSD ports bootstrap and store library paths. Go's direct OpenBSD `-nopie` linker option needs the LLD-compatible `-no-pie` spelling; review separately for Go upstream. |
 | [Version, dev.db and service startup fixes](../upstream/nixbsd/README.md) | Three proposed NixBSD patches with regression checks. Keep local adapters until the updated dependency passes FreeBSD evaluation and OpenBSD runtime tests. |
 | [Boot overlay](../overlays/openbsd.nix), [system module](../modules/system/openbsd.nix), [services](../modules/services) | NixBSD for system integration; OpenBSD for base-source defects. Preserve service start, check and stop behavior. |
 | [Generation manager](../modules/system/generations.nix) | Keep locally while stabilizing switching, failure recovery, rollback and reboot behavior. |

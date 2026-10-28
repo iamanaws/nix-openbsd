@@ -69,6 +69,9 @@ curl --noproxy '*' -fsS {url}source.nar | nix-store --import
 work=$(mktemp -d /var/tmp/openbsd-test-build.XXXXXXXX)
 trap 'rm -rf "$work"' EXIT
 ''']
+    if {'go', 'packages'} & targets.keys():
+        # Go's libc resolver tests require localhost forward and reverse lookups.
+        commands.append(f'test -e /etc/hosts || install -m 644 {shlex.quote(str(source / "tests/go/hosts"))} /etc/hosts\n')
     for name, path in targets.items():
         command = shlex.join([
             'nix', '--log-format', 'raw', 'build', '--accept-flake-config', '--impure',
