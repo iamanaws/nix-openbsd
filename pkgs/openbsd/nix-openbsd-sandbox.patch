@@ -1,0 +1,792 @@
+OpenBSD chroot and routing-domain sandbox for Nix 2.35.
+
+Reuse the Unix build-user lifecycle and shared chroot output handling.
+Require an explicitly reserved routing-domain pool for ordinary builds.
+Fixed-output builds retain networking; unsupported modes fail closed.
+
+--- a/include/nix/store/local-settings.hh
++++ b/include/nix/store/local-settings.hh
+@@ -381,7 +381,13 @@
+           not run in private network namespace to ensure they can access the
+           network).
+ 
+-          Currently, sandboxing only work on Linux and macOS. The use of a
++          On OpenBSD, builds use a chroot and dedicated build users. Ordinary
++          builds also use a routing domain from `sandbox-rdomains`; fixed-output
++          builds retain host networking. Store inputs are read-only, and extra
++          host paths are read-only snapshots. PID and IPC namespaces are not
++          available. Recursive Nix and UID ranges are unsupported.
++
++          Sandboxing is supported on Linux, macOS, FreeBSD and OpenBSD. The use of a
+           sandbox requires that Nix is run as root (so you should use the
+           "build users" feature to perform the actual builds under different
+           users than root).
+@@ -390,7 +396,7 @@
+           and derivations that have the `__noChroot` attribute set to `true`
+           do not run in sandboxes.
+ 
+-          The default is `true` on Linux and `false` on all other platforms.
++          The default is `true` on Linux and FreeBSD and `false` on other platforms.
+         )",
+         {"build-use-chroot", "build-use-sandbox"}};
+ 
+@@ -456,17 +462,37 @@
+         )"};
+ #endif
+ 
+-#if defined(__linux__) || defined(__FreeBSD__)
++#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+     Setting<AbsolutePath> sandboxBuildDir{
+         this,
+         "/build",
+         "sandbox-build-dir",
+         R"(
+-            *Linux only*
+-
+-            The build directory inside the sandbox.
+-
+-            This directory is backed by [`build-dir`](#conf-build-dir) on the host.
++            The build directory inside Linux, FreeBSD and OpenBSD sandboxes.
++
++            On OpenBSD this directory is on the store filesystem. On Linux and
++            FreeBSD it is backed by [`build-dir`](#conf-build-dir) on the host.
++        )"};
++#endif
++
++#ifdef __OpenBSD__
++    Setting<StringSet> sandboxRdomains{
++        this,
++        {},
++        "sandbox-rdomains",
++        R"(
++            *OpenBSD only*
++
++            Routing-domain IDs reserved exclusively for sandboxed builds. Each
++            entry must be an integer from 1 to 255. Configure at least as many
++            IDs as concurrent builds. An empty pool rejects builds that require
++            network isolation; sandboxing never falls back to the host network.
++
++            Nix creates private loopback interfaces in these domains and removes
++            them after terminating the build's processes. Existing interfaces
++            are not adopted. Reserve these IDs in the host network configuration
++            and do not install PF rules that route traffic across these domains.
++            Fixed-output builds retain the daemon's network access.
+         )"};
+ #endif
+ 
+--- a/meson.build
++++ b/meson.build
+@@ -372,6 +372,10 @@
+   subdir('linux')
+ endif
+ 
++if host_machine.system() == 'openbsd'
++  subdir('openbsd')
++endif
++
+ if host_machine.system() == 'freebsd'
+   subdir('freebsd')
+ endif
+--- /dev/null
++++ b/openbsd/build/chroot-openbsd-derivation-builder.hh
+@@ -0,0 +1,41 @@
++#pragma once
++
++#include "chroot-derivation-builder.hh"
++#include <net/if.h>
++
++namespace nix {
++
++struct ChrootOpenBSDDerivationBuilder : ChrootDerivationBuilder
++{
++    ChrootOpenBSDDerivationBuilder(
++        LocalStore & store, std::shared_ptr<DerivationBuilderCallbacks> callbacks, DerivationBuilderParams params)
++        : DerivationBuilderImpl{store, callbacks, params}
++        , ChrootDerivationBuilder{store, callbacks, params}
++    {
++    }
++
++private:
++    void anchor() override;
++
++    AutoCloseFD routingDomainLock;
++    unsigned int routingDomain = 0;
++    bool processesStopped = false;
++
++    void prepareUser() override;
++    void setBuildTmpDir() override;
++    void makeParents(const std::filesystem::path & target);
++    void materialise(const std::filesystem::path & source, const std::filesystem::path & target, bool immutable);
++    static AutoCloseFD networkSocket();
++    static struct ifreq interfaceRequest(unsigned int id);
++    std::string domainOwner();
++    void destroyDomain(int socket, unsigned int id);
++    void prepareRoutingDomain();
++    void createPasswordDatabase();
++    void prepareSandbox() override;
++    void startChild() override;
++    void enterChroot() override;
++    void killSandbox(bool getStats) override;
++    void cleanupBuild(bool force) override;
++};
++
++} // namespace nix
+--- /dev/null
++++ b/openbsd/build/openbsd-derivation-builder.cc
+@@ -0,0 +1,450 @@
++#include "chroot-openbsd-derivation-builder.hh"
++#include "sysv-ipc.hh"
++#include "nix/util/file-system.hh"
++#include "nix/util/file-system-at.hh"
++#include "nix/util/signals.hh"
++#include "nix/util/processes.hh"
++#include "nix/util/strings.hh"
++#include "nix/store/pathlocks.hh"
++
++#include <db.h>
++#include <fcntl.h>
++#include <pwd.h>
++#include <grp.h>
++#include <unistd.h>
++#include <sys/ioctl.h>
++#include <sys/proc.h>
++#include <sys/socket.h>
++#include <sys/sysctl.h>
++#include <net/route.h>
++#include <netinet/in.h>
++#include <netinet/in_var.h>
++#include <netinet6/in6_var.h>
++#include <netinet6/nd6.h>
++
++namespace nix {
++
++void ChrootOpenBSDDerivationBuilder::anchor() {}
++
++void ChrootOpenBSDDerivationBuilder::prepareUser()
++{
++    if (geteuid() != 0 || !buildUser)
++        throw Error("OpenBSD sandboxing requires root and dedicated build users");
++    if (drvOptions.useUidRange(drv))
++        throw Error("uid-range is not supported by the OpenBSD sandbox");
++    if (drvOptions.getRequiredSystemFeatures(drv).count("recursive-nix"))
++        throw Error("recursive-nix is not supported by the OpenBSD sandbox");
++    for (auto & value : localSettings.sandboxRdomains.get()) {
++        auto id = string2Int<unsigned int>(value);
++        if (!id || *id == 0 || *id > RT_TABLEID_MAX || std::to_string(*id) != value)
++            throw Error("invalid sandbox-rdomains entry '%s': expected an integer from 1 to 255", value);
++    }
++    if (derivationType.isSandboxed() && localSettings.sandboxRdomains.get().empty())
++        throw Error("configure sandbox-rdomains for OpenBSD sandboxing");
++    DerivationBuilderImpl::prepareUser();
++}
++
++void ChrootOpenBSDDerivationBuilder::setBuildTmpDir()
++{
++    auto path = tmpDirInSandbox();
++    if (!path.is_absolute() || path != path.lexically_normal() || path == "/"
++        || isDirOrInDir(path, "/nix") || isDirOrInDir(path, "/dev")
++        || isDirOrInDir(path, "/etc") || isDirOrInDir(path, "/proc")
++        || isDirOrInDir(path, store.storeDir) || isDirOrInDir(store.storeDir, path))
++        throw Error("unsafe OpenBSD sandbox-build-dir '%s'", PathFmt(path));
++    /* No bind mounts on OpenBSD. Place the build tree inside the chroot
++       from the outset, keeping outputs on the store filesystem. */
++    createChroot();
++    tmpDir = chrootRootDir / path.relative_path();
++    createDirs(tmpDir);
++    chmod(tmpDir, 0700);
++}
++
++void ChrootOpenBSDDerivationBuilder::makeParents(const std::filesystem::path & target)
++{
++    auto current = chrootRootDir;
++    for (const auto & component : target.parent_path().lexically_relative(chrootRootDir)) {
++        if (component == ".")
++            continue;
++        if (component == "..")
++            throw Error("sandbox mapping escapes its root");
++        current /= component;
++        auto st = maybeLstat(current);
++        if (!st)
++            createDir(current, 0755);
++        else if (!S_ISDIR(st->st_mode))
++            throw Error("sandbox mapping parent '%s' is not a directory", PathFmt(current));
++    }
++}
++
++void ChrootOpenBSDDerivationBuilder::materialise(
++    const std::filesystem::path & source, const std::filesystem::path & target, bool immutable)
++{
++    checkInterrupt();
++    auto st = lstat(source);
++    auto existing = maybeLstat(target);
++    if (S_ISDIR(st.st_mode)) {
++        if (existing && !S_ISDIR(existing->st_mode))
++            throw Error("conflicting sandbox mapping at '%s'", PathFmt(target));
++        if (!existing)
++            createDir(target, 0700);
++        for (auto & entry : DirectoryIterator(source))
++            materialise(entry.path(), target / entry.path().filename(), immutable);
++        chmod(target, st.st_mode & 0555);
++        setWriteTime(target, st);
++    } else {
++        if (existing)
++            throw Error("conflicting sandbox mapping at '%s'", PathFmt(target));
++        if (S_ISLNK(st.st_mode)) {
++            createSymlink(readLink(source), target);
++            setWriteTime(target, st);
++        } else if (S_ISREG(st.st_mode)) {
++            /* Only immutable, root-owned store files may share inodes with
++               the host. Configured host paths are private snapshots. */
++            if (immutable && st.st_uid == 0 && !(st.st_mode & 0222)) {
++                if (link(source.c_str(), target.c_str()) == 0)
++                    return;
++                if (errno != EXDEV && errno != EMLINK && errno != EPERM)
++                    throw SysError("linking sandbox input '%s'", PathFmt(source));
++            }
++            AutoCloseFD input = open(source.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
++            if (!input)
++                throw SysError("opening sandbox input '%s'", PathFmt(source));
++            AutoCloseFD output = open(target.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
++            if (!output)
++                throw SysError("creating sandbox input '%s'", PathFmt(target));
++            char buffer[65536];
++            ssize_t count;
++            while ((count = ::read(input.get(), buffer, sizeof(buffer))) != 0) {
++                checkInterrupt();
++                if (count < 0) {
++                    if (errno == EINTR)
++                        continue;
++                    throw SysError("reading sandbox input '%s'", PathFmt(source));
++                }
++                writeFull(output.get(), std::string_view(buffer, count));
++            }
++            chmod(target, st.st_mode & 0555);
++            setWriteTime(target, st);
++        } else
++            throw Error("unsupported sandbox input type at '%s'", PathFmt(source));
++    }
++}
++
++AutoCloseFD ChrootOpenBSDDerivationBuilder::networkSocket()
++{
++    AutoCloseFD fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
++    if (!fd)
++        throw SysError("opening OpenBSD sandbox network socket");
++    return fd;
++}
++
++struct ifreq ChrootOpenBSDDerivationBuilder::interfaceRequest(unsigned int id)
++{
++    struct ifreq request = {};
++    auto name = fmt("lo%u", id);
++    strlcpy(request.ifr_name, name.c_str(), sizeof(request.ifr_name));
++    return request;
++}
++
++std::string ChrootOpenBSDDerivationBuilder::domainOwner()
++{
++    /* Include the state directory to distinguish independent Nix stores.
++       Hashing bounds the string to OpenBSD's interface description size. */
++    return fmt("nix-%s-uid-%u",
++        hashString(HashAlgorithm::SHA256, settings.nixStateDir.native())
++            .to_string(HashFormat::Base16, false).substr(0, 16),
++        buildUser->getUID());
++}
++
++void ChrootOpenBSDDerivationBuilder::destroyDomain(int socket, unsigned int id)
++{
++    auto request = interfaceRequest(id);
++    if (ioctl(socket, SIOCIFDESTROY, &request) == -1)
++        throw SysError("removing OpenBSD sandbox interface '%s'", request.ifr_name);
++}
++
++void ChrootOpenBSDDerivationBuilder::prepareRoutingDomain()
++{
++    auto socket = networkSocket();
++    auto lockDir = settings.nixStateDir / "sandbox-rdomains";
++    createDirs(lockDir);
++    auto owner = domainOwner();
++    for (auto & value : localSettings.sandboxRdomains.get()) {
++        auto id = string2Int<unsigned int>(value);
++        if (!id || *id == 0 || *id > RT_TABLEID_MAX)
++            throw Error("invalid sandbox-rdomains entry '%s': expected 1..255", value);
++        auto lock = openLockFile(lockDir / value, true);
++        if (!lockFile(lock.get(), ltWrite, false))
++            continue;
++        auto request = interfaceRequest(*id);
++        char description[IFDESCRSIZE] = {};
++        request.ifr_data = description;
++        if (ioctl(socket.get(), SIOCGIFDESCR, &request) == 0) {
++            /* Only recover our own UID's abandoned sandbox. Its user lock
++               is held and prepareUser() has already killed and waited for
++               its processes. Never adopt administrator-owned interfaces. */
++            if (owner != description)
++                continue;
++            destroyDomain(socket.get(), *id);
++        } else if (errno != ENXIO && errno != ENODEV)
++            throw SysError("checking sandbox routing domain %u", *id);
++
++        struct rt_tableinfo table = {};
++        size_t size = sizeof(table);
++        int mib[] = {CTL_NET, PF_ROUTE, 0, 0, NET_RT_TABLE, static_cast<int>(*id)};
++        if (sysctl(mib, 6, &table, &size, nullptr, 0) == 0) {
++            if (table.rti_domainid != 0)
++                continue;
++        } else if (errno != ENOENT && errno != ESRCH && errno != ENXIO)
++            throw SysError("checking routing table %u", *id);
++        request = interfaceRequest(*id);
++        if (ioctl(socket.get(), SIOCIFCREATE, &request) == -1) {
++            if (errno == EEXIST)
++                continue;
++            throw SysError("creating sandbox interface '%s'", request.ifr_name);
++        }
++        routingDomain = *id;
++        routingDomainLock = std::move(lock);
++        request.ifr_data = owner.data();
++        if (ioctl(socket.get(), SIOCSIFDESCR, &request) == -1)
++            throw SysError("marking sandbox routing domain %u", routingDomain);
++        request.ifr_rdomainid = routingDomain;
++        if (ioctl(socket.get(), SIOCSIFRDOMAIN, &request) == -1)
++            throw SysError("assigning sandbox routing domain %u", routingDomain);
++        if (ioctl(socket.get(), SIOCGIFRDOMAIN, &request) == -1 || request.ifr_rdomainid != static_cast<int>(routingDomain))
++            throw Error("sandbox loopback was not assigned to its private routing domain");
++
++        struct in_aliasreq ipv4 = {};
++        strlcpy(ipv4.ifra_name, request.ifr_name, sizeof(ipv4.ifra_name));
++        ipv4.ifra_addr.sin_len = sizeof(ipv4.ifra_addr);
++        ipv4.ifra_addr.sin_family = AF_INET;
++        ipv4.ifra_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
++        ipv4.ifra_mask.sin_len = sizeof(ipv4.ifra_mask);
++        ipv4.ifra_mask.sin_family = AF_INET;
++        ipv4.ifra_mask.sin_addr.s_addr = htonl(0xff000000);
++        if (ioctl(socket.get(), SIOCAIFADDR, &ipv4) == -1)
++            throw SysError("configuring sandbox IPv4 loopback");
++
++        AutoCloseFD socket6 = ::socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
++        if (!socket6)
++            throw SysError("opening sandbox IPv6 socket");
++        struct in6_aliasreq ipv6 = {};
++        strlcpy(ipv6.ifra_name, request.ifr_name, sizeof(ipv6.ifra_name));
++        ipv6.ifra_addr.sin6_len = sizeof(ipv6.ifra_addr);
++        ipv6.ifra_addr.sin6_family = AF_INET6;
++        ipv6.ifra_addr.sin6_addr = in6addr_loopback;
++        ipv6.ifra_prefixmask.sin6_len = sizeof(ipv6.ifra_prefixmask);
++        ipv6.ifra_prefixmask.sin6_family = AF_INET6;
++        memset(&ipv6.ifra_prefixmask.sin6_addr, 0xff, sizeof(ipv6.ifra_prefixmask.sin6_addr));
++        ipv6.ifra_lifetime.ia6t_pltime = ND6_INFINITE_LIFETIME;
++        ipv6.ifra_lifetime.ia6t_vltime = ND6_INFINITE_LIFETIME;
++        if (ioctl(socket6.get(), SIOCAIFADDR_IN6, &ipv6) == -1)
++            throw SysError("configuring sandbox IPv6 loopback");
++        if (ioctl(socket.get(), SIOCGIFFLAGS, &request) == -1)
++            throw SysError("getting sandbox interface flags");
++        request.ifr_flags |= IFF_UP;
++        if (ioctl(socket.get(), SIOCSIFFLAGS, &request) == -1)
++            throw SysError("enabling sandbox loopback");
++        return;
++    }
++    throw Error("no reserved routing domain available; configure sandbox-rdomains for OpenBSD sandboxing");
++}
++
++void ChrootOpenBSDDerivationBuilder::createPasswordDatabase()
++{
++    /* Like the FreeBSD backend, supply libc's database as well as the text
++       passwd file. This is OpenBSD pwd_mkdb's native record/key layout. */
++    auto closeDB = [](::DB * db) { if (db) (db->close)(db); };
++    std::unique_ptr<::DB, decltype(closeDB)> db(
++        dbopen((chrootRootDir / "etc/pwd.db").c_str(), O_CREAT | O_EXCL | O_RDWR, 0644, DB_HASH, nullptr), closeDB);
++    if (!db)
++        throw SysError("creating sandbox password database");
++    int number = 0;
++    auto addUser = [&](const std::string & name, uid_t uid, gid_t gid, const std::string & home) {
++        std::string record;
++        auto string = [&](const std::string & value) { record.append(value); record.push_back(0); };
++        auto scalar = [&](auto value) { record.append(reinterpret_cast<const char *>(&value), sizeof(value)); };
++        string(name);
++        string("*");
++        scalar(uid);
++        scalar(gid);
++        scalar(time_t{0});
++        string("");
++        string("Nix sandbox");
++        string(home);
++        string("/noshell");
++        scalar(time_t{0});
++        scalar(int{0});
++        auto put = [&](std::string key) {
++            DBT k = {key.data(), key.size()}, value = {record.data(), record.size()};
++            if ((db->put)(db.get(), &k, &value, R_NOOVERWRITE) != 0)
++                throw SysError("writing sandbox password database");
++        };
++        put(std::string(1, _PW_KEYBYNAME) + name);
++        put(std::string(1, _PW_KEYBYUID) + std::string(reinterpret_cast<const char *>(&uid), sizeof(uid)));
++        ++number;
++        put(std::string(1, _PW_KEYBYNUM) + std::string(reinterpret_cast<const char *>(&number), sizeof(number)));
++    };
++    addUser("nixbld", buildUser->getUID(), buildUser->getGID(), homeDir.native());
++    addUser("nobody", 32767, 32767, "/var/empty");
++    auto raw = db.release();
++    if ((raw->close)(raw) != 0)
++        throw SysError("closing sandbox password database");
++}
++
++void ChrootOpenBSDDerivationBuilder::prepareSandbox()
++{
++    ChrootDerivationBuilder::prepareSandbox();
++    pathsInChroot.erase(tmpDirInSandbox());
++    for (auto & [path, entry] : pathsInChroot) {
++        if (!path.is_absolute() || path != path.lexically_normal() || path == "/"
++            || isDirOrInDir(path, tmpDirInSandbox()) || isDirOrInDir(tmpDirInSandbox(), path)
++            || isDirOrInDir(path, "/dev") || isDirOrInDir(store.storeDir, path))
++            throw Error("unsafe OpenBSD sandbox mapping '%s'", PathFmt(path));
++        if (!pathExists(entry.source)) {
++            if (entry.optional)
++                continue;
++            throw Error("required sandbox path '%s' does not exist", PathFmt(entry.source));
++        }
++        auto target = chrootRootDir / path.relative_path();
++        makeParents(target);
++        materialise(entry.source, target, isDirOrInDir(entry.source, store.config->realStoreDir.get()));
++    }
++    for (auto name : {"passwd", "group", "pwd.db", "spwd.db", "master.passwd"})
++        if (maybeLstat(chrootRootDir / "etc" / name))
++            throw Error("sandbox mapping overrides generated account file '%s'", name);
++    createPasswordDatabase();
++    writeFile(chrootRootDir / "etc/passwd",
++        fmt("nixbld:x:%u:%u:Nix build user:%s:/noshell\nnobody:x:32767:32767:Nobody:/var/empty:/noshell\n",
++            buildUser->getUID(), buildUser->getGID(), homeDir.native()));
++    writeFile(chrootRootDir / "etc/group", fmt("nixbld:x:%u:\nnobody:x:32767:\n", buildUser->getGID()));
++    if (!derivationType.isSandboxed()) {
++        for (auto name : {"resolv.conf", "hosts", "services"}) {
++            std::filesystem::path source = std::filesystem::path("/etc") / name;
++            auto target = chrootRootDir / "etc" / name;
++            if (pathExists(source) && !pathExists(target))
++                materialise(canonPath(source.native(), true), target, false);
++        }
++    }
++    createDirs(chrootRootDir / "dev");
++    for (auto name : {"null", "zero", "urandom"}) {
++        auto source = std::filesystem::path("/dev") / name;
++        auto st = lstat(source);
++        if (!S_ISCHR(st.st_mode))
++            throw Error("'%s' is not a character device", PathFmt(source));
++        auto target = chrootRootDir / source.relative_path();
++        if (mknod(target.c_str(), S_IFCHR | 0666, st.st_rdev) == -1)
++            throw SysError("creating sandbox device '%s'", PathFmt(target));
++        chmod(target, 0666);
++    }
++    createSymlink("urandom", chrootRootDir / "dev/random");
++    /* OpenBSD's fd pseudo-devices implement shell process substitution. */
++    if (pathExists("/dev/fd")) {
++        createDirs(chrootRootDir / "dev/fd");
++        for (auto & entry : DirectoryIterator("/dev/fd")) {
++            auto st = lstat(entry.path());
++            if (!S_ISCHR(st.st_mode))
++                continue;
++            auto target = chrootRootDir / "dev/fd" / entry.path().filename();
++            if (mknod(target.c_str(), S_IFCHR | 0666, st.st_rdev) == -1)
++                throw SysError("creating sandbox fd device");
++            chmod(target, 0666);
++        }
++        createSymlink("fd/0", chrootRootDir / "dev/stdin");
++        createSymlink("fd/1", chrootRootDir / "dev/stdout");
++        createSymlink("fd/2", chrootRootDir / "dev/stderr");
++    }
++    if (derivationType.isSandboxed())
++        prepareRoutingDomain();
++}
++
++void ChrootOpenBSDDerivationBuilder::startChild()
++{
++    processesStopped = false;
++    DerivationBuilderImpl::startChild();
++}
++
++void ChrootOpenBSDDerivationBuilder::enterChroot()
++{
++    if (routingDomain && setrtable(routingDomain) == -1)
++        throw SysError("entering sandbox routing domain %u", routingDomain);
++    if (chdir(chrootRootDir.c_str()) == -1 || chroot(".") == -1 || chdir("/") == -1)
++        throw SysError("entering OpenBSD build sandbox");
++}
++
++void ChrootOpenBSDDerivationBuilder::killSandbox(bool getStats)
++{
++    DerivationBuilderImpl::killSandbox(getStats);
++    if (!buildUser)
++        return;
++    /* killUser() only sends signals. A domain must not be removed until
++       its processes have exited: OpenBSD then moves its table to domain 0.
++       Zombies cannot execute or retain file/socket descriptors. */
++    for (unsigned int attempt = 0; attempt < 1000; ++attempt) {
++        int mib[] = {CTL_KERN, KERN_PROC, KERN_PROC_UID,
++            static_cast<int>(buildUser->getUID()), sizeof(struct kinfo_proc), 0};
++        size_t size = 0;
++        if (sysctl(mib, 6, nullptr, &size, nullptr, 0) == -1)
++            throw SysError("querying OpenBSD build processes");
++        std::vector<struct kinfo_proc> processes(size / sizeof(struct kinfo_proc) + 32);
++        mib[5] = static_cast<int>(processes.size());
++        size = processes.size() * sizeof(struct kinfo_proc);
++        if (sysctl(mib, 6, processes.data(), &size, nullptr, 0) == -1) {
++            if (errno == ENOMEM)
++                continue;
++            throw SysError("reading OpenBSD build processes");
++        }
++        bool live = false;
++        for (size_t i = 0; i < size / sizeof(struct kinfo_proc); ++i) {
++            auto & process = processes[i];
++            if (process.p_psflags & PS_ZOMBIE)
++                continue;
++            live = true;
++            break;
++        }
++        if (!live) {
++            processesStopped = true;
++            Pid cleanup = startProcess([&] {
++                if (setgroups(0, nullptr) == -1 || setgid(buildUser->getGID()) == -1
++                    || setuid(buildUser->getUID()) == -1)
++                    throw SysError("dropping privileges for OpenBSD IPC cleanup");
++                cleanupOpenBSDSysVIPC(buildUser->getUID());
++                _exit(0);
++            });
++            if (!statusOk(cleanup.wait()))
++                throw Error("OpenBSD build IPC cleanup failed");
++            return;
++        }
++        // Signal as the build UID. Signalling a PID from this snapshot as
++        // root could kill another user's process if the PID has been reused.
++        DerivationBuilderImpl::killSandbox(false);
++        usleep(10000);
++    }
++    throw Error("OpenBSD build processes did not exit; retaining their isolated routing domain");
++}
++
++void ChrootOpenBSDDerivationBuilder::cleanupBuild(bool force)
++{
++    if (routingDomain) {
++        if (!processesStopped)
++            killSandbox(false);
++        auto socket = networkSocket();
++        destroyDomain(socket.get(), routingDomain);
++        routingDomain = 0;
++        routingDomainLock.close();
++    }
++    /* Keep the usual --keep-failed directory, without retaining the copied
++       input closure or a live network domain. */
++    if (!force && settings.keepFailed && !drv.isBuiltin() && !tmpDir.empty() && pathExists(tmpDir)) {
++        auto kept = topTmpDir / "build";
++        moveFile(tmpDir, kept);
++        tmpDir = kept;
++    }
++    if (chrootRootDir.empty())
++        DerivationBuilderImpl::cleanupBuild(force);
++    else
++        ChrootDerivationBuilder::cleanupBuild(force);
++}
++
++} // namespace nix
+--- /dev/null
++++ b/openbsd/build/sysv-ipc.cc
+@@ -0,0 +1,113 @@
++#include <sys/types.h>
++#include <sys/sysctl.h>
++
++/* As in OpenBSD's ipcs(1), the sysctl records for semaphores and message
++   queues require the kernel-visible definitions. Keep these headers out
++   of the builder implementation and its other system headers. */
++#define _KERNEL
++#include <sys/ipc.h>
++#include <sys/sem.h>
++#include <sys/shm.h>
++#include <sys/msg.h>
++#undef _KERNEL
++
++extern "C" {
++int shmctl(int, int, struct shmid_ds *);
++int msgctl(int, int, struct msqid_ds *);
++int semctl(int, int, int, ...);
++}
++
++#include "sysv-ipc.hh"
++#include "nix/util/error.hh"
++#include <vector>
++#include <cstddef>
++#include <cerrno>
++
++namespace nix {
++
++/* Called with the build UID, after all its build processes have exited.
++   Kernel permission checks therefore also protect other users' objects
++   against IPC identifier reuse while taking the sysctl snapshot. */
++void cleanupOpenBSDSysVIPC(uid_t uid)
++{
++    auto read = [](int enabledName, int infoName, size_t padding) {
++        int enabled = 0;
++        size_t size = sizeof(enabled);
++        int enabledMib[] = {CTL_KERN, enabledName};
++        if (sysctl(enabledMib, 2, &enabled, &size, nullptr, 0) == -1)
++            throw SysError("checking OpenBSD System V IPC support");
++        std::vector<char> data;
++        if (!enabled)
++            return data;
++        int mib[] = {CTL_KERN, KERN_SYSVIPC_INFO, infoName};
++        if (sysctl(mib, 3, nullptr, &size, nullptr, 0) == -1)
++            throw SysError("querying OpenBSD System V IPC");
++        // The kernel's length omits alignment between the info header and
++        // the records. Supply zeroed tail padding, as the final record's
++        // unused trailing fields can otherwise extend past that length.
++        data.resize(size + padding);
++        if (sysctl(mib, 3, data.data(), &size, nullptr, 0) == -1)
++            throw SysError("reading OpenBSD System V IPC");
++        data.resize(size + padding);
++        return data;
++    };
++    auto check = [](int result) {
++        // Another process may already have removed the object. EPERM means
++        // the identifier now belongs to a different user; leave it alone.
++        if (result == -1 && errno != EINVAL && errno != EIDRM && errno != EPERM)
++            throw SysError("removing OpenBSD build IPC object");
++    };
++    auto id = [](unsigned int index, const struct ipc_perm & permission) {
++        return static_cast<int>((static_cast<unsigned int>(permission.seq) << 16) | (index & 0xffff));
++    };
++    auto owns = [uid](const struct ipc_perm & permission) {
++        return permission.uid == uid || permission.cuid == uid;
++    };
++    auto shm = read(KERN_SYSVSHM, KERN_SYSVIPC_SHM_INFO,
++        offsetof(struct shm_sysctl_info, shmids) - sizeof(struct shminfo));
++    if (!shm.empty()) {
++        auto info = reinterpret_cast<const struct shm_sysctl_info *>(shm.data());
++        if (shm.size() < offsetof(struct shm_sysctl_info, shmids)
++            || info->shminfo.shmmni < 0
++            || static_cast<size_t>(info->shminfo.shmmni)
++                > (shm.size() - offsetof(struct shm_sysctl_info, shmids)) / sizeof(struct shmid_ds))
++            throw Error("invalid OpenBSD shared-memory snapshot");
++        for (int i = 0; i < info->shminfo.shmmni; ++i) {
++            auto & entry = info->shmids[i];
++            if (entry.shm_cpid && owns(entry.shm_perm))
++                check(shmctl(id(i, entry.shm_perm), IPC_RMID, nullptr));
++        }
++    }
++    auto msg = read(KERN_SYSVMSG, KERN_SYSVIPC_MSG_INFO,
++        offsetof(struct msg_sysctl_info, msgids) - sizeof(struct msginfo));
++    if (!msg.empty()) {
++        auto info = reinterpret_cast<const struct msg_sysctl_info *>(msg.data());
++        if (msg.size() < offsetof(struct msg_sysctl_info, msgids)
++            || info->msginfo.msgmni < 0
++            || static_cast<size_t>(info->msginfo.msgmni)
++                > (msg.size() - offsetof(struct msg_sysctl_info, msgids)) / sizeof(struct msqid_ds))
++            throw Error("invalid OpenBSD message-queue snapshot");
++        for (int i = 0; i < info->msginfo.msgmni; ++i) {
++            auto & entry = info->msgids[i];
++            if (entry.msg_qbytes && owns(entry.msg_perm))
++                check(msgctl(id(i, entry.msg_perm), IPC_RMID, nullptr));
++        }
++    }
++    auto sem = read(KERN_SYSVSEM, KERN_SYSVIPC_SEM_INFO,
++        offsetof(struct sem_sysctl_info, semids) - sizeof(struct seminfo));
++    if (!sem.empty()) {
++        auto info = reinterpret_cast<const struct sem_sysctl_info *>(sem.data());
++        if (sem.size() < offsetof(struct sem_sysctl_info, semids)
++            || info->seminfo.semmni < 0
++            || static_cast<size_t>(info->seminfo.semmni)
++                > (sem.size() - offsetof(struct sem_sysctl_info, semids)) / sizeof(struct semid_ds))
++            throw Error("invalid OpenBSD semaphore snapshot");
++        for (int i = 0; i < info->seminfo.semmni; ++i) {
++            auto & entry = info->semids[i];
++            if (entry.sem_ctime && owns(entry.sem_perm))
++                check(semctl(id(i, entry.sem_perm), 0, IPC_RMID));
++        }
++    }
++}
++
++} // namespace nix
+--- /dev/null
++++ b/openbsd/build/sysv-ipc.hh
+@@ -0,0 +1,9 @@
++#pragma once
++
++#include <sys/types.h>
++
++namespace nix {
++
++void cleanupOpenBSDSysVIPC(uid_t uid);
++
++} // namespace nix
+--- /dev/null
++++ b/openbsd/meson.build
+@@ -0,0 +1,3 @@
++include_dirs += [ include_directories('build') ]
++
++sources += files('build/openbsd-derivation-builder.cc', 'build/sysv-ipc.cc')
+--- a/unix/build/chroot-derivation-builder.cc
++++ b/unix/build/chroot-derivation-builder.cc
+@@ -29,7 +29,7 @@
+     return buildUser->getGID();
+ }
+ 
+-void ChrootDerivationBuilder::prepareSandbox()
++void ChrootDerivationBuilder::createChroot()
+ {
+     // Set up chroot parameters
+     BuildChrootParams params{
+@@ -45,6 +45,13 @@
+     auto [rootDir, cleanup] = setupBuildChroot(params);
+     chrootRootDir = std::move(rootDir);
+     autoDelChroot.emplace(std::move(cleanup));
++
++}
++
++void ChrootDerivationBuilder::prepareSandbox()
++{
++    if (chrootRootDir.empty())
++        createChroot();
+ 
+     // Start with the default sandbox paths
+     pathsInChroot = getPathsInSandbox();
+--- a/unix/build/chroot-derivation-builder.hh
++++ b/unix/build/chroot-derivation-builder.hh
+@@ -39,6 +39,8 @@
+ 
+     virtual gid_t sandboxGid();
+ 
++    void createChroot();
++
+     void prepareSandbox() override;
+ 
+     Strings getPreBuildHookArgs() override;
+--- a/unix/build/derivation-builder.cc
++++ b/unix/build/derivation-builder.cc
+@@ -62,6 +62,10 @@
+ 
+ #ifdef __FreeBSD__
+ #  include "chroot-freebsd-derivation-builder.hh"
++#endif
++
++#ifdef __OpenBSD__
++#  include "chroot-openbsd-derivation-builder.hh"
+ #endif
+ 
+ #ifdef __APPLE__
+@@ -1862,6 +1866,11 @@
+         return DerivationBuilderUnique(new ChrootFreeBSDDerivationBuilder(store, miscMethods, std::move(params)));
+ 
+     return DerivationBuilderUnique(new FreeBSDDerivationBuilder(store, miscMethods, std::move(params)));
++#elif defined(__OpenBSD__)
++    if (useSandbox)
++        return DerivationBuilderUnique(new ChrootOpenBSDDerivationBuilder(store, miscMethods, std::move(params)));
++
++    return DerivationBuilderUnique(new DerivationBuilderImpl(store, miscMethods, std::move(params)));
+ #else
+     if (useSandbox)
+         throw Error("sandboxing builds is not supported on this platform");
+--- a/unix/meson.build
++++ b/unix/meson.build
+@@ -10,7 +10,7 @@
+ 
+ include_dirs += [ include_directories('build') ]
+ 
+-if (target_machine.system() == 'linux' or target_machine.system() == 'freebsd')
++if (target_machine.system() == 'linux' or target_machine.system() == 'freebsd' or target_machine.system() == 'openbsd')
+   sources += files(
+     'build/chroot-derivation-builder.cc',
+   )

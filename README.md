@@ -5,7 +5,8 @@ Build packages and configure OpenBSD with Nix, using a
 The native amd64 VM includes Nix, a native stdenv and an SMP kernel.
 Personal configurations support live updates and rollback.
 
-This is experimental. Builds use separate users without sandboxing.
+This is experimental. Builds use separate users; [sandboxing](docs/build-isolation.md)
+is opt-in and disabled by default.
 See [status and limitations](docs/status.md).
 
 ## Quick start
@@ -44,5 +45,5 @@ releases and experimental ARM Linux/macOS launchers.
 | [Status](docs/status.md) | Recorded results and limitations. |
 | [Roadmap](docs/roadmap.md) | Remaining work. |
 | [Nix internals](docs/nix-internals.md) | Runtime fixes and bootstrap history. |
-| [Build isolation](docs/build-isolation.md) | Native proof and sandbox backend requirements. |
+| [Build isolation](docs/build-isolation.md) | Sandbox configuration, lifecycle and limits. |
 | [Upstream](docs/upstream.md) | Patch owners, review notes and removal criteria. |

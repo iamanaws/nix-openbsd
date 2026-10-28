@@ -1,4 +1,4 @@
-"""Run isolation feasibility probes in a private copy of a native OpenBSD VM."""
+"""Run Nix sandbox integration tests in a private copy of a native OpenBSD VM."""
 import argparse
 import json
 from pathlib import Path
@@ -32,7 +32,6 @@ def main():
                               str(fixtures / 'tests/proof.py'), str(fixtures)]), args.timeout)
     contents = log.read_text(errors='replace')
     assert 'ISOLATION_RUNTIME_PASS' in contents
-    assert re.search(r'route\[[0-9]+\]: pledge "inet", syscall ', contents)
     results = json.loads(re.search(r'^ISOLATION_RESULT (.+)$', contents, re.M).group(1))
     assert results['result'] == 'passed'
     (work / 'results.json').write_text(json.dumps(results, indent=2) + '\n')

@@ -23,8 +23,10 @@ _: prev: {
           else if (setSubstituters(settings.getWorkerSettings().substituters))'
     '';
     patches = (old.patches or [ ]) ++ [
-      (nixPatch "nix-openbsd-builder-pty.patch")
+      ./nix-daemon-disconnect.patch
+      ./nix-openbsd-builder-pty.patch
       (nixPatch "nix-openbsd-build-users.patch")
+      ./nix-openbsd-sandbox.patch
     ];
   });
   nix-main = prev.nix-main.overrideAttrs (old: {
@@ -33,15 +35,22 @@ _: prev: {
     ];
   });
   nix-util = prev.nix-util.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ ./nix-openbsd-ptsname.patch ];
+    patches = (old.patches or [ ]) ++ [
+      ./nix-openbsd-ptsname.patch
+      ./nix-openbsd-memory-limit.patch
+    ];
   });
-  nix-cli = prev.nix-cli.overrideAttrs (old: {
+  nix-expr = prev.nix-expr.overrideAttrs (old: {
     postPatch = (old.postPatch or "") + ''
       # OpenBSD/amd64 caps stacks at 32 MiB, including for root.
-      substituteInPlace main.cc \
-        --replace-fail 'nix::setStackSize(60 * 1024 * 1024);' \
-          'nix::setStackSize(32 * 1024 * 1024);'
+      substituteInPlace eval.cc \
+        --replace-fail 'nix::ensureStackSizeAtLeast(60 * 1024 * 1024);' \
+          'nix::ensureStackSizeAtLeast(32 * 1024 * 1024);'
     '';
+  });
+  # Nix 2.35 enables mimalloc; its native stress tests abort on OpenBSD.
+  # Keep the system allocator through Nix's supported build option.
+  nix-cli = (prev.nix-cli.override { withMimalloc = false; }).overrideAttrs (old: {
     env = (old.env or { }) // {
       NIX_CFLAGS_COMPILE_x86_64_unknown_openbsd =
         (old.env.NIX_CFLAGS_COMPILE_x86_64_unknown_openbsd or "")

@@ -1,47 +1,68 @@
 {
   fixtures,
   nonce,
-  kind ? "control",
+  kind ? "checks",
   outside ? "",
+  undeclared ? "",
+  ports ? "[]",
   url ? "",
   hash ? "",
+  noChroot ? false,
+  requiredFeatures ? [ ],
 }:
 let
   inputs = builtins.storePath fixtures;
+  fixed = builtins.elem kind [
+    "fetch"
+    "builtin-fetch"
+  ];
 in
 derivation (
   {
     name = "openbsd-isolation-${kind}-${nonce}";
     system = "x86_64-openbsd";
-    builder = "${inputs}/bash/bin/bash";
-    args = [
-      "-euc"
-      (
-        ''
-          test "$EUID" -ne 0
-          printf 'ISOLATION_BUILDER_STARTED\n' >&2
-        ''
-        + (
-          if kind == "consumers" then
+    builder = if kind == "builtin-fetch" then "builtin:fetchurl" else "${inputs}/bash/bin/bash";
+    args =
+      if kind == "builtin-fetch" then
+        [ ]
+      else
+        [
+          "-euc"
+          (
             ''
-              ${inputs}/bash/bin/bash ${inputs}/tests/consumers.sh ${inputs} "$out"
+              test "$EUID" -ne 0
+              printf 'ISOLATION_BUILDER_STARTED\n' >&2
             ''
-          else if kind == "fetch" then
-            ''
-              ${inputs}/curl/bin/curl --noproxy '*' --connect-timeout 3 --max-time 10 -fsS "$url" -o "$out"
-            ''
-          else
-            ''
-              ${inputs}/coreutils/bin/cat "$outside" > "$out"
-              ${inputs}/coreutils/bin/id -u >> "$out"
-            ''
-        )
-      )
-    ];
-    inherit outside url;
+            + (
+              if kind == "consumers" then
+                ''
+                  ${inputs}/bash/bin/bash ${inputs}/tests/consumers.sh ${inputs} "$out"
+                ''
+              else if kind == "control" then
+                ''
+                  ${inputs}/coreutils/bin/cat "$outside" > "$out"
+                  ${inputs}/coreutils/bin/id -u >> "$out"
+                ''
+              else
+                ''
+                  ${inputs}/python3/bin/python3 -B ${inputs}/tests/builder.py
+                ''
+            )
+          )
+        ];
+    inherit
+      fixtures
+      kind
+      outside
+      undeclared
+      ports
+      url
+      ;
+    __noChroot = noChroot;
+    requiredSystemFeatures = requiredFeatures;
   }
   // (
-    if kind == "fetch" then
+    if fixed then
       {
         outputHashAlgo = "sha256";
         outputHashMode = "flat";

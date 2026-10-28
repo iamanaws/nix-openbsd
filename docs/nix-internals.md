@@ -1,6 +1,6 @@
 # Nix implementation notes
 
-The native VM and reference demo use [native Nix 2.34.8](../pkgs/openbsd/native-nix.nix).
+The native VM and reference demo use [native Nix 2.35.2](../pkgs/openbsd/native-nix.nix).
 Standalone NixBSD and the minimal bootstrap VM use cross-built Nix.
 
 ## Runtime fixes
@@ -12,13 +12,23 @@ overlay provide:
 - A PTY slave opened before fork, with a supervisor retaining it until the
   builder exits and output drains.
 - Non-root `nixbld` execution for root's builds.
+- Nix's [disconnected-client logging fix](https://github.com/NixOS/nix/commit/137096350b68d39b6f66f126b1d79963a03fff4e),
+  backported so a cancelled client's broken pipe cannot abort daemon cleanup.
 - Preservation of libc's thread flag across fork callbacks to avoid daemon
   deadlocks. The private `__isthreaded` symbol needs review on OpenBSD updates;
   see the [OpenBSD report](https://www.mail-archive.com/misc@openbsd.org/msg183368.html).
 - Terminal and Boost compatibility fixes, with AWS support disabled.
 
+Nix 2.35 uses the libc allocator (`withMimalloc = false`) because native
+mimalloc tests abort. The evaluator requests OpenBSD/amd64's maximum 32 MiB
+stack; its memory resource checks `RLIMIT_DATA`, which covers anonymous
+mappings, because OpenBSD has no `RLIMIT_AS`.
+
 The daemon sets `sandbox = false` and `build-users-group = "nixbld"`.
-See [isolation](build-isolation.md) for the native proof and missing backend.
+The opt-in [sandbox backend](build-isolation.md) adds filesystem and routing
+separation through Nix's Unix builder lifecycle. Process/IPC namespaces remain
+shared. Daemon tests cover compiler consumers, fixed-output fetches and cleanup.
+
 System adapters also configure loopback before services, give curl an unversioned
 linker name for Git HTTPS, and root running/booted systems against GC.
 

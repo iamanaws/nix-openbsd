@@ -1,0 +1,118 @@
+Preserve terminal output on OpenBSD while avoiding premature PTY EOF.
+Open the slave before forking, then keep a supervisor in the builder's
+process group to wait for the builder and drain output before closing the
+slave. Preserve exit codes and terminating signals. Drain setup errors too.
+Rebased onto Nix 2.35's separate builder header.
+
+--- a/unix/build/derivation-builder.cc
++++ b/unix/build/derivation-builder.cc
+@@ -28,6 +28,9 @@
+ #include <sys/mman.h>
+ #include <sys/resource.h>
+ #include <sys/socket.h>
++#ifdef __OpenBSD__
++#  include <sys/wait.h>
++#endif
+ #ifdef __linux__
+ #  include <sys/prctl.h>
+ #  include "nix/util/linux-namespaces.hh"
+@@ -503,12 +506,21 @@
+     if (unlockpt(builderOut.get()))
+         throw SysError("unlocking pseudoterminal");
+ 
++#ifdef __OpenBSD__
++    builderOutSlave = open(slaveName.c_str(), O_RDWR | O_NOCTTY | O_CLOEXEC);
++    if (!builderOutSlave)
++        throw SysError("opening pseudoterminal slave");
++#endif
++
+     buildResult.startTime = time(nullptr);
+ 
+     /* Start a child process to build the derivation. */
+     startChild();
+ 
+     pid.setSeparatePG(true);
++#ifdef __OpenBSD__
++    builderOutSlave.close();
++#endif
+ 
+     processSandboxSetupMessages();
+ 
+@@ -598,11 +610,15 @@
+ 
+ void DerivationBuilderImpl::openSlave()
+ {
++#ifdef __OpenBSD__
++    AutoCloseFD builderOut = std::move(builderOutSlave);
++#else
+     std::string slaveName = getPtsName(builderOut.get());
+ 
+     AutoCloseFD builderOut = open(slaveName.c_str(), O_RDWR | O_NOCTTY | O_CLOEXEC);
+     if (!builderOut)
+         throw SysError("opening pseudoterminal slave");
++#endif
+ 
+     // Put the pt into raw mode to prevent \n -> \r\n translation.
+     struct termios term;
+@@ -991,6 +1007,37 @@
+ 
+         sendException = false;
+ 
++#ifdef __OpenBSD__
++        /* Keep the slave open until the builder exits and its output drains.
++           OpenBSD can discard unread PTY output during process exit. This
++           supervisor and the builder retain the same build UID and process
++           group, so cancellation still terminates both. */
++        pid_t child = fork();
++        if (child == -1)
++            throw SysError("forking OpenBSD builder");
++        if (child != 0) {
++            int status;
++            while (waitpid(child, &status, 0) == -1)
++                if (errno != EINTR)
++                    throw SysError("waiting for OpenBSD builder");
++            while (tcdrain(STDERR_FILENO) == -1)
++                if (errno != EINTR)
++                    throw SysError("draining builder output");
++            if (WIFSIGNALED(status)) {
++                int sig = WTERMSIG(status);
++                signal(sig, SIG_DFL);
++                sigset_t signals;
++                sigemptyset(&signals);
++                sigaddset(&signals, sig);
++                sigprocmask(SIG_UNBLOCK, &signals, nullptr);
++                raise(sig);
++                _exit(128 + sig);
++            }
++            _exit(WEXITSTATUS(status));
++        }
++#endif
++
++
+         /* If this is a builtin builder, call it now. This should not return. */
+         if (drv.isBuiltin()) {
+             try {
+@@ -1030,6 +1077,10 @@
+ 
+     } catch (...) {
+         handleChildException(sendException);
++#ifdef __OpenBSD__
++        // Setup errors also need to reach the parent before the slave closes.
++        while (tcdrain(STDERR_FILENO) == -1 && errno == EINTR) { }
++#endif
+         _exit(1);
+     }
+ }
+--- a/unix/build/derivation-builder-impl.hh
++++ b/unix/build/derivation-builder-impl.hh
+@@ -31,6 +31,10 @@
+      * The process ID of the builder.
+      */
+     Pid pid;
++
++#ifdef __OpenBSD__
++    AutoCloseFD builderOutSlave;
++#endif
+ 
+     LocalStore & store;
+ 

@@ -1,6 +1,6 @@
 # Status and limitations
 
-Recorded VM runs validate the native stdenv, Nix 2.34.8, packages and SMP kernel
+Recorded VM runs validate the native stdenv, Nix 2.35.2, packages and SMP kernel
 on amd64 OpenBSD 8.0. Native runtime closures contain no declared bootstrap seed
 outputs. EFI remains cross-built.
 
@@ -20,6 +20,8 @@ A cached test can reuse their outputs.
 
 | Component | Result and scope |
 | --- | --- |
+| Nix 2.35.2 | Signed cache downloads, store verification, daemon restart, GC and PTY checks locally and through the regular-user daemon passed. |
+| [Nix sandbox](build-isolation.md) | All 17 integration phases passed on 2026-10-28: filesystem/network isolation, C/C++/Go/cgo consumers, daemon policy, concurrency, cancellation, timeouts, detached children, IPC cleanup and worker recovery. |
 | LLVM 22 X86 `check-all` | 36,274 passed; 34,443 unsupported; 62 expected failures; 414 skipped. LLVM 21 had one lit timeout that passed twice alone, without a full rerun. |
 | Clang and LLD | Full suites disabled; focused compile/link and OpenBSD library-search checks pass. Userland uses LLVM 21.1.8; the kernel uses 22.1.8. |
 | libffi | 1,750 passed. |
@@ -33,7 +35,7 @@ A cached test can reuse their outputs.
 
 | Area | Remaining limits |
 | --- | --- |
-| Isolation | Builds use separate users without sandboxing. The [native proof](build-isolation.md) is not a Nix sandbox backend. |
+| Isolation | Sandboxing is opt-in and disabled by default. Process/IPC namespaces and TCP state remain shared; see [platform limits](build-isolation.md#limits). |
 | Hosts | ARM Linux and Apple Silicon launcher runtime checks are pending. |
 | Nix | Full upstream suites have not run. BLAKE3 uses its non-TBB implementation. |
 | Toolchains | Go `cmd`, race and non-short standard tests have not run. Compiler-rt coverage is limited to builtins, excluding sanitizers. |

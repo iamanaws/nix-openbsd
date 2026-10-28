@@ -1,0 +1,18 @@
+Use the limit that governs anonymous mappings on OpenBSD.
+OpenBSD has no RLIMIT_AS; RLIMIT_DATA covers malloc and anonymous mmap.
+
+--- a/bump-memory-resource.cc
++++ b/bump-memory-resource.cc
+@@ -35,7 +35,12 @@
+ static bool checkRlimit(std::size_t reserveSize)
+ {
+     struct rlimit rl;
++#  ifdef __OpenBSD__
++    // OpenBSD accounts anonymous mmap allocations against the data limit.
++    if (::getrlimit(RLIMIT_DATA, &rl) != 0)
++#  else
+     if (::getrlimit(RLIMIT_AS, &rl) != 0)
++#  endif
+         return true;
+     if (rl.rlim_cur == RLIM_INFINITY)
+         return true;

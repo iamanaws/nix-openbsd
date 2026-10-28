@@ -93,7 +93,7 @@ let
   };
 in
 # Use the same runtime fixes as the Nix daemon in the test VM.
-(native.nix.overrideScope (
+(native.nixVersions.nix_2_35.overrideScope (
   import ./nix-runtime-overrides.nix {
     inherit nixbsdSource;
   }

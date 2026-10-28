@@ -31,7 +31,7 @@ SUITES = {
     'maintenance': 'OpenBSD daily, weekly and monthly scripts, reports and local configuration',
     'cron-fallback': 'Generation checks without cronctl',
     'network': 'Native IPv4/IPv6 forwarding, PF, BGP and IPsec recovery',
-    'isolation': 'Native isolation feasibility, compiler consumers and unsupported Nix sandbox checks',
+    'isolation': 'Nix sandbox filesystem/network isolation, compiler consumers and lifecycle cleanup',
     'native': 'Native bootstrap, toolchain, C++ and Nix validation (slow)',
     'bootstrap': 'Focused native bootstrap and package builds',
     'toolchain': 'Focused LLVM, Clang and LLD checks (slow)',

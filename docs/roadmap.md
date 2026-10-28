@@ -2,9 +2,9 @@
 
 ## Nix sandbox backend
 
-Integrate the [native isolation proof](build-isolation.md) with Nix's builder.
-Required work includes input/output handling, concurrent builds, routing-domain
-allocation, cleanup and failure recovery. Production builds remain unsandboxed.
+Native Nix 2.35.2 includes an opt-in [OpenBSD sandbox backend](build-isolation.md).
+Broaden package coverage with sandboxing enabled before reconsidering the
+default. Shared kernel state and routing domains impose [platform limits](build-isolation.md#limits).
 
 ## Host validation and arm64 OpenBSD
 

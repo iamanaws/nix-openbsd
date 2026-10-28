@@ -31,7 +31,7 @@ supported hosts. Suites run sequentially.
 | `workflow` | Personal configuration template, native builds, live switching and rollback. |
 | `generations`, `dns`, `logging`, `doas`, `mail`, `maintenance`, `cron-fallback` | [Generation checks](../tests/generations/README.md), including failure recovery, rollback, GC and boot recovery. |
 | `network` | [Two-router transit, BGP, PF and IPsec](../tests/network/README.md). |
-| `isolation` | [Native isolation proof](build-isolation.md), not production sandboxing. |
+| `isolation` | [Nix sandbox](build-isolation.md): filesystem/network isolation, compiler consumers, daemon policy and lifecycle cleanup. |
 | `native` | [Bootstrap, toolchain, C++ and Nix](../tests/native/README.md). Also selectable as `bootstrap`, `toolchain`, `cxx` or `nix`. |
 
 The default run includes every row except `native`; `--all` adds it.
@@ -57,6 +57,11 @@ nix run .#test -- --suite dns --vm-state ./openbsd-native-vm
 
 Tests use private copies. Focused runs stop if they would rebuild LLVM or the
 C++ runtimes; prepare those with native suites or an existing VM.
+
+Isolation checks enable the OpenBSD sandbox in a temporary daemon inside one
+disposable VM. They cover regular-user builds, concurrent domains, cancellation,
+timeouts, abandoned workers and cleanup. The reference system keeps sandboxing
+disabled by default.
 
 DHCP uses a private two-guest link, short leases and a local DNS fixture.
 It checks renewed leases, then DNS refresh after carrier recovery, matching

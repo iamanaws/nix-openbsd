@@ -19,15 +19,31 @@ int main() { std::cout << 42 << '\n'; }
 EOF
 cat > pure.go <<'EOF'
 package main
-import "fmt"
-func main() { fmt.Println(42) }
+import (
+    "fmt"
+    "os"
+    "os/user"
+)
+func main() {
+    current, err := user.Current()
+    if err != nil || current.Uid != fmt.Sprint(os.Getuid()) { panic("user lookup failed") }
+    fmt.Println(42)
+}
 EOF
 cat > cgo.go <<'EOF'
 package main
 // static int answer(void) { return 42; }
 import "C"
-import "fmt"
-func main() { fmt.Println(C.answer()) }
+import (
+    "fmt"
+    "os"
+    "os/user"
+)
+func main() {
+    current, err := user.LookupId(fmt.Sprint(os.Getuid()))
+    if err != nil || current.Username == "" { panic("libc user lookup failed") }
+    fmt.Println(C.answer())
+}
 EOF
 "$CC" c.c -o "$destination/c"
 cxxlib=$(readlink -f "$fixtures/libcxx")
