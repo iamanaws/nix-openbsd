@@ -6,22 +6,21 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 
 --- a/include/nix/store/local-settings.hh
 +++ b/include/nix/store/local-settings.hh
-@@ -381,7 +381,13 @@
+@@ -381,16 +381,20 @@
            not run in private network namespace to ensure they can access the
            network).
  
 -          Currently, sandboxing only work on Linux and macOS. The use of a
-+          On OpenBSD, builds use a chroot and dedicated build users. Ordinary
-+          builds also use a routing domain from `sandbox-rdomains`; fixed-output
-+          builds retain host networking. Store inputs are read-only, and extra
-+          host paths are read-only snapshots. PID and IPC namespaces are not
-+          available. Recursive Nix and UID ranges are unsupported.
-+
 +          Sandboxing is supported on Linux, macOS, FreeBSD and OpenBSD. The use of a
            sandbox requires that Nix is run as root (so you should use the
            "build users" feature to perform the actual builds under different
            users than root).
-@@ -390,7 +396,7 @@
++
++          On OpenBSD, builds use a chroot and dedicated build users. Ordinary
++          builds also use a routing domain configured with
++          [`sandbox-rdomains`](#conf-sandbox-rdomains).
+ 
+           If this option is set to `relaxed`, then fixed-output derivations
            and derivations that have the `__noChroot` attribute set to `true`
            do not run in sandboxes.
  
@@ -30,7 +29,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
          )",
          {"build-use-chroot", "build-use-sandbox"}};
  
-@@ -456,17 +462,37 @@
+@@ -456,17 +460,38 @@
          )"};
  #endif
  
@@ -48,8 +47,9 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 -            This directory is backed by [`build-dir`](#conf-build-dir) on the host.
 +            The build directory inside Linux, FreeBSD and OpenBSD sandboxes.
 +
-+            On OpenBSD this directory is on the store filesystem. On Linux and
-+            FreeBSD it is backed by [`build-dir`](#conf-build-dir) on the host.
++            On Linux and FreeBSD this directory is backed by
++            [`build-dir`](#conf-build-dir) on the host. On OpenBSD it is on the
++            store filesystem.
 +        )"};
 +#endif
 +
@@ -89,7 +89,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
  endif
 --- /dev/null
 +++ b/openbsd/build/chroot-openbsd-derivation-builder.hh
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,42 @@
 +#pragma once
 +
 +#include "chroot-derivation-builder.hh"
@@ -113,6 +113,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +    unsigned int routingDomain = 0;
 +    bool processesStopped = false;
 +
++    std::unique_ptr<UserLock> getBuildUser() override;
 +    void prepareUser() override;
 +    void setBuildTmpDir() override;
 +    void makeParents(const std::filesystem::path & target);
@@ -133,7 +134,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +} // namespace nix
 --- /dev/null
 +++ b/openbsd/build/openbsd-derivation-builder.cc
-@@ -0,0 +1,450 @@
+@@ -0,0 +1,452 @@
 +#include "chroot-openbsd-derivation-builder.hh"
 +#include "sysv-ipc.hh"
 +#include "nix/util/file-system.hh"
@@ -162,6 +163,13 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +
 +void ChrootOpenBSDDerivationBuilder::anchor() {}
 +
++std::unique_ptr<UserLock> ChrootOpenBSDDerivationBuilder::getBuildUser()
++{
++    /* The shared group grants host-store access for unsandboxed builds.
++       Sandboxed builds have their own store and use private primary groups. */
++    return acquireUserLock(settings.nixStateDir, localSettings, 1, false, BuildUserGroup::Primary);
++}
++
 +void ChrootOpenBSDDerivationBuilder::prepareUser()
 +{
 +    if (geteuid() != 0 || !buildUser)
@@ -188,8 +196,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +        || isDirOrInDir(path, "/etc") || isDirOrInDir(path, "/proc")
 +        || isDirOrInDir(path, store.storeDir) || isDirOrInDir(store.storeDir, path))
 +        throw Error("unsafe OpenBSD sandbox-build-dir '%s'", PathFmt(path));
-+    /* No bind mounts on OpenBSD. Place the build tree inside the chroot
-+       from the outset, keeping outputs on the store filesystem. */
++    /* OpenBSD has no bind mounts. Keep outputs on the store filesystem. */
 +    createChroot();
 +    tmpDir = chrootRootDir / path.relative_path();
 +    createDirs(tmpDir);
@@ -235,8 +242,8 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +            createSymlink(readLink(source), target);
 +            setWriteTime(target, st);
 +        } else if (S_ISREG(st.st_mode)) {
-+            /* Only immutable, root-owned store files may share inodes with
-+               the host. Configured host paths are private snapshots. */
++            /* Only root-owned, read-only store files may share inodes.
++               Copy configured host paths. */
 +            if (immutable && st.st_uid == 0 && !(st.st_mode & 0222)) {
 +                if (link(source.c_str(), target.c_str()) == 0)
 +                    return;
@@ -285,8 +292,8 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +
 +std::string ChrootOpenBSDDerivationBuilder::domainOwner()
 +{
-+    /* Include the state directory to distinguish independent Nix stores.
-+       Hashing bounds the string to OpenBSD's interface description size. */
++    /* Include the state directory for distinct stores; hash it to fit
++       OpenBSD's interface description. */
 +    return fmt("nix-%s-uid-%u",
 +        hashString(HashAlgorithm::SHA256, settings.nixStateDir.native())
 +            .to_string(HashFormat::Base16, false).substr(0, 16),
@@ -317,9 +324,8 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +        char description[IFDESCRSIZE] = {};
 +        request.ifr_data = description;
 +        if (ioctl(socket.get(), SIOCGIFDESCR, &request) == 0) {
-+            /* Only recover our own UID's abandoned sandbox. Its user lock
-+               is held and prepareUser() has already killed and waited for
-+               its processes. Never adopt administrator-owned interfaces. */
++            /* The UID lock is held and its processes have exited.
++               Recover only this store's tagged interface for that UID. */
 +            if (owner != description)
 +                continue;
 +            destroyDomain(socket.get(), *id);
@@ -389,8 +395,8 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +
 +void ChrootOpenBSDDerivationBuilder::createPasswordDatabase()
 +{
-+    /* Like the FreeBSD backend, supply libc's database as well as the text
-+       passwd file. This is OpenBSD pwd_mkdb's native record/key layout. */
++    /* Like FreeBSD, provide libc's password database.
++       Use OpenBSD pwd_mkdb's native record layout. */
 +    auto closeDB = [](::DB * db) { if (db) (db->close)(db); };
 +    std::unique_ptr<::DB, decltype(closeDB)> db(
 +        dbopen((chrootRootDir / "etc/pwd.db").c_str(), O_CREAT | O_EXCL | O_RDWR, 0644, DB_HASH, nullptr), closeDB);
@@ -475,7 +481,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +        chmod(target, 0666);
 +    }
 +    createSymlink("urandom", chrootRootDir / "dev/random");
-+    /* OpenBSD's fd pseudo-devices implement shell process substitution. */
++    /* OpenBSD fd devices support shell process substitution. */
 +    if (pathExists("/dev/fd")) {
 +        createDirs(chrootRootDir / "dev/fd");
 +        for (auto & entry : DirectoryIterator("/dev/fd")) {
@@ -514,9 +520,8 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +    DerivationBuilderImpl::killSandbox(getStats);
 +    if (!buildUser)
 +        return;
-+    /* killUser() only sends signals. A domain must not be removed until
-+       its processes have exited: OpenBSD then moves its table to domain 0.
-+       Zombies cannot execute or retain file/socket descriptors. */
++    /* Wait for live processes before domain removal: OpenBSD moves the
++       table to domain 0. PS_ZOMBIE processes hold no files or sockets. */
 +    for (unsigned int attempt = 0; attempt < 1000; ++attempt) {
 +        int mib[] = {CTL_KERN, KERN_PROC, KERN_PROC_UID,
 +            static_cast<int>(buildUser->getUID()), sizeof(struct kinfo_proc), 0};
@@ -552,8 +557,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +                throw Error("OpenBSD build IPC cleanup failed");
 +            return;
 +        }
-+        // Signal as the build UID. Signalling a PID from this snapshot as
-+        // root could kill another user's process if the PID has been reused.
++        // Signal as the build UID to protect other users after PID reuse.
 +        DerivationBuilderImpl::killSandbox(false);
 +        usleep(10000);
 +    }
@@ -570,8 +574,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +        routingDomain = 0;
 +        routingDomainLock.close();
 +    }
-+    /* Keep the usual --keep-failed directory, without retaining the copied
-+       input closure or a live network domain. */
++    /* Preserve --keep-failed without retaining copied inputs. */
 +    if (!force && settings.keepFailed && !drv.isBuiltin() && !tmpDir.empty() && pathExists(tmpDir)) {
 +        auto kept = topTmpDir / "build";
 +        moveFile(tmpDir, kept);
@@ -586,13 +589,12 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +} // namespace nix
 --- /dev/null
 +++ b/openbsd/build/sysv-ipc.cc
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,109 @@
 +#include <sys/types.h>
 +#include <sys/sysctl.h>
 +
-+/* As in OpenBSD's ipcs(1), the sysctl records for semaphores and message
-+   queues require the kernel-visible definitions. Keep these headers out
-+   of the builder implementation and its other system headers. */
++/* OpenBSD ipcs(1) uses the kernel layouts for semaphores and queues.
++   Keep these headers separate from the builder. */
 +#define _KERNEL
 +#include <sys/ipc.h>
 +#include <sys/sem.h>
@@ -614,9 +616,8 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +
 +namespace nix {
 +
-+/* Called with the build UID, after all its build processes have exited.
-+   Kernel permission checks therefore also protect other users' objects
-+   against IPC identifier reuse while taking the sysctl snapshot. */
++/* Run as the build UID once its processes have exited.
++   Kernel permission checks protect other users after IPC ID reuse. */
 +void cleanupOpenBSDSysVIPC(uid_t uid)
 +{
 +    auto read = [](int enabledName, int infoName, size_t padding) {
@@ -631,9 +632,8 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +        int mib[] = {CTL_KERN, KERN_SYSVIPC_INFO, infoName};
 +        if (sysctl(mib, 3, nullptr, &size, nullptr, 0) == -1)
 +            throw SysError("querying OpenBSD System V IPC");
-+        // The kernel's length omits alignment between the info header and
-+        // the records. Supply zeroed tail padding, as the final record's
-+        // unused trailing fields can otherwise extend past that length.
++        // The kernel's reported size omits alignment padding.
++        // Leave room for the final record's trailing fields.
 +        data.resize(size + padding);
 +        if (sysctl(mib, 3, data.data(), &size, nullptr, 0) == -1)
 +            throw SysError("reading OpenBSD System V IPC");
@@ -641,8 +641,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +        return data;
 +    };
 +    auto check = [](int result) {
-+        // Another process may already have removed the object. EPERM means
-+        // the identifier now belongs to a different user; leave it alone.
++        // Leave removed or reassigned objects alone.
 +        if (result == -1 && errno != EINVAL && errno != EIDRM && errno != EPERM)
 +            throw SysError("removing OpenBSD build IPC object");
 +    };
@@ -729,11 +728,10 @@ Fixed-output builds retain networking; unsupported modes fail closed.
  {
      // Set up chroot parameters
      BuildChrootParams params{
-@@ -45,6 +45,13 @@
+@@ -45,6 +45,12 @@
      auto [rootDir, cleanup] = setupBuildChroot(params);
      chrootRootDir = std::move(rootDir);
      autoDelChroot.emplace(std::move(cleanup));
-+
 +}
 +
 +void ChrootDerivationBuilder::prepareSandbox()
@@ -767,7 +765,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
  #endif
  
  #ifdef __APPLE__
-@@ -1862,6 +1866,11 @@
+@@ -1861,6 +1865,11 @@
          return DerivationBuilderUnique(new ChrootFreeBSDDerivationBuilder(store, miscMethods, std::move(params)));
  
      return DerivationBuilderUnique(new FreeBSDDerivationBuilder(store, miscMethods, std::move(params)));
@@ -790,3 +788,101 @@ Fixed-output builds retain networking; unsupported modes fail closed.
    sources += files(
      'build/chroot-derivation-builder.cc',
    )
+--- a/unix/include/nix/store/user-lock.hh
++++ b/unix/include/nix/store/user-lock.hh
+@@ -9,6 +9,11 @@
+ namespace nix {
+
+ struct LocalSettings;
++
++enum class BuildUserGroup {
++    Shared,
++    Primary,
++};
+
+ struct UserLock
+ {
+@@ -37,10 +42,12 @@
+
+ /**
+  * Acquire a user lock for a UID range of size `nrIds`. Note that this
+- * may return nullptr if no user is available.
++ * may return nullptr if no user is available. Primary groups must be
++ * non-root, distinct from the build-users-group and unique among build users.
+  */
+ std::unique_ptr<UserLock> acquireUserLock(
+-    const std::filesystem::path & stateDir, const LocalSettings & localSettings, uid_t nrIds, bool useUserNamespace);
++    const std::filesystem::path & stateDir, const LocalSettings & localSettings, uid_t nrIds, bool useUserNamespace,
++    BuildUserGroup group = BuildUserGroup::Shared);
+
+ bool useBuildUsers(const LocalSettings &);
+
+--- a/unix/user-lock.cc
++++ b/unix/user-lock.cc
+@@ -69,7 +69,7 @@
+     }
+
+     static std::unique_ptr<UserLock>
+-    acquire(const std::filesystem::path & userPoolDir, const std::string & buildUsersGroup)
++    acquire(const std::filesystem::path & userPoolDir, const std::string & buildUsersGroup, BuildUserGroup group)
+     {
+         assert(buildUsersGroup != "");
+
+@@ -79,6 +79,7 @@
+             throw Error("the group '%s' specified in 'build-users-group' does not exist", buildUsersGroup);
+
+         /* Copy the result of getgrnam. */
++        gid_t sharedGid = gr->gr_gid;
+         Strings users;
+         for (char ** p = gr->gr_mem; *p; ++p) {
+             debug("found build user '%s'", *p);
+@@ -108,7 +109,7 @@
+
+                 lock->fdUserLock = std::move(fd);
+                 lock->uid = pw->pw_uid;
+-                lock->gid = gr->gr_gid;
++                lock->gid = group == BuildUserGroup::Primary ? pw->pw_gid : sharedGid;
+
+                 /* Sanity check... */
+                 if (lock->uid == getuid() || lock->uid == geteuid())
+@@ -124,6 +125,19 @@
+                         lock->supplementaryGIDs.push_back(gid);
+                 }
+ #endif
++
++                if (group == BuildUserGroup::Primary) {
++                    if (lock->gid == 0 || lock->gid == sharedGid)
++                        throw Error("build user '%s' needs a non-root primary group distinct from '%s'",
++                            i, buildUsersGroup);
++                    for (auto & other : users) {
++                        auto * entry = getpwnam(other.c_str());
++                        if (!entry)
++                            throw Error("build user '%s' does not exist", other);
++                        if (entry->pw_uid != lock->uid && entry->pw_gid == lock->gid)
++                            throw Error("build users '%s' and '%s' share primary group %u", i, other, lock->gid);
++                    }
++                }
+
+                 return lock;
+             }
+@@ -221,16 +235,19 @@
+ } // namespace
+
+ std::unique_ptr<UserLock> acquireUserLock(
+-    const std::filesystem::path & stateDir, const LocalSettings & localSettings, uid_t nrIds, bool useUserNamespace)
++    const std::filesystem::path & stateDir, const LocalSettings & localSettings, uid_t nrIds, bool useUserNamespace,
++    BuildUserGroup group)
+ {
+     if (auto * uidSettings = localSettings.getAutoAllocateUidSettings()) {
++        if (group == BuildUserGroup::Primary)
++            throw Error("private build groups require static build users");
+         auto userPoolDir = stateDir / "userpool2";
+         createDirs(userPoolDir);
+         return AutoUserLock::acquire(userPoolDir, localSettings.buildUsersGroup, nrIds, useUserNamespace, *uidSettings);
+     } else {
+         auto userPoolDir = stateDir / "userpool";
+         createDirs(userPoolDir);
+-        return SimpleUserLock::acquire(userPoolDir, localSettings.buildUsersGroup);
++        return SimpleUserLock::acquire(userPoolDir, localSettings.buildUsersGroup, group);
+     }
+ }

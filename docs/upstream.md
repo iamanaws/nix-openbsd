@@ -81,8 +81,8 @@ PR #200940 at `e518ff874288` on OpenBSD/amd64. Installed LLVM 21 headers passed
 | [Package overrides](../pkgs/openbsd/package-overrides.nix) | Nixpkgs for dependencies and build settings; package upstream for source defects. Keep bootstrap cycle handling separate. |
 | Zlib shared-library detection | Track [zlib #960](https://github.com/madler/zlib/issues/960). Remove `--undefined-version` when shared-library detection and the [probe](../tests/upstream/zlib-shared.py) pass without it. |
 | [Native stdenv](../pkgs/openbsd/native-stdenv.nix) and [libtool hook](../pkgs/openbsd/fix-libtool.sh) | Nixpkgs compiler wrappers, hooks and BSD scopes. Validate bootstrap closure independence after changes. |
-| [Nix runtime overrides](../pkgs/openbsd/nix-runtime-overrides.nix) | Nix for PTY, build-user and fork handling. Submit separately with focused tests. |
-| [OpenBSD build isolation](build-isolation.md) | Nix: review input/output handling, build-user locks and routing-domain lifecycle against self-hosting and package results. Keep opt-in while broadening coverage. |
+| [Nix runtime overrides](../pkgs/openbsd/nix-runtime-overrides.nix) | Polish PTY, build-user and fork handling with focused tests. |
+| [OpenBSD build isolation](build-isolation.md) | Explore shared kernel state, routing-domain access, descriptor inheritance and repeated cleanup before choosing further hardening. Keep opt-in. |
 | [Native Nix dependencies](../pkgs/openbsd/native-nix.nix) and [system packages](../pkgs/openbsd/native-system-packages.nix) | Nixpkgs for package recipes and dependencies. Keep disabled tests distinct from correctness fixes. |
 | [Native Go](../pkgs/openbsd/native-go.nix) and [bootstrap](../pkgs/openbsd/go-bootstrap.nix) | Nixpkgs for the OpenBSD ports bootstrap and store library paths. Go's direct OpenBSD `-nopie` linker option needs the LLD-compatible `-no-pie` spelling; review separately for Go upstream. |
 | [dhcpleased and slaacd dependencies](../overlays/nixbsd.nix) | Nixpkgs: OpenBSD 8.0 uses libutil's `getexecpath` to re-execute these daemons. |

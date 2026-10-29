@@ -9,6 +9,7 @@
   hash ? "",
   noChroot ? false,
   requiredFeatures ? [ ],
+  probeSpec ? "{}",
 }:
 let
   inputs = builtins.storePath fixtures;
@@ -21,10 +22,18 @@ derivation (
   {
     name = "openbsd-isolation-${kind}-${nonce}";
     system = "x86_64-openbsd";
-    builder = if kind == "builtin-fetch" then "builtin:fetchurl" else "${inputs}/bash/bin/bash";
+    builder =
+      if kind == "builtin-fetch" then
+        "builtin:fetchurl"
+      else if kind == "fd-audit" then
+        "${inputs}/probe/bin/exec-probe"
+      else
+        "${inputs}/bash/bin/bash";
     args =
       if kind == "builtin-fetch" then
         [ ]
+      else if kind == "fd-audit" then
+        [ "fd-audit" ]
       else
         [
           "-euc"
@@ -42,6 +51,7 @@ derivation (
                 ''
                   ${inputs}/coreutils/bin/cat "$outside" > "$out"
                   ${inputs}/coreutils/bin/id -u >> "$out"
+                  ${inputs}/coreutils/bin/id -g >> "$out"
                 ''
               else
                 ''
@@ -57,6 +67,7 @@ derivation (
       undeclared
       ports
       url
+      probeSpec
       ;
     __noChroot = noChroot;
     requiredSystemFeatures = requiredFeatures;

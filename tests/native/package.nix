@@ -54,6 +54,7 @@ let
     '';
     postInstall = ''
       echo "$EUID" > "$out/build-uid"
+      id -gn > "$out/build-group"
     '';
   };
   smoke = stdenv.mkDerivation (

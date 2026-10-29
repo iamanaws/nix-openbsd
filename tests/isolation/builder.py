@@ -23,6 +23,7 @@ assert os.getresgid() == (os.getgid(),) * 3 and os.getgid() != 0
 assert os.getgroups() == []
 assert pwd.getpwuid(os.getuid()).pw_name == 'nixbld'
 assert pwd.getpwnam('nixbld').pw_uid == os.getuid()
+assert pwd.getpwuid(os.getuid()).pw_gid == os.getgid()
 assert os.getcwd() == '/build'
 
 outside = os.environ['outside']
@@ -123,6 +124,43 @@ else:
             assert receiver.recv(64) == b'private datagram'
     if kind == 'ipc':
         metadata['ipc'] = json.loads(subprocess.check_output([fixtures / 'probe/bin/exec-probe', 'ipc-create']))
+    if kind == 'ipc-owner':
+        metadata['ipc'] = json.loads(subprocess.check_output([
+            fixtures / 'probe/bin/exec-probe', 'ipc-fixture', '660', str(os.getgid())]))
+    if kind == 'ipc-peer':
+        subprocess.run([fixtures / 'probe/bin/exec-probe', 'ipc-denied',
+                        *map(str, json.loads(os.environ['probeSpec']))], check=True)
+    if kind == 'boundaries':
+        from boundaries import inspect_boundaries
+        inspect_boundaries(fixtures, metadata, json.loads(os.environ['probeSpec']))
+    if kind == 'storm':
+        import resource
+        resource.setrlimit(resource.RLIMIT_NPROC, (32, 32))
+        metadata['ipc'] = json.loads(subprocess.check_output([fixtures / 'probe/bin/exec-probe', 'ipc-create']))
+        read, write = os.pipe()
+        metadata['children'] = []
+        for _ in range(8):
+            child = os.fork()
+            if child == 0:
+                os.close(read)
+                os.setsid()
+                signal.signal(signal.SIGTERM, signal.SIG_IGN)
+                if os.fork() == 0:
+                    os.setsid()
+                os.write(write, b'x')
+                os.close(write)
+                for fd in [0, 1, 2]:
+                    os.close(fd)
+                while True:
+                    time.sleep(1)
+            metadata['children'].append(child)
+        os.close(write)
+        ready = b''
+        while len(ready) < 16:
+            data = os.read(read, 16 - len(ready))
+            assert data, 'descendants did not start'
+            ready += data
+        os.close(read)
     if kind in ['detach', 'timeout']:
         child = os.fork()
         if child == 0:
@@ -134,7 +172,7 @@ else:
                 time.sleep(1)
         metadata['child'] = child
     print('SANDBOX_METADATA ' + json.dumps(metadata), flush=True)
-    if kind in ['hold', 'timeout']:
+    if kind in ['hold', 'timeout', 'storm', 'ipc-owner']:
         time.sleep(120)
     if kind == 'failure':
         Path('/build/kept').write_text('kept failure\n')

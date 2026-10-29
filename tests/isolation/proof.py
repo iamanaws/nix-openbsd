@@ -195,6 +195,34 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_UN)
             yield uid
 
+    @contextmanager
+    def primary_group(name, gid):
+        # Rebuild both native password databases; changing the text file alone
+        # would leave getpwnam(3) using the old credentials.
+        stop_daemon()
+        passwd = Path('/etc/master.passwd')
+        original = passwd.read_text()
+
+        def install(text):
+            temporary = Path('/etc/nix-isolation-passwd-' + secrets.token_hex(8))
+            try:
+                with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as stream:
+                    stream.write(text)
+                command([fixtures / 'pwd_mkdb/bin/pwd_mkdb', '-p', temporary], check=True)
+            finally:
+                temporary.unlink(missing_ok=True)
+
+        entries = [line.split(':') for line in original.splitlines()]
+        for entry in entries:
+            if entry[0] == name:
+                entry[3] = str(gid)
+        try:
+            install(''.join(':'.join(entry) + '\n' for entry in entries))
+            yield
+        finally:
+            stop_daemon()
+            install(original)
+
     clean_domains()
     for thread in threads:
         thread.start()
@@ -204,6 +232,7 @@ def main():
         output = build('unsandboxed-control', kind='control', mode='false')
         lines = output.read_text().splitlines()
         assert lines[0] == 'public isolation fixture' and int(lines[1]) != 0
+        assert int(lines[2]) == grp.getgrnam('nixbld').gr_gid
         record('unsandboxedControlReadsOutside')
         for mode in ['true', 'relaxed']:
             output = build('sandbox-' + mode, mode=mode)
@@ -335,6 +364,84 @@ def main():
         assert not user_processes(metadata['uid'])
         clean_domains()
         record('DetachedChildFailureKeepFailedAndTimeoutCleanup')
+
+        output = build('inherited-descriptor-audit', kind='fd-audit', regular=True)
+        assert output.read_text() == 'FD_AUDIT_PASS\n'
+        probe = fixtures / 'probe/bin/exec-probe'
+        ipc = {}
+        try:
+            for name, mode, gid in [('private', '600', 0), ('public', '666', 0),
+                                    ('group', '660', grp.getgrnam('nixbld').gr_gid)]:
+                ipc[name] = json.loads(command([probe, 'ipc-fixture', mode, str(gid)], check=True).stdout)
+            token = secrets.token_hex(16)
+            spec = ipc | {'hostPid': os.getpid(), 'token': token}
+            with held_build(kind='boundaries', extra=['--argstr', 'probeSpec', json.dumps(spec)]) as (_, metadata, _):
+                code = f'''import ctypes, errno, os, socket
+library = ctypes.CDLL(None, use_errno=True)
+assert os.getuid() != 0 and library.getrtable() == 0
+assert library.setrtable({metadata['domain']}) == 0
+for family, address, port in zip([socket.AF_INET, socket.AF_INET6], ['127.0.0.1', '::1'], {metadata['listenerPorts']!r}):
+    with socket.socket(family, socket.SOCK_STREAM) as connection:
+        connection.settimeout(5)
+        connection.connect((address, port))
+        connection.sendall({token.encode()!r})
+        assert connection.recv(128) == {token.encode()!r}
+assert library.setrtable(0) == -1 and ctypes.get_errno() == errno.EPERM
+print('DOMAIN_ZERO_JOIN_PASS')
+'''
+                joined = command(['su', '-l', 'bestie', '-c', shlex.join([
+                    str(fixtures / 'python3/bin/python3'), '-B', '-c', code])])
+                (work / 'domain-zero-join.log').write_text(joined.stdout + joined.stderr)
+                assert joined.returncode == 0 and 'DOMAIN_ZERO_JOIN_PASS' in joined.stdout, joined.stderr
+                results['boundaryLimits'] = metadata['boundaries'] | {
+                    'domainZeroHostCanJoin': True, 'inheritedFds': []}
+            clean_domains()
+            command([probe, 'ipc-removed', *map(str, metadata['ipc'])], check=True)
+            for name, identifiers in ipc.items():
+                command([probe, 'ipc-verify', 'builder' if name == 'public' else 'host',
+                         *map(str, identifiers)], check=True)
+            record('sharedProcessAndIpcPermissionsAndNoInheritedDescriptors')
+            record('domainZeroUnprivilegedHostCanReachPrivateLoopback')
+        finally:
+            for identifiers in ipc.values():
+                command([probe, 'ipc-destroy', *map(str, identifiers)], check=True)
+
+        with held_build(kind='ipc-owner') as (_, owner, _):
+            peer = json.loads(build('cross-build-group-ipc', kind='ipc-peer', regular=True,
+                                   extra=['--argstr', 'probeSpec', json.dumps(owner['ipc'])]).read_text())
+            assert peer['uid'] != owner['uid'] and peer['gid'] != owner['gid']
+            assert peer['gid'] == pwd.getpwuid(peer['uid']).pw_gid
+            assert owner['gid'] == pwd.getpwuid(owner['uid']).pw_gid
+            assert peer['gid'] != grp.getgrnam('nixbld').gr_gid
+            command([probe, 'ipc-verify', 'host', *map(str, owner['ipc'])], check=True)
+        clean_domains()
+        command([probe, 'ipc-removed', *map(str, owner['ipc'])], check=True)
+        record('concurrentBuildsCannotAccessEachOthersGroupIpc')
+
+        with one_build_user() as uid:
+            account = pwd.getpwuid(uid)
+            other = next(pwd.getpwnam(name) for name in grp.getgrnam('nixbld').gr_mem
+                         if pwd.getpwnam(name).pw_uid != uid)
+            for gid, message in [(0, 'needs a non-root primary group'),
+                                 (grp.getgrnam('nixbld').gr_gid, 'needs a non-root primary group'),
+                                 (other.pw_gid, 'share primary group')]:
+                with primary_group(account.pw_name, gid):
+                    start_daemon()
+                    error = build('invalid-primary-group-' + str(gid), expected=1)
+                    assert message in error and 'ISOLATION_BUILDER_STARTED' not in error, error
+        start_daemon()
+        record('rootSharedAndDuplicatePrimaryGroupsRejectBeforeBuilder')
+
+        start_daemon('201')
+        with one_build_user() as uid:
+            for attempt in range(4):
+                with held_build(kind='storm', extra=['--debug'] if attempt % 2 else []) as (_, metadata, _):
+                    assert metadata['uid'] == uid and metadata['domain'] == 201
+                    assert len(metadata['children']) == 8
+                clean_domains()
+                assert not user_processes(uid)
+                command([probe, 'ipc-removed', *map(str, metadata['ipc'])], check=True)
+        record('repeatedCancellationOfDetachedDescendantsAndIpc')
         start_daemon()
         build('daemon-restart', regular=True)
         clean_domains()

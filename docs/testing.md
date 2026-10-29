@@ -31,7 +31,7 @@ supported hosts. Suites run sequentially.
 | `workflow` | Personal configuration template, native builds, live switching and rollback. |
 | `generations`, `dns`, `logging`, `doas`, `mail`, `maintenance`, `cron-fallback` | [Generation checks](../tests/generations/README.md), including failure recovery, rollback, GC and boot recovery. |
 | `network` | [Two-router transit, BGP, PF and IPsec](../tests/network/README.md). |
-| `isolation` | [Nix sandbox](build-isolation.md): filesystem/network isolation, compiler consumers, daemon policy and lifecycle cleanup. |
+| `isolation` | [Nix sandbox](build-isolation.md): filesystem/network isolation, compiler consumers, daemon policy, shared kernel state and lifecycle cleanup. |
 | `sandbox-packages` | Fresh Hello, fmt, inih, MarkupSafe, shfmt and dbmate builds through a sandboxed daemon, with parallel builds and regular-user consumers. |
 | `sandbox-nix` | Rebuild all 14 Nix components inside the sandbox, then run native runtime, local/daemon PTY, isolation and fresh package checks with the rebuilt Nix. |
 | `native` | [Bootstrap, toolchain, C++ and Nix](../tests/native/README.md). Also selectable as `bootstrap`, `toolchain`, `cxx` or `nix`. |
@@ -62,8 +62,9 @@ C++ runtimes; prepare those with native suites or an existing VM.
 
 Isolation checks enable the OpenBSD sandbox in a temporary daemon inside one
 disposable VM. They cover regular-user builds, concurrent domains, cancellation,
-timeouts, abandoned workers and cleanup. The reference system keeps sandboxing
-disabled by default.
+timeouts, abandoned workers and cleanup, plus descriptor inheritance, IPC
+permissions and domain 0 access. The reference system keeps sandboxing disabled
+by default.
 
 To build the package recipes with fresh outputs and their existing checks:
 

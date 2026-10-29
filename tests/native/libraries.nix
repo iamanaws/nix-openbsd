@@ -75,6 +75,7 @@ stdenv.mkDerivation {
     cp dynamic static semaphore-dynamic semaphore-static builtins tls cxx-dynamic cxx-static locale "$out/bin/"
     cp loaded-libraries cxx-loaded-libraries link.map tls.map "$out/"
     echo "$EUID" > "$out/build-uid"
+    id -gn > "$out/build-group"
     runHook postInstall
   '';
 }

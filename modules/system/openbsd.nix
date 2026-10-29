@@ -55,6 +55,7 @@ let
 in
 {
   imports = [
+    ./nix-build-users.nix
     ./tempfiles.nix
     ../services/dhcpleased.nix
     ../services/slaacd.nix

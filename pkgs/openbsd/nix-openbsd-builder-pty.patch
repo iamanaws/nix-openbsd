@@ -54,15 +54,14 @@ Rebased onto Nix 2.35's separate builder header.
  
      // Put the pt into raw mode to prevent \n -> \r\n translation.
      struct termios term;
-@@ -991,6 +1007,37 @@
+@@ -991,6 +1007,36 @@
  
          sendException = false;
  
 +#ifdef __OpenBSD__
-+        /* Keep the slave open until the builder exits and its output drains.
-+           OpenBSD can discard unread PTY output during process exit. This
-+           supervisor and the builder retain the same build UID and process
-+           group, so cancellation still terminates both. */
++        /* OpenBSD may discard unread PTY output on exit. Keep the slave open
++           until output drains; the supervisor shares the builder's UID and
++           process group. */
 +        pid_t child = fork();
 +        if (child == -1)
 +            throw SysError("forking OpenBSD builder");
@@ -92,12 +91,12 @@ Rebased onto Nix 2.35's separate builder header.
          /* If this is a builtin builder, call it now. This should not return. */
          if (drv.isBuiltin()) {
              try {
-@@ -1030,6 +1077,10 @@
+@@ -1030,6 +1076,10 @@
  
      } catch (...) {
          handleChildException(sendException);
 +#ifdef __OpenBSD__
-+        // Setup errors also need to reach the parent before the slave closes.
++        // Drain setup errors before closing the slave.
 +        while (tcdrain(STDERR_FILENO) == -1 && errno == EINTR) { }
 +#endif
          _exit(1);

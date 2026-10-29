@@ -19,7 +19,14 @@ nix.settings = {
 ```
 
 Nix requires root and dedicated build users, normally through the daemon.
-It creates and removes the reserved loopback interfaces. Keep these IDs out
+The OpenBSD module gives each build user a private primary group, retaining
+membership in `nixbld` for user discovery. Sandboxed builds use that private
+group with no supplementary groups; unsandboxed builds use `nixbld` to write to
+the host store. Root, shared and duplicate primary groups are rejected before
+a sandboxed builder starts. Activate the account configuration before enabling
+the sandbox.
+
+Nix creates and removes the reserved loopback interfaces. Keep these IDs out
 of other interface configurations and PF rules that connect domains.
 Administrator-owned interfaces are preserved. Invalid, missing or exhausted
 pools fail before the builder starts, even with `sandbox-fallback = true`.
@@ -59,17 +66,21 @@ owned by another build user or Nix state directory are left alone.
 
 ## Limits
 
-Process and System V IPC namespaces remain shared. Cleanup removes leftovers
-but cannot prevent access to deliberately public IPC objects. TCP `TIME_WAIT`
-state can outlive a build; assigning its domain ID to another UID can delay
-reuse of the same port, even with `SO_REUSEADDR`.
+Process metadata remains visible; cross-user signals still require permission.
+System V IPC follows host UID, GID and mode permissions: private `0600` objects
+and other build users' group-only objects are protected. Deliberately public
+objects remain accessible. Cleanup removes leftovers without creating an IPC
+namespace.
 
-Domain 0 processes can join other domains under OpenBSD's
+TCP `TIME_WAIT` state can outlive a build; assigning its domain ID to another UID
+can delay reuse of the same port, even with `SO_REUSEADDR`.
+
+Unprivileged domain 0 processes can join other domains under OpenBSD's
 [setrtable rules](https://man.openbsd.org/OpenBSD-8.0/getrtable.2). Cooperating host
-processes or fixed-output builds can relay traffic into an ordinary build's
-domain; PF rules can also connect domains. The backend supports build purity
-and controlled native builds, with no complete boundary against cooperating
-hostile processes.
+processes or fixed-output builds can reach a build's private IPv4/IPv6 loopback
+and relay traffic; PF rules can also connect domains. The backend supports build
+purity and controlled native builds, with no complete boundary against
+cooperating hostile processes.
 
 Recursive Nix, UID ranges and diverted stores fail explicitly. The backend
 imposes no generic inherited [pledge](https://man.openbsd.org/OpenBSD-8.0/pledge.2)
@@ -87,10 +98,14 @@ nix run .#test -- --suite isolation --vm-state ./openbsd-native-vm --keep
 
 The temporary daemon enables sandboxing only inside its disposable VM.
 Checks cover filesystem escapes, undeclared inputs, read-only host mappings,
-account lookups, private IPv4/IPv6 loopback, C/C++/Go/cgo consumers, fixed-output
-fetches and strict/relaxed policy. Lifecycle checks cover concurrency, exhausted
-pools, failures, retained directories, cancellation, timeouts, detached children,
-IPC cleanup and abandoned workers. See [recorded results](status.md).
+account lookups, descriptors at builder entry, private IPv4/IPv6 loopback,
+C/C++/Go/cgo consumers, fixed-output fetches and strict/relaxed policy. Boundary
+probes check IPC permissions between concurrent builds, invalid primary-group
+rejection, process visibility and domain 0 host access.
+Lifecycle checks cover concurrency, exhausted pools, failures, retained
+directories, timeouts, IPC cleanup and abandoned workers. Cancellation repeats
+four times on the same UID and domain, each with 16 detached descendants and
+three IPC objects. See [recorded results](status.md).
 
 The separate `sandbox-packages` suite builds Hello, fmt, inih, MarkupSafe, shfmt
 and dbmate from their native Nixpkgs recipes with fresh outputs. It preserves

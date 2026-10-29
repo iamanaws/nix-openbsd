@@ -20,8 +20,8 @@ A cached test can reuse their outputs.
 
 | Component | Result and scope |
 | --- | --- |
-| Nix 2.35.2 | All 14 components rebuilt inside the sandbox on 2026-10-28. The rebuilt CLI and daemon passed native runtime, signed-cache, GC and local/user PTY checks, all 17 isolation phases and six fresh package builds with consumers. |
-| [Nix sandbox](build-isolation.md) | All 17 integration phases passed on 2026-10-28: filesystem/network isolation, C/C++/Go/cgo consumers, daemon policy, concurrency, cancellation, timeouts, detached children, IPC cleanup and worker recovery. |
+| Nix 2.35.2 | All 14 components rebuilt inside the sandbox on 2026-10-28. The rebuilt CLI and daemon passed native runtime, signed-cache, GC and local/user PTY checks, the isolation suite and six fresh package builds with consumers. |
+| [Nix sandbox](build-isolation.md) | All 22 integration phases passed on 2026-10-28: private build groups, cross-build IPC denial, invalid-group rejection, filesystem/network isolation, native consumers, daemon policy, platform limits and lifecycle cleanup. |
 | [Sandbox package builds](testing.md#development-runs) | Fresh Hello, fmt, inih, MarkupSafe, shfmt and dbmate builds passed on 2026-10-28, preserving recipe checks. Parallel isolation, store verification, regular-user consumers and cleanup passed, including C/C++ linkage, the Python C extension and SQLite cgo migrations. |
 | LLVM 22 X86 `check-all` | 36,274 passed; 34,443 unsupported; 62 expected failures; 414 skipped. LLVM 21 had one lit timeout that passed twice alone, without a full rerun. |
 | Clang and LLD | Full suites disabled; focused compile/link and OpenBSD library-search checks pass. Userland uses LLVM 21.1.8; the kernel uses 22.1.8. |

@@ -159,7 +159,7 @@ library=$(nix-instantiate "$NATIVE_RECIPE" "${args[@]}" -A library.outPath --eva
 for output in "$smoke" "$library" "$consumer" "$libraries"; do
     uid=$(cat "$output/build-uid")
     test "$uid" -ne 0
-    test "$(id -gn "$uid")" = nixbld
+    test "$(cat "$output/build-group")" = nixbld
 done
 nix-store --query --references "$consumer" | grep -Fx "$library"
 nix-store --verify-path "$library" "$consumer"
