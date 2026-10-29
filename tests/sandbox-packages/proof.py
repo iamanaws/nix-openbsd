@@ -68,12 +68,10 @@ printf 'SANDBOX_PACKAGE_CONSUMERS_PASS\\n'
 '''
 
 
-def main():
+def build_packages(fixtures, timeout, recipe='sandbox-packages', consumer=consumers):
     assert os.getuid() == 0
-    fixtures = Path(sys.argv[1]).resolve(strict=True)
-    timeout = int(sys.argv[2])
     source = (fixtures / 'source').resolve(strict=True)
-    work = Path(tempfile.mkdtemp(prefix='openbsd-sandbox-packages.', dir='/var/tmp'))
+    work = Path(tempfile.mkdtemp(prefix='openbsd-' + recipe + '.', dir='/var/tmp'))
     work.chmod(0o755)
     print('Guest package logs: ' + str(work), flush=True)
     outside = work / 'outside'
@@ -96,7 +94,7 @@ def main():
                               capture_output=True, text=True, timeout=kwargs.pop('timeout', 120),
                               check=kwargs.pop('check', True), **kwargs)
 
-    arguments = [str(source / 'tests/sandbox-packages/packages.nix'),
+    arguments = [str(source / ('tests/' + recipe + '/packages.nix')),
                  '--argstr', 'flakeRef', str(source), '--argstr', 'nonce', nonce,
                  '--argstr', 'outside', str(outside), '--argstr', 'ports', ports]
     packages = json.loads(command(['nix-instantiate', '--eval', '--strict', '--json',
@@ -166,23 +164,26 @@ def main():
             for uid in {package['isolation']['uid'] for package in packages.values()}:
                 processes = command(['ps', '-U', str(uid), '-o', 'pid=,stat='], check=False).stdout
                 assert not [line for line in processes.splitlines() if 'Z' not in line], processes
-            directory = work / 'consumers'
-            directory.mkdir()
-            user = pwd.getpwnam('bestie')
-            os.chown(directory, user.pw_uid, user.pw_gid)
-            script = consumers(fixtures, packages, work)
-            (work / 'consumers.sh').write_text(script)
-            consumed = command(['su', '-l', 'bestie', '-c', 'bash -c ' + shlex.quote(script)], check=False)
-            (work / 'consumers.log').write_text(consumed.stdout + consumed.stderr)
-            assert consumed.returncode == 0, consumed.stdout + consumed.stderr
-            assert 'SANDBOX_PACKAGE_CONSUMERS_PASS' in consumed.stdout
+            if consumer is not None:
+                directory = work / 'consumers'
+                directory.mkdir()
+                user = pwd.getpwnam('bestie')
+                os.chown(directory, user.pw_uid, user.pw_gid)
+                script = consumer(fixtures, packages, work)
+                (work / 'consumers.sh').write_text(script)
+                consumed = command(['su', '-l', 'bestie', '-c', 'bash -c ' + shlex.quote(script)], check=False)
+                (work / 'consumers.log').write_text(consumed.stdout + consumed.stderr)
+                assert consumed.returncode == 0, consumed.stdout + consumed.stderr
+                assert 'SANDBOX_PACKAGE_CONSUMERS_PASS' in consumed.stdout
             results = {'result': 'passed', 'nix': command([nix, '--version']).stdout.strip(),
+                       'binary': str(nix), 'logs': str(work),
                        'packages': packages, 'parallelBuilds': overlaps,
-                       'freshBuilds': 'passed', 'regularUserConsumers': 'passed',
+                       'freshBuilds': 'passed',
                        'processAndDomainCleanup': 'passed', 'defaultSandbox': False}
+            if consumer is not None:
+                results['regularUserConsumers'] = 'passed'
             (work / 'results.json').write_text(json.dumps(results, indent=2) + '\n')
-            print('SANDBOX_PACKAGES_RESULT ' + json.dumps(results), flush=True)
-            print('SANDBOX_PACKAGES_RUNTIME_PASS', flush=True)
+            return results
     finally:
         if daemon is not None:
             daemon.terminate()
@@ -190,6 +191,13 @@ def main():
         subprocess.run(['/etc/rc.d/nix_daemon', 'start'], check=True)
         for listener in listeners:
             listener.close()
+
+
+def main():
+    fixtures = Path(sys.argv[1]).resolve(strict=True)
+    results = build_packages(fixtures, int(sys.argv[2]))
+    print('SANDBOX_PACKAGES_RESULT ' + json.dumps(results), flush=True)
+    print('SANDBOX_PACKAGES_RUNTIME_PASS', flush=True)
 
 
 if __name__ == '__main__':

@@ -96,3 +96,7 @@ The separate `sandbox-packages` suite builds Hello, fmt, inih, MarkupSafe, shfmt
 and dbmate from their native Nixpkgs recipes with fresh outputs. It preserves
 their existing checks, verifies concurrent build isolation and exercises the
 installed packages as a regular user. See [suite commands](testing.md#development-runs).
+
+The `sandbox-nix` suite rebuilds Nix and all its internal libraries under the
+sandbox, then runs native runtime, PTY, isolation and fresh package checks with
+the rebuilt CLI and daemon. The compiler and external dependencies are reused.

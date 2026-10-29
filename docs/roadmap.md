@@ -3,9 +3,10 @@
 ## Nix sandbox backend
 
 Native Nix 2.35.2 includes an opt-in [OpenBSD sandbox backend](build-isolation.md).
-Use [`sandbox-packages`](testing.md#development-runs) for fresh representative
-builds, then extend package coverage before reconsidering the default. Shared
-kernel state and routing domains impose [platform limits](build-isolation.md#limits).
+Use [`sandbox-packages` and `sandbox-nix`](testing.md#development-runs) for fresh
+package and Nix rebuilds. Extend package coverage before reconsidering the
+default. Shared kernel state and routing domains impose
+[platform limits](build-isolation.md#limits).
 
 ## Host validation and arm64 OpenBSD
 

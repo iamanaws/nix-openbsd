@@ -41,7 +41,7 @@ def main():
     undeclared = subprocess.check_output(['nix-store', '--add', unknown], text=True).strip()
     ifconfig = str(fixtures / 'ifconfig/bin/ifconfig')
     pool = [201, 202, 203, 204]
-    results = {'nix': version, 'defaultSandbox': False}
+    results = {'nix': version, 'binary': str(nix.parent / 'nix'), 'defaultSandbox': False}
     payload = b'fixed-output isolation fixture\n'
     daemon = None
     daemon_log = None

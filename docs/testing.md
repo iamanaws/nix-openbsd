@@ -33,9 +33,10 @@ supported hosts. Suites run sequentially.
 | `network` | [Two-router transit, BGP, PF and IPsec](../tests/network/README.md). |
 | `isolation` | [Nix sandbox](build-isolation.md): filesystem/network isolation, compiler consumers, daemon policy and lifecycle cleanup. |
 | `sandbox-packages` | Fresh Hello, fmt, inih, MarkupSafe, shfmt and dbmate builds through a sandboxed daemon, with parallel builds and regular-user consumers. |
+| `sandbox-nix` | Rebuild all 14 Nix components inside the sandbox, then run native runtime, local/daemon PTY, isolation and fresh package checks with the rebuilt Nix. |
 | `native` | [Bootstrap, toolchain, C++ and Nix](../tests/native/README.md). Also selectable as `bootstrap`, `toolchain`, `cxx` or `nix`. |
 
-The default run excludes `native` and `sandbox-packages`; `--all` adds both.
+The default run excludes `native`, `sandbox-packages` and `sandbox-nix`; `--all` adds them.
 `--full` aliases `--all`. For selected generation suites, `--live-only` skips
 reboot, GC and console recovery:
 
@@ -75,6 +76,17 @@ outputs. Build hooks verify the UID, routing domain, hidden host files and
 blocked host listeners. Installed consumers check C/C++ linkage, the Python
 C extension, shell formatting and SQLite migrations through cgo.
 
+To rebuild Nix and its internal libraries under isolation while reusing the
+compiler and external dependencies:
+
+```sh
+nix run .#test -- --suite sandbox-nix --vm-state ./openbsd-native-vm --keep
+```
+
+The suite rejects old component references in the rebuilt Nix closure. Runtime
+checks select its CLI and daemon explicitly. Existing Nix recipe settings are
+preserved; this does not run the full upstream Nix test suites.
+
 DHCP uses a private two-guest link, short leases and a local DNS fixture.
 It checks renewed leases, then DNS refresh after carrier recovery, matching
 [OpenBSD 8.0 behavior](networking.md#ipv4-dhcp).
@@ -88,7 +100,7 @@ file when absent for libc lookup tests.
 | Native bootstrap guest | 8 CPUs, 16384 MiB RAM. |
 | Guest disk limits | 40 MiB/s reads, 20 MiB/s writes. |
 | Host Nix build | One job, two cores. |
-| Suite timeout | One hour; 24 hours for native bootstrap suites. |
+| Suite timeout | One hour; 24 hours for native bootstrap and `sandbox-nix` suites. |
 
 `NIX_VM_CORES` and `NIX_VM_MEMORY` override guest resources.
 `--timeout SECONDS` overrides the suite limit, including fixture preparation.

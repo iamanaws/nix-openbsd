@@ -32,6 +32,7 @@ SUITES = {
     'cron-fallback': 'Generation checks without cronctl',
     'network': 'Native IPv4/IPv6 forwarding, PF, BGP and IPsec recovery',
     'isolation': 'Nix sandbox filesystem/network isolation, compiler consumers and lifecycle cleanup',
+    'sandbox-nix': 'Fresh Nix internal builds followed by runtime, PTY, isolation and package checks',
     'sandbox-packages': 'Fresh Nixpkgs package builds and consumers through the sandboxed daemon',
     'native': 'Native bootstrap, toolchain, C++ and Nix validation (slow)',
     'bootstrap': 'Focused native bootstrap and package builds',
@@ -71,7 +72,7 @@ def arguments(argv=None):
 
 def select_suites(args):
     if args.all:
-        return ['local', 'native', *REGULAR[1:], 'sandbox-packages']
+        return ['local', 'native', *REGULAR[1:], 'sandbox-packages', 'sandbox-nix']
     return list(dict.fromkeys(args.suite or REGULAR))
 
 
@@ -186,8 +187,8 @@ class Runtime:
             raise RuntimeError(self.prepare_error)
         if self.prepared is not None:
             return self.prepared
-        wanted = [s for s in self.suites if s in GENERATIONS or s in ['packages', 'go', 'dhcp', 'slaac', 'network', 'isolation', 'sandbox-packages']]
-        if any(s in GENERATIONS or s in ['vm', 'workflow', 'dhcp', 'slaac', 'network', 'isolation', 'sandbox-packages'] for s in self.suites):
+        wanted = [s for s in self.suites if s in GENERATIONS or s in ['packages', 'go', 'dhcp', 'slaac', 'network', 'isolation', 'sandbox-packages', 'sandbox-nix']]
+        if any(s in GENERATIONS or s in ['vm', 'workflow', 'dhcp', 'slaac', 'network', 'isolation', 'sandbox-packages', 'sandbox-nix'] for s in self.suites):
             wanted.insert(0, 'base')
         wanted = list(dict.fromkeys(wanted))
         try:
@@ -221,7 +222,7 @@ class Runtime:
         directory = self.work / name
         directory.mkdir()
         self.env['TMPDIR'] = str(directory)
-        self.timeout = self.args.timeout or (86400 if name in NATIVE else 3600)
+        self.timeout = self.args.timeout or (86400 if name in NATIVE or name == 'sandbox-nix' else 3600)
         self.deadline = time.monotonic() + self.timeout
         if name == 'local':
             self.build('local', [self.ref + '#checks.' + self.args.host_system + '.local'])
@@ -243,6 +244,8 @@ class Runtime:
                           self.source / 'tests/isolation/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
             self.command(['nix', 'eval', '--impure', '--json', '--file',
                           self.source / 'tests/sandbox-packages/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
+            self.command(['nix', 'eval', '--impure', '--json', '--file',
+                          self.source / 'tests/sandbox-nix/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
         elif name == 'base':
             self.command(['bash', self.source / 'tests/base/run.sh', '--max-jobs', '1', '--cores', '2', '--builders', ''])
         elif name in NATIVE:
@@ -266,7 +269,7 @@ class Runtime:
             if self.args.keep:
                 command.append('--keep')
             self.command(command)
-        elif name in ['dhcp', 'slaac', 'network', 'isolation', 'sandbox-packages']:
+        elif name in ['dhcp', 'slaac', 'network', 'isolation', 'sandbox-packages', 'sandbox-nix']:
             inputs = self.ensure_prepared()
             command = [sys.executable, '-B', self.source / ('tests/' + name + '/run.py'),
                        '--source', self.source, '--launcher', self.launcher,

@@ -2,9 +2,13 @@
   nixbsd,
   cores ? 8,
   memorySize ? 16384,
+  scriptPkgs ? null,
 }:
 let
   host = nixbsd.inputs.nixpkgs.legacyPackages.x86_64-linux;
+  # Generate fixtures natively when preparation runs inside OpenBSD.
+  environmentPkgs = if scriptPkgs == null then host else scriptPkgs;
+  guestScriptPkgs = if scriptPkgs == null then pkgs else scriptPkgs;
   system = nixbsd.nixosConfigurations.openbsd-base.extendModules {
     modules = [
       ../../modules/system/openbsd.nix
@@ -90,7 +94,7 @@ let
     # Configure otherwise embeds the Linux sh found in the build environment.
     BSHELL = pkgs.runtimeShell;
   };
-  environment = host.writeText "openbsd-native-environment.json" (
+  environment = environmentPkgs.writeText "openbsd-native-environment.json" (
     builtins.toJSON {
       nixpkgs = nixbsd.inputs.nixpkgs.outPath;
       # Import sources with the recipes so guest builds can run without internet access.
@@ -221,7 +225,7 @@ let
   guestLauncher = pkgs.writeShellScriptBin "test-openbsd-native" ''
     exec /var/lib/native-test/bin/test-openbsd-native "$@"
   '';
-  guestTest = pkgs.writeShellScriptBin "test-openbsd-native" ''
+  guestTest = guestScriptPkgs.writeShellScriptBin "test-openbsd-native" ''
     export NATIVE_NIXBSD=${nixbsd.outPath}
     export NATIVE_BUILD_CORES=${toString cores}
     export NATIVE_ENVIRONMENT=${environment}
