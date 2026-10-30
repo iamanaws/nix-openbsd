@@ -31,7 +31,8 @@ let
       package = pkgs.dbmate;
       buildSystem = "Go/SQLite cgo";
     };
-  };
+  }
+  // import ./workflows.nix { inherit pkgs; };
   hook = name: event: ''
     ${pkgs.python3}/bin/python3 -B ${./guard.py} ${
       pkgs.lib.escapeShellArgs [

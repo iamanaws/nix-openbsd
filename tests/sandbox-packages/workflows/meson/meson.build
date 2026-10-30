@@ -1,0 +1,5 @@
+project('sandbox-answer', 'c', version: '1')
+library = library('answer', 'answer.c', install: true)
+program = executable('answer', 'main.c', link_with: library, install: true)
+test('native-answer', program)
+import('pkgconfig').generate(library, name: 'sandbox-answer', description: 'Native library workflow')

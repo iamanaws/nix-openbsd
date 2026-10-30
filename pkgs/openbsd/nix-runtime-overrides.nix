@@ -38,6 +38,8 @@ _: prev: {
     patches = (old.patches or [ ]) ++ [
       ./nix-openbsd-ptsname.patch
       ./nix-openbsd-memory-limit.patch
+      ./nix-openbsd-closefrom.patch
+      ./nix-openbsd-kill-user.patch
     ];
   });
   nix-expr = prev.nix-expr.overrideAttrs (old: {

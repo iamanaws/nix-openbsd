@@ -1,4 +1,5 @@
 """Build ordinary package recipes through an untrusted daemon client."""
+import argparse
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,19 @@ import subprocess
 import sys
 import tempfile
 import time
+
+
+def workflow_consumers(fixtures, packages, work):
+    output = lambda name: packages[name]['outputs']['out']
+    site = f'lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages'
+    return f'''set -euo pipefail
+cd {shlex.quote(str(work / 'consumers'))}
+PYTHONPATH={shlex.quote(output('workflow-python') + '/' + site)} {shlex.quote(str(fixtures / 'python3/bin/python3'))} -c 'import sandbox_probe; assert sandbox_probe.answer() == 42'
+for program in {" ".join(shlex.quote(output(name) + '/bin/answer') for name in ['workflow-tools', 'workflow-autotools', 'workflow-cmake', 'workflow-meson'])}; do
+    test "$("$program")" = 42
+done
+printf 'SANDBOX_PACKAGE_CONSUMERS_PASS\\n'
+'''
 
 
 def consumers(fixtures, packages, work):
@@ -64,11 +78,11 @@ EOF
 test "$(sqlite3 {quote(str(database))} 'SELECT body FROM notes;')" = 'native sandbox'
 {migrate} rollback
 test "$(sqlite3 {quote(str(database))} "SELECT count(*) FROM sqlite_master WHERE name='notes';")" = 0
-printf 'SANDBOX_PACKAGE_CONSUMERS_PASS\\n'
+{workflow_consumers(fixtures, packages, work)}
 '''
 
 
-def build_packages(fixtures, timeout, recipe='sandbox-packages', consumer=consumers):
+def build_packages(fixtures, timeout, recipe='sandbox-packages', consumer=consumers, workflows_only=False):
     assert os.getuid() == 0
     source = (fixtures / 'source').resolve(strict=True)
     work = Path(tempfile.mkdtemp(prefix='openbsd-' + recipe + '.', dir='/var/tmp'))
@@ -100,6 +114,9 @@ def build_packages(fixtures, timeout, recipe='sandbox-packages', consumer=consum
     packages = json.loads(command(['nix-instantiate', '--eval', '--strict', '--json',
                                    *arguments, '-A', 'metadata'],
                                   env=env | {'NIX_REMOTE': 'local'}).stdout)
+    if workflows_only:
+        packages = {name: package for name, package in packages.items() if name.startswith('workflow-')}
+        assert packages, 'no workflow projects selected'
     paths = [path for package in packages.values() for path in package['outputs'].values()]
     assert all(not Path(path).exists() for path in paths), 'fresh package output already exists'
     subprocess.run(['/etc/rc.d/nix_daemon', 'stop'], check=True)
@@ -182,6 +199,9 @@ def build_packages(fixtures, timeout, recipe='sandbox-packages', consumer=consum
                        'processAndDomainCleanup': 'passed', 'defaultSandbox': False}
             if consumer is not None:
                 results['regularUserConsumers'] = 'passed'
+            if 'workflow-tools' in packages:
+                api = Path(packages['workflow-tools']['outputs']['out']) / 'share/workflows.json'
+                results['nativeAPIWorkflows'] = json.loads(api.read_text())
             (work / 'results.json').write_text(json.dumps(results, indent=2) + '\n')
             return results
     finally:
@@ -194,8 +214,15 @@ def build_packages(fixtures, timeout, recipe='sandbox-packages', consumer=consum
 
 
 def main():
-    fixtures = Path(sys.argv[1]).resolve(strict=True)
-    results = build_packages(fixtures, int(sys.argv[2]))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('fixtures', type=Path)
+    parser.add_argument('timeout', type=int)
+    parser.add_argument('--workflows-only', action='store_true')
+    args = parser.parse_args()
+    fixtures = args.fixtures.resolve(strict=True)
+    results = build_packages(fixtures, args.timeout,
+                             consumer=workflow_consumers if args.workflows_only else consumers,
+                             workflows_only=args.workflows_only)
     print('SANDBOX_PACKAGES_RESULT ' + json.dumps(results), flush=True)
     print('SANDBOX_PACKAGES_RUNTIME_PASS', flush=True)
 

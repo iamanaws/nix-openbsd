@@ -7,6 +7,7 @@ from pathlib import Path
 import pwd
 import signal
 import socket
+import stat
 import subprocess
 import time
 
@@ -24,6 +25,22 @@ assert os.getgroups() == []
 assert pwd.getpwuid(os.getuid()).pw_name == 'nixbld'
 assert pwd.getpwnam('nixbld').pw_uid == os.getuid()
 assert pwd.getpwuid(os.getuid()).pw_gid == os.getgid()
+
+if kind == 'replace-build-dir':
+    directory = Path('/tmp/nix-build')
+    assert Path.cwd() == directory
+    spec = json.loads(os.environ['probeSpec'])
+    os.chdir('/')
+    directory.rename('/tmp/original')
+    if spec['replacement'] == 'symlink':
+        directory.symlink_to(spec['target'])
+    elif spec['replacement'] == 'directory':
+        directory.mkdir()
+    else:
+        assert spec['replacement'] == 'missing'
+    print('FAILED_BUILD_DIRECTORY_REPLACED', flush=True)
+    raise SystemExit(42)
+
 assert os.getcwd() == '/build'
 
 outside = os.environ['outside']
@@ -122,6 +139,9 @@ else:
             receiver.settimeout(2)
             sender.sendto(b'private datagram', receiver.getsockname())
             assert receiver.recv(64) == b'private datagram'
+    if kind.startswith('limit-'):
+        from limits import inspect_limits
+        inspect_limits(fixtures, kind, metadata, json.loads(os.environ['probeSpec']))
     if kind == 'ipc':
         metadata['ipc'] = json.loads(subprocess.check_output([fixtures / 'probe/bin/exec-probe', 'ipc-create']))
     if kind == 'ipc-owner':
@@ -177,4 +197,14 @@ else:
     if kind == 'failure':
         Path('/build/kept').write_text('kept failure\n')
         raise SystemExit(42)
+    if kind == 'file-flags':
+        spec = json.loads(os.environ['probeSpec'])
+        flag = getattr(stat, spec['flag'])
+        target = Path('/build') if spec['fail'] else out
+        target.mkdir(exist_ok=True)
+        (target / 'flagged').write_text('flagged fixture\n')
+        os.chflags(target / 'flagged', flag)
+        os.chflags(target, flag)
+        print('BUILD_FILE_FLAGS_SET', flush=True)
+        raise SystemExit(42 if spec['fail'] else 0)
     out.write_text('stable output\n' if kind == 'stable' else json.dumps(metadata) + '\n')

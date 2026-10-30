@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import pwd
 import re
+import resource
 import secrets
 import shlex
 import shutil
@@ -77,11 +78,14 @@ def main():
             daemon_log.close()
             daemon_log = None
 
-    def start_daemon(domains='201 202 203 204', features=''):
+    def start_daemon(domains='201 202 203 204', features='', inherited_limits=None):
         nonlocal daemon, daemon_log
         stop_daemon()
         Path(env['NIX_DAEMON_SOCKET_PATH']).unlink(missing_ok=True)
         daemon_log = (work / ('daemon-' + secrets.token_hex(4) + '.log')).open('w')
+        def set_limits():
+            for number, value in inherited_limits.items():
+                resource.setrlimit(number, value)
         daemon = subprocess.Popen([daemon_binary, '--option', 'sandbox', 'true',
                                    '--option', 'sandbox-fallback', 'false',
                                    '--option', 'sandbox-rdomains', domains,
@@ -90,7 +94,8 @@ def main():
                                    '--option', 'hashed-mirrors', '',
                                    '--option', 'max-jobs', '2', '--option', 'cores', '2'],
                                   env=env | {'NIX_REMOTE': 'local'}, stdin=subprocess.DEVNULL,
-                                  stdout=daemon_log, stderr=subprocess.STDOUT)
+                                  stdout=daemon_log, stderr=subprocess.STDOUT,
+                                  preexec_fn=set_limits if inherited_limits else None)
         for _ in range(100):
             assert daemon.poll() is None, 'test daemon exited'
             if Path(env['NIX_DAEMON_SOCKET_PATH']).is_socket():
@@ -116,7 +121,7 @@ def main():
     ports = [server.server_port for server in servers]
 
     def build_args(kind='checks', mode=None, regular=False, no_chroot=False, url='', extra=()):
-        inputs = fixtures if kind == 'consumers' else (fixtures / 'builder').resolve(strict=True)
+        inputs = fixtures if kind in ['consumers', 'exec-policies'] else (fixtures / 'builder').resolve(strict=True)
         argv = [str(nix), str(fixtures / 'tests/build.nix'), '--argstr', 'fixtures', str(inputs),
                 '--argstr', 'nonce', secrets.token_hex(8), '--argstr', 'kind', kind,
                 '--argstr', 'outside', str(outside), '--argstr', 'undeclared', undeclared,
@@ -196,6 +201,26 @@ def main():
             yield uid
 
     @contextmanager
+    def build_class(capabilities):
+        stop_daemon()
+        config = Path('/etc/login.conf')
+        original = config.read_text()
+        def install(text):
+            config.write_text(text)
+            command([fixtures / 'cap_mkdb/bin/cap_mkdb', config], check=True)
+        lines = [line for line in original.splitlines()
+                 if 'nixbld' not in line.split(':', 1)[0].split('|')]
+        assert len(lines) < len(original.splitlines()), 'missing nixbld login class'
+        if capabilities is not None:
+            lines.insert(0, 'nixbld:' + capabilities)
+        try:
+            install('\n'.join(lines) + '\n')
+            yield
+        finally:
+            stop_daemon()
+            install(original)
+
+    @contextmanager
     def primary_group(name, gid):
         # Rebuild both native password databases; changing the text file alone
         # would leave getpwnam(3) using the old credentials.
@@ -228,6 +253,35 @@ def main():
         thread.start()
     subprocess.run(['/etc/rc.d/nix_daemon', 'stop'], check=True)
     try:
+        library = str(fixtures / 'libcxx/lib')
+        subprocess.run([sys.executable, '-B', fixtures / 'tests/helper-policies.py',
+                        '--cxx', fixtures / 'cc/bin/c++',
+                        '--shell', fixtures / 'bash/bin/bash',
+                        '--template', fixtures / 'tests/helper-policies.cc',
+                        '--descriptor-source', fixtures / 'descriptorSource',
+                        '--sandbox-patch', fixtures / 'sandboxPatch',
+                        '--pty-patch', fixtures / 'ptyPatch'], check=True,
+                       env=os.environ | {'LDFLAGS': '-L' + library + ' -Wl,-rpath,' + library})
+        record('focusedHelperUnveilAndPledgeCompatibility')
+        subprocess.run([sys.executable, '-B', fixtures / 'tests/build-dir-cleanup.py',
+                        '--cxx', fixtures / 'cc/bin/c++',
+                        '--template', fixtures / 'tests/build-dir-cleanup.cc',
+                        '--builder-source', fixtures / 'builderSource',
+                        '--patch', fixtures / 'sandboxPatch'], check=True,
+                       env=os.environ | {'LDFLAGS': '-L' + library + ' -Wl,-rpath,' + library})
+        record('focusedFailedBuildDirectoryCleanup')
+        subprocess.run([sys.executable, '-B', fixtures / 'tests/file-flags.py',
+                        '--cxx', fixtures / 'cc/bin/c++',
+                        '--template', fixtures / 'tests/file-flags.cc',
+                        '--patch', fixtures / 'sandboxPatch'], check=True,
+                       env=os.environ | {'LDFLAGS': '-L' + library + ' -Wl,-rpath,' + library})
+        record('focusedBuildFileFlags')
+        subprocess.run([sys.executable, '-B', fixtures / 'tests/kill-user.py',
+                        '--cxx', fixtures / 'cc/bin/c++',
+                        '--template', fixtures / 'tests/kill-user.cc',
+                        '--process-source', fixtures / 'processSource'], check=True,
+                       env=os.environ | {'LDFLAGS': '-L' + library + ' -Wl,-rpath,' + library})
+        record('focusedProcessKillHelper')
         start_daemon()
         output = build('unsandboxed-control', kind='control', mode='false')
         lines = output.read_text().splitlines()
@@ -248,6 +302,74 @@ def main():
         assert (output / 'result').read_text() == 'NATIVE_CONSUMERS_PASS\n'
         clean_domains()
         record('sandboxedCCppGoAndCgoThroughRegularUserDaemon')
+
+        output = build('inherited-exec-policies', kind='exec-policies', regular=True)
+        policy_results = json.loads((output / 'results.json').read_text())
+        assert len(policy_results) == 22, policy_results
+        clean_domains()
+        record('inheritedPledgeUnveilAndNativeToolCompatibility')
+
+        limits = json.loads(build('default-resource-limits', kind='limits', regular=True).read_text())
+        assert limits['nproc'] == [512, 1024] and limits['nofile'] == [512, 1024], limits
+        for caps, expected in [
+                ('maxproc-cur=24:maxproc-max=32:openfiles-cur=48:openfiles-max=64:'
+                 'datasize-cur=1G:datasize-max=2G:tc=default',
+                 {'nproc': [24, 32], 'nofile': [48, 64], 'data': [1 << 30, 2 << 30]}),
+                ('maxproc=32:maxproc-cur=24:maxproc-max=24:'
+                 'openfiles=64:openfiles-cur=48:openfiles-max=48:'
+                 'datasize=2G:datasize-cur=1G:datasize-max=1G:tc=default',
+                 {'nproc': [32, 32], 'nofile': [64, 64], 'data': [2 << 30, 2 << 30]})]:
+            with build_class(caps):
+                start_daemon()
+                actual = json.loads(build('class-precedence', kind='limits', regular=True).read_text())
+                assert actual == expected, actual
+        record('nativeLoginClassLimitsAndCapabilityPrecedence')
+
+        caps = ('maxproc-cur=24:maxproc-max=32:openfiles-cur=48:openfiles-max=64:'
+                'datasize-cur=1G:datasize-max=2G:tc=default')
+        expected = {'nproc': [24, 32], 'nofile': [48, 64], 'data': [1 << 30, 2 << 30]}
+        extra = ['--argstr', 'probeSpec', json.dumps(expected)]
+        with build_class(caps):
+            start_daemon()
+            for kind, field, error in [('limit-processes', 'processExhaustion', 'EAGAIN'),
+                                       ('limit-fds', 'descriptorExhaustion', 'EMFILE'),
+                                       ('limit-data', 'dataExhaustion', 'ENOMEM')]:
+                metadata = json.loads(build(kind, kind=kind, regular=True, extra=extra).read_text())
+                assert metadata[field] == error and not user_processes(metadata['uid']), metadata
+                clean_domains()
+            with held_build(kind='limit-hold', extra=extra) as (_, metadata, _):
+                assert metadata['processExhaustion'] == 'EAGAIN'
+                assert metadata['descriptorExhaustion'] == 'EMFILE'
+            clean_domains()
+            assert not user_processes(metadata['uid'])
+            command([fixtures / 'probe/bin/exec-probe', 'ipc-removed', *map(str, metadata['ipc'])], check=True)
+        record('hardResourceCeilingsExhaustionAndCancellationCleanup')
+
+        start_daemon(inherited_limits={resource.RLIMIT_NPROC: (64, 64),
+                                       resource.RLIMIT_NOFILE: (128, 128),
+                                       resource.RLIMIT_DATA: (1 << 30, 1 << 30)})
+        actual = json.loads(build('inherited-hard-limits', kind='limits', regular=True).read_text())
+        assert actual == {'nproc': [64, 64], 'nofile': [128, 128], 'data': [1 << 30, 1 << 30]}, actual
+        record('buildUserClassCannotRelaxInheritedHardLimits')
+
+        for caps, message in [('maxproc=invalid:tc=default', 'invalid resource limit'),
+                              ('openfiles-cur=64:openfiles-max=32:tc=default', 'exceeds its maximum'),
+                              ('datasize=invalid:tc=default', 'invalid resource limit'),
+                              (None, 'cannot load login class')]:
+            with build_class(caps):
+                start_daemon()
+                error = build('invalid-resource-class', expected=1)
+                assert message in error and 'ISOLATION_BUILDER_STARTED' not in error, error
+        record('invalidOrMissingResourceClassRejectsBeforeBuilder')
+
+        with build_class('maxproc-cur=512:maxproc-max=1024:openfiles-cur=512:openfiles-max=1024:'
+                         'datasize=2G:tc=default'):
+            start_daemon()
+            output = build('memory-limited-native-consumers', kind='consumers', regular=True)
+            assert (output / 'result').read_text() == 'NATIVE_CONSUMERS_PASS\n'
+            clean_domains()
+        start_daemon()
+        record('sandboxedNativeConsumersWithFiniteDataLimit')
 
         for address, port in zip(['127.0.0.1', '[::1]'], ports):
             url = f'http://{address}:{port}/'
@@ -273,6 +395,12 @@ def main():
                                             '/declared-host=' + str(outside)])
         build('optional-missing-mapping', extra=['--option', 'extra-sandbox-paths',
                                                  '/optional=/no-such-sandbox-fixture?'])
+        source_parent = work / 'source-parent'
+        source_parent.symlink_to(outside.parent)
+        error = build('mapping-source-parent-symlink', expected=1,
+                      extra=['--option', 'extra-sandbox-paths',
+                             '/declared-host=' + str(source_parent / outside.name)])
+        assert 'symlink' in error and 'ISOLATION_BUILDER_STARTED' not in error, error
         escaped = work / 'mapped-link'
         escaped.symlink_to(outside.parent)
         error = build('mapping-symlink-escape', expected=1, extra=['--option', 'extra-sandbox-paths',
@@ -358,6 +486,42 @@ def main():
         kept = re.search(r"keeping build directory ([\"'])(.*?)\1", error)
         assert kept and (Path(kept.group(2)) / 'kept').read_text() == 'kept failure\n', error
         clean_domains()
+        victim = work / 'keep-failed-private'
+        victim.write_text('private cleanup fixture\n')
+        victim.chmod(0o600)
+        for replacement in ['symlink', 'directory', 'missing']:
+            spec = json.dumps({'replacement': replacement, 'target': str(victim)})
+            error = build('replaced-build-dir-' + replacement, kind='replace-build-dir', expected=1,
+                          extra=['--keep-failed', '--option', 'sandbox-build-dir', '/tmp/nix-build',
+                                 '--argstr', 'probeSpec', spec])
+            assert 'FAILED_BUILD_DIRECTORY_REPLACED' in error, error
+            assert 'it was removed or replaced' in error, error
+            assert victim.stat().st_mode & 0o7777 == 0o600
+            assert victim.read_text() == 'private cleanup fixture\n'
+            assert 'note: keeping build directory' not in error, error
+            clean_domains()
+        record('replacedFailedBuildDirectoriesAreDiscarded')
+        for flag in ['UF_IMMUTABLE', 'UF_APPEND']:
+            spec = json.dumps({'flag': flag, 'fail': False})
+            output = build('flagged-output-' + flag, kind='file-flags',
+                           extra=['--argstr', 'probeSpec', spec])
+            assert output.stat().st_flags == 0 and (output / 'flagged').stat().st_flags == 0
+            assert (output / 'flagged').read_text() == 'flagged fixture\n'
+            spec = json.dumps({'flag': flag, 'fail': True})
+            for keep in [False, True]:
+                error = build('flagged-failure-' + flag + str(keep), kind='file-flags', expected=1,
+                              extra=['--argstr', 'probeSpec', spec] + (['--keep-failed'] if keep else []))
+                assert 'BUILD_FILE_FLAGS_SET' in error and 'exit code 42' in error, error
+                drv = re.search(r"building '([^']+\.drv)'", error)
+                assert drv and not Path(drv.group(1) + '.chroot').exists(), error
+                if keep:
+                    kept = re.search(r"keeping build directory ([\"'])(.*?)\1", error)
+                    assert kept, error
+                    directory = Path(kept.group(2))
+                    assert directory.stat().st_flags == 0 and (directory / 'flagged').stat().st_flags == 0
+                    assert (directory / 'flagged').read_text() == 'flagged fixture\n'
+                clean_domains()
+        record('BuildFileFlagsDoNotPreventOutputOrFailureCleanup')
         error = build('timeout', kind='timeout', expected=1, extra=['--timeout', '5'])
         assert 'timed out' in error
         metadata = json.loads(re.search(r'SANDBOX_METADATA (.+)', error).group(1))

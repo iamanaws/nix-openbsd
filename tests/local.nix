@@ -10,6 +10,7 @@ pkgs.runCommand "openbsd-local-tests"
       gnused
       gawk
       jq
+      stdenv.cc
     ];
   }
   ''
@@ -20,5 +21,6 @@ pkgs.runCommand "openbsd-local-tests"
     python3 -B -m unittest discover -s tests/generations -p 'test_*.py'
     python3 -B -m unittest discover -s vm -p 'test_*.py'
     python3 -B tests/native/test-runner.py
+    python3 -B tests/isolation/snapshot-copy.py --cxx "$CXX"
     touch "$out"
   ''

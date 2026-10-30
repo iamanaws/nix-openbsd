@@ -89,11 +89,13 @@ Fixed-output builds retain networking; unsupported modes fail closed.
  endif
 --- /dev/null
 +++ b/openbsd/build/chroot-openbsd-derivation-builder.hh
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,60 @@
 +#pragma once
 +
 +#include "chroot-derivation-builder.hh"
++#include <array>
 +#include <net/if.h>
++#include <sys/resource.h>
 +
 +namespace nix {
 +
@@ -113,11 +115,25 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +    unsigned int routingDomain = 0;
 +    bool processesStopped = false;
 +
++    struct ResourceLimit
++    {
++        int resource;
++        const char * name;
++        struct rlimit value;
++    };
++    std::array<ResourceLimit, 3> resourceLimits{{
++        {RLIMIT_NPROC, "maxproc", {}},
++        {RLIMIT_NOFILE, "openfiles", {}},
++        {RLIMIT_DATA, "datasize", {}},
++    }};
++
 +    std::unique_ptr<UserLock> getBuildUser() override;
 +    void prepareUser() override;
++    void prepareResourceLimits();
 +    void setBuildTmpDir() override;
 +    void makeParents(const std::filesystem::path & target);
 +    void materialise(const std::filesystem::path & source, const std::filesystem::path & target, bool immutable);
++    void materialise(int sourceDir, const std::filesystem::path & source, const std::filesystem::path & target, bool immutable);
 +    static AutoCloseFD networkSocket();
 +    static struct ifreq interfaceRequest(unsigned int id);
 +    std::string domainOwner();
@@ -127,6 +143,8 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +    void prepareSandbox() override;
 +    void startChild() override;
 +    void enterChroot() override;
++    void setUser() override;
++    void clearBuildFileFlags();
 +    void killSandbox(bool getStats) override;
 +    void cleanupBuild(bool force) override;
 +};
@@ -134,20 +152,24 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +} // namespace nix
 --- /dev/null
 +++ b/openbsd/build/openbsd-derivation-builder.cc
-@@ -0,0 +1,452 @@
+@@ -0,0 +1,605 @@
 +#include "chroot-openbsd-derivation-builder.hh"
 +#include "sysv-ipc.hh"
 +#include "nix/util/file-system.hh"
 +#include "nix/util/file-system-at.hh"
++#include "nix/util/logging.hh"
 +#include "nix/util/signals.hh"
 +#include "nix/util/processes.hh"
 +#include "nix/util/strings.hh"
 +#include "nix/store/pathlocks.hh"
 +
++#include <algorithm>
 +#include <db.h>
 +#include <fcntl.h>
 +#include <pwd.h>
 +#include <grp.h>
++#include <login_cap.h>
++#include <stdlib.h>
 +#include <unistd.h>
 +#include <sys/ioctl.h>
 +#include <sys/proc.h>
@@ -185,7 +207,53 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +    }
 +    if (derivationType.isSandboxed() && localSettings.sandboxRdomains.get().empty())
 +        throw Error("configure sandbox-rdomains for OpenBSD sandboxing");
++    prepareResourceLimits();
 +    DerivationBuilderImpl::prepareUser();
++}
++
++void ChrootOpenBSDDerivationBuilder::prepareResourceLimits()
++{
++    /* Read the host account's class before entering the chroot. */
++    auto * account = getpwuid(buildUser->getUID());
++    if (!account)
++        throw Error("cannot find build user %u", buildUser->getUID());
++    std::string name = account->pw_class;
++    std::unique_ptr<login_cap_t, decltype(&login_close)> loginClass(login_getclass(name.data()), login_close);
++    if (!loginClass)
++        throw Error("cannot load login class '%s' for build user %u", name, buildUser->getUID());
++
++    for (auto & limit : resourceLimits) {
++        struct rlimit inherited;
++        if (getrlimit(limit.resource, &inherited) == -1)
++            throw SysError("reading build resource limit '%s'", limit.name);
++        auto read = [&](std::string capability, rlim_t fallback) -> rlim_t {
++            auto get = limit.resource == RLIMIT_DATA ? login_getcapsize : login_getcapnum;
++            auto value = get(loginClass.get(), capability.data(), fallback, -1);
++            if (value < 0)
++                throw Error("invalid resource limit '%s' in login class '%s'", capability, name);
++            return static_cast<rlim_t>(value);
++        };
++        auto readPart = [&](const char * suffix, rlim_t fallback) {
++            std::string capability = std::string(limit.name) + suffix;
++            auto value = read(limit.name, fallback);
++            if (auto * caps = loginClass->lc_cap) {
++                auto * generic = cgetcap(caps, limit.name, '=');
++                auto * specific = cgetcap(caps, capability.c_str(), '=');
++                /* Match login_cap(3): a generic entry preceding -cur/-max,
++                   including inherited entries, overrides those entries. */
++                if (generic && specific && generic < specific)
++                    return value;
++            }
++            return read(capability, value);
++        };
++        auto current = readPart("-cur", inherited.rlim_cur);
++        auto maximum = readPart("-max", inherited.rlim_max);
++        if (current > maximum)
++            throw Error("resource limit '%s' exceeds its maximum in login class '%s'", limit.name, name);
++        /* A build user's class cannot relax the daemon's hard limits. */
++        limit.value.rlim_max = std::min(maximum, inherited.rlim_max);
++        limit.value.rlim_cur = std::min(current, limit.value.rlim_max);
++    }
 +}
 +
 +void ChrootOpenBSDDerivationBuilder::setBuildTmpDir()
@@ -223,36 +291,79 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +void ChrootOpenBSDDerivationBuilder::materialise(
 +    const std::filesystem::path & source, const std::filesystem::path & target, bool immutable)
 +{
++    if (!source.is_absolute() || source != source.lexically_normal() || source.filename().empty())
++        throw Error("unsafe OpenBSD sandbox source '%s'", PathFmt(source));
++    AutoCloseFD root = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
++    if (!root)
++        throw SysError("opening filesystem root for sandbox inputs");
++    auto parent = source.parent_path() == "/" ? std::move(root)
++        : openFileEnsureBeneathNoSymlinks(
++            root.get(), CanonPath(source.parent_path().native()), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
++    if (!parent)
++        throw SysError("opening sandbox source parent '%s'", PathFmt(source.parent_path()));
++    materialise(parent.get(), source.filename(), target, immutable);
++}
++
++void ChrootOpenBSDDerivationBuilder::materialise(
++    int sourceDir, const std::filesystem::path & source, const std::filesystem::path & target, bool immutable)
++{
 +    checkInterrupt();
-+    auto st = lstat(source);
++    auto st = nix::fstatat(sourceDir, source);
++    auto verify = [&](const struct stat & opened) {
++        if (opened.st_dev != st.st_dev || opened.st_ino != st.st_ino
++            || opened.st_mode != st.st_mode || opened.st_uid != st.st_uid || opened.st_gid != st.st_gid)
++            throw Error("sandbox source changed while copying '%s'", PathFmt(target));
++    };
 +    auto existing = maybeLstat(target);
 +    if (S_ISDIR(st.st_mode)) {
++        /* Keep traversing the opened directory if its pathname is replaced. */
++        AutoCloseFD input = openat(sourceDir, source.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
++        if (!input)
++            throw SysError("opening sandbox input directory '%s'", PathFmt(source));
++        verify(nix::fstat(input.get()));
++        AutoCloseDir directory(fdopendir(input.get()));
++        if (!directory)
++            throw SysError("reading sandbox input directory '%s'", PathFmt(source));
++        input.release();
 +        if (existing && !S_ISDIR(existing->st_mode))
 +            throw Error("conflicting sandbox mapping at '%s'", PathFmt(target));
 +        if (!existing)
 +            createDir(target, 0700);
-+        for (auto & entry : DirectoryIterator(source))
-+            materialise(entry.path(), target / entry.path().filename(), immutable);
++        struct dirent * entry;
++        while (errno = 0, entry = readdir(directory.get())) {
++            std::string name = entry->d_name;
++            if (name != "." && name != "..")
++                materialise(dirfd(directory.get()), name, target / name, immutable);
++        }
++        if (errno)
++            throw SysError("reading sandbox input directory '%s'", PathFmt(source));
 +        chmod(target, st.st_mode & 0555);
 +        setWriteTime(target, st);
 +    } else {
 +        if (existing)
 +            throw Error("conflicting sandbox mapping at '%s'", PathFmt(target));
 +        if (S_ISLNK(st.st_mode)) {
-+            createSymlink(readLink(source), target);
++            auto link = readLinkAt(sourceDir, CanonPath::fromFilename(source.native()));
++            verify(nix::fstatat(sourceDir, source));
++            createSymlink(link, target);
 +            setWriteTime(target, st);
 +        } else if (S_ISREG(st.st_mode)) {
 +            /* Only root-owned, read-only store files may share inodes.
-+               Copy configured host paths. */
-+            if (immutable && st.st_uid == 0 && !(st.st_mode & 0222)) {
-+                if (link(source.c_str(), target.c_str()) == 0)
++               Copy configured host paths and strip set-ID bits. */
++            if (immutable && st.st_uid == 0 && !(st.st_mode & (0222 | S_ISUID | S_ISGID))) {
++                if (linkat(sourceDir, source.c_str(), AT_FDCWD, target.c_str(), 0) == 0) {
++                    verify(lstat(target));
 +                    return;
++                }
 +                if (errno != EXDEV && errno != EMLINK && errno != EPERM)
 +                    throw SysError("linking sandbox input '%s'", PathFmt(source));
 +            }
-+            AutoCloseFD input = open(source.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
++            /* A replaced FIFO must not block the worker before fstat. */
++            AutoCloseFD input = openat(sourceDir, source.c_str(),
++                O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK | O_NOCTTY);
 +            if (!input)
 +                throw SysError("opening sandbox input '%s'", PathFmt(source));
++            verify(nix::fstat(input.get()));
 +            AutoCloseFD output = open(target.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
 +            if (!output)
 +                throw SysError("creating sandbox input '%s'", PathFmt(target));
@@ -515,6 +626,51 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +        throw SysError("entering OpenBSD build sandbox");
 +}
 +
++void ChrootOpenBSDDerivationBuilder::setUser()
++{
++    for (auto & limit : resourceLimits)
++        if (setrlimit(limit.resource, &limit.value) == -1)
++            throw SysError("setting build resource limit '%s'", limit.name);
++    DerivationBuilderImpl::setUser();
++}
++
++static void clearBuildFileFlags(int parent, const std::filesystem::path & name, uid_t uid)
++{
++    checkInterrupt();
++    auto st = nix::fstatat(parent, name);
++    /* Leave input inodes alone: they may be hard-linked to the host store. */
++    if (st.st_uid == uid && (st.st_flags & UF_SETTABLE))
++        if (chflagsat(parent, name.c_str(), st.st_flags & ~UF_SETTABLE, AT_SYMLINK_NOFOLLOW) == -1)
++            throw SysError("clearing build file flags on '%s'", PathFmt(name));
++    if (!S_ISDIR(st.st_mode))
++        return;
++    AutoCloseFD fd = openat(parent, name.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
++    if (!fd)
++        throw SysError("opening build directory '%s'", PathFmt(name));
++    AutoCloseDir directory(fdopendir(fd.get()));
++    if (!directory)
++        throw SysError("reading build directory '%s'", PathFmt(name));
++    fd.release();
++    struct dirent * entry;
++    while (errno = 0, entry = readdir(directory.get())) {
++        std::string child = entry->d_name;
++        if (child != "." && child != "..")
++            clearBuildFileFlags(dirfd(directory.get()), child, uid);
++    }
++    if (errno)
++        throw SysError("reading build directory '%s'", PathFmt(name));
++}
++
++void ChrootOpenBSDDerivationBuilder::clearBuildFileFlags()
++{
++    if (!autoDelChroot)
++        return;
++    AutoCloseFD root = open(chrootRootDir.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
++    if (!root)
++        throw SysError("opening build root for file flag cleanup");
++    nix::clearBuildFileFlags(root.get(), ".", buildUser->getUID());
++}
++
 +void ChrootOpenBSDDerivationBuilder::killSandbox(bool getStats)
 +{
 +    DerivationBuilderImpl::killSandbox(getStats);
@@ -545,8 +701,8 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +            break;
 +        }
 +        if (!live) {
-+            processesStopped = true;
 +            Pid cleanup = startProcess([&] {
++                closefrom(STDERR_FILENO + 1);
 +                if (setgroups(0, nullptr) == -1 || setgid(buildUser->getGID()) == -1
 +                    || setuid(buildUser->getUID()) == -1)
 +                    throw SysError("dropping privileges for OpenBSD IPC cleanup");
@@ -555,6 +711,10 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +            });
 +            if (!statusOk(cleanup.wait()))
 +                throw Error("OpenBSD build IPC cleanup failed");
++            /* Owners can set immutable/append flags even inside a chroot.
++               Clear them after all build processes exit, before handling outputs. */
++            clearBuildFileFlags();
++            processesStopped = true;
 +            return;
 +        }
 +        // Signal as the build UID to protect other users after PID reuse.
@@ -566,19 +726,30 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +
 +void ChrootOpenBSDDerivationBuilder::cleanupBuild(bool force)
 +{
++    if (buildUser && !processesStopped)
++        killSandbox(false);
 +    if (routingDomain) {
-+        if (!processesStopped)
-+            killSandbox(false);
 +        auto socket = networkSocket();
 +        destroyDomain(socket.get(), routingDomain);
 +        routingDomain = 0;
 +        routingDomainLock.close();
 +    }
 +    /* Preserve --keep-failed without retaining copied inputs. */
-+    if (!force && settings.keepFailed && !drv.isBuiltin() && !tmpDir.empty() && pathExists(tmpDir)) {
-+        auto kept = topTmpDir / "build";
-+        moveFile(tmpDir, kept);
-+        tmpDir = kept;
++    if (!force && settings.keepFailed && !drv.isBuiltin() && !tmpDir.empty()) {
++        auto st = maybeLstat(tmpDir);
++        bool keep = tmpDirFd && st && S_ISDIR(st->st_mode);
++        if (keep) {
++            auto original = nix::fstat(tmpDirFd.get());
++            keep = st->st_dev == original.st_dev && st->st_ino == original.st_ino;
++        }
++        if (keep) {
++            auto kept = topTmpDir / "build";
++            moveFile(tmpDir, kept);
++            tmpDir = kept;
++        } else {
++            warn("not keeping build directory '%s': it was removed or replaced", PathFmt(tmpDir));
++            force = true;
++        }
 +    }
 +    if (chrootRootDir.empty())
 +        DerivationBuilderImpl::cleanupBuild(force);
@@ -589,7 +760,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +} // namespace nix
 --- /dev/null
 +++ b/openbsd/build/sysv-ipc.cc
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,113 @@
 +#include <sys/types.h>
 +#include <sys/sysctl.h>
 +
@@ -613,6 +784,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +#include <vector>
 +#include <cstddef>
 +#include <cerrno>
++#include <unistd.h>
 +
 +namespace nix {
 +
@@ -620,6 +792,9 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +   Kernel permission checks protect other users after IPC ID reuse. */
 +void cleanupOpenBSDSysVIPC(uid_t uid)
 +{
++    if (unveil("/", "") == -1 || unveil(nullptr, nullptr) == -1)
++        throw SysError("restricting OpenBSD IPC cleanup");
++
 +    auto read = [](int enabledName, int infoName, size_t padding) {
 +        int enabled = 0;
 +        size_t size = sizeof(enabled);
@@ -765,7 +940,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
  #endif
  
  #ifdef __APPLE__
-@@ -1861,6 +1865,11 @@
+@@ -1874,6 +1878,11 @@
          return DerivationBuilderUnique(new ChrootFreeBSDDerivationBuilder(store, miscMethods, std::move(params)));
  
      return DerivationBuilderUnique(new FreeBSDDerivationBuilder(store, miscMethods, std::move(params)));

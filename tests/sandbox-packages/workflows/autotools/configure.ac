@@ -1,0 +1,8 @@
+AC_INIT([sandbox-answer], [1])
+AM_INIT_AUTOMAKE([foreign])
+AC_CONFIG_SRCDIR([answer.c])
+AC_PROG_CC
+AM_PROG_AR
+LT_INIT
+AC_CONFIG_FILES([Makefile])
+AC_OUTPUT

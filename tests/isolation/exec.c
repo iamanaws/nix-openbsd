@@ -1,14 +1,17 @@
 /* Native constants and IPC fixtures used by the daemon sandbox tests. */
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
 #include <sys/sem.h>
 #include <sys/shm.h>
 #include <sys/sysctl.h>
+#include <sys/resource.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,6 +56,107 @@ initialise_ipc(int mode, int gid)
 int
 main(int argc, char **argv)
 {
+    if (argc == 2 && (strcmp(argv[1], "limits") == 0 || strcmp(argv[1], "limit-state") == 0)) {
+        struct rlimit processes, files, data;
+        assert(getrlimit(RLIMIT_NPROC, &processes) == 0);
+        assert(getrlimit(RLIMIT_NOFILE, &files) == 0);
+        assert(getrlimit(RLIMIT_DATA, &data) == 0);
+        FILE *out = stdout;
+        if (strcmp(argv[1], "limits") == 0) {
+            assert(getuid() != 0);
+            out = fopen(getenv("out"), "w");
+            assert(out != NULL);
+        }
+        assert(fprintf(out, "{\"nproc\":[%ju,%ju],\"nofile\":[%ju,%ju],\"data\":[%ju,%ju]}\n",
+            (uintmax_t)processes.rlim_cur, (uintmax_t)processes.rlim_max,
+            (uintmax_t)files.rlim_cur, (uintmax_t)files.rlim_max,
+            (uintmax_t)data.rlim_cur, (uintmax_t)data.rlim_max) > 0);
+        assert(fclose(out) == 0);
+        return 0;
+    }
+    if (argc == 2 && strcmp(argv[1], "limits-raise") == 0) {
+        int resources[] = {RLIMIT_NPROC, RLIMIT_NOFILE, RLIMIT_DATA};
+        for (size_t i = 0; i < sizeof(resources) / sizeof(resources[0]); ++i) {
+            struct rlimit limit;
+            assert(getrlimit(resources[i], &limit) == 0);
+            assert(limit.rlim_max < RLIM_INFINITY);
+            ++limit.rlim_max;
+            assert(setrlimit(resources[i], &limit) == -1 && errno == EPERM);
+        }
+        return 0;
+    }
+    if (argc >= 7 && strcmp(argv[1], "exec-policy") == 0) {
+        /* Exercise inherited policies in test children, not in Nix itself. */
+        if (strcmp(argv[3], "none") != 0) {
+            assert(unveil("/", "rx") == 0);
+            assert(unveil(argv[5], "rwxc") == 0);
+            assert(unveil("/dev/null", "rw") == 0);
+            assert(unveil(argv[4], "") == 0);
+            if (strcmp(argv[3], "locked") == 0)
+                assert(unveil(NULL, NULL) == 0);
+            else
+                assert(strcmp(argv[3], "open") == 0);
+        }
+        if (strcmp(argv[2], "-") != 0)
+            assert(pledge(argv[2], argv[2]) == 0);
+        execv(argv[6], argv + 6);
+        perror("exec policy child");
+        return 1;
+    }
+    if (argc == 6 && strcmp(argv[1], "exec-visibility") == 0) {
+        unsigned int count = strtoul(argv[2], NULL, 10);
+        if (count) {
+            char next[20];
+            snprintf(next, sizeof(next), "%u", count - 1);
+            execl(argv[0], argv[0], "exec-visibility", next, argv[3], argv[4], argv[5], (char *)NULL);
+            perror("exec visibility child");
+            return 1;
+        }
+        struct stat st;
+        assert(stat(argv[4], &st) == 0);
+        errno = 0;
+        int visible = stat(argv[3], &st) == 0;
+        int error = errno;
+        assert(visible == atoi(argv[5]));
+        if (!visible)
+            assert(error == ENOENT || error == EACCES);
+        return 0;
+    }
+    if (argc == 3 && strcmp(argv[1], "pledge-expand") == 0) {
+        assert(pledge(argv[2], NULL) == -1 && errno == EPERM);
+        assert(pledge(NULL, argv[2]) == -1 && errno == EPERM);
+        return 0;
+    }
+    if (argc == 3 && strcmp(argv[1], "unveil-reveal") == 0) {
+        struct stat st;
+        assert(stat(argv[2], &st) == -1);
+        assert(errno == EACCES || errno == ENOENT);
+        assert(unveil(argv[2], "r") == 0);
+        assert(stat(argv[2], &st) == 0);
+        return 0;
+    }
+    if (argc == 3 && strcmp(argv[1], "policy-ipc") == 0) {
+        int id;
+        errno = 0;
+        if (strcmp(argv[2], "shm") == 0) {
+            id = shmget(IPC_PRIVATE, 4096, IPC_CREAT | 0600);
+            if (id >= 0)
+                assert(shmctl(id, IPC_RMID, NULL) == 0);
+        } else if (strcmp(argv[2], "msg") == 0) {
+            id = msgget(IPC_PRIVATE, IPC_CREAT | 0600);
+            if (id >= 0)
+                assert(msgctl(id, IPC_RMID, NULL) == 0);
+        } else {
+            assert(strcmp(argv[2], "sem") == 0);
+            id = semget(IPC_PRIVATE, 1, IPC_CREAT | 0600);
+            if (id >= 0)
+                assert(semctl(id, 0, IPC_RMID) == 0);
+        }
+        if (id >= 0)
+            return 0;
+        assert(errno == ENOSYS);
+        return 2;
+    }
     if (argc == 2 && strcmp(argv[1], "fd-audit") == 0) {
         /* Check the exec boundary before opening the output or other files. */
         for (int fd = 3; fd < getdtablesize(); ++fd)

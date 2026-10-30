@@ -51,6 +51,20 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(runner.select_suites(args), ['dns', 'generations'])
         self.assertTrue(args.live_only)
 
+    def test_workflows_only_requires_and_reaches_package_suite(self):
+        for argv in [[], ['--all'], ['--suite', 'isolation']]:
+            with self.subTest(argv=argv), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                runner.arguments([*argv, '--workflows-only'])
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            args = runner.arguments(['--suite', 'sandbox-packages', '--workflows-only'])
+            runtime = runner.Runtime(args, ['sandbox-packages'], work)
+            runtime.launcher = Path('/launcher')
+            with patch.object(runtime, 'ensure_prepared', return_value={'sandbox-packages': '/fixtures'}), \
+                 patch.object(runtime, 'command') as command:
+                runtime.run_suite('sandbox-packages', work / 'packages.log')
+            self.assertIn('--workflows-only', command.call_args.args[0])
+
     def test_listing_needs_no_nix_or_vm(self):
         with patch.object(runner, 'Runtime', side_effect=AssertionError('Unexpected test run')):
             with contextlib.redirect_stdout(io.StringIO()) as output:

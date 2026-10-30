@@ -22,7 +22,7 @@ supported hosts. Suites run sequentially.
 
 | Suite | Coverage |
 | --- | --- |
-| `local` | Unit tests and configuration evaluation without a VM. Unit tests also run through `nix flake check`. |
+| `local` | Unit tests, sandbox snapshot-copy probes and configuration evaluation without a VM. These checks also run through `nix flake check`. |
 | `base` | Services, HTTPS, MTU, IPv6 routes and network startup failures. |
 | `packages` | C/C++, SQLite, tmux, Python/CFFI, libevent, sqlite-utils and Go consumers. |
 | `go` | Short standard-library tests, pure Go, SQLite cgo, shfmt and regular-user builds. |
@@ -31,8 +31,8 @@ supported hosts. Suites run sequentially.
 | `workflow` | Personal configuration template, native builds, live switching and rollback. |
 | `generations`, `dns`, `logging`, `doas`, `mail`, `maintenance`, `cron-fallback` | [Generation checks](../tests/generations/README.md), including failure recovery, rollback, GC and boot recovery. |
 | `network` | [Two-router transit, BGP, PF and IPsec](../tests/network/README.md). |
-| `isolation` | [Nix sandbox](build-isolation.md): filesystem/network isolation, compiler consumers, daemon policy, shared kernel state and lifecycle cleanup. |
-| `sandbox-packages` | Fresh Hello, fmt, inih, MarkupSafe, shfmt and dbmate builds through a sandboxed daemon, with parallel builds and regular-user consumers. |
+| `isolation` | [Nix sandbox](build-isolation.md): filesystem/network isolation, compiler consumers, daemon policy, helper policies, exec-policy compatibility, resource limits, shared kernel state and lifecycle cleanup. |
+| `sandbox-packages` | Fresh native packages and build-tool workflow projects through a sandboxed daemon, with parallel builds and regular-user consumers. |
 | `sandbox-nix` | Rebuild all 14 Nix components inside the sandbox, then run native runtime, local/daemon PTY, isolation and fresh package checks with the rebuilt Nix. |
 | `native` | [Bootstrap, toolchain, C++ and Nix](../tests/native/README.md). Also selectable as `bootstrap`, `toolchain`, `cxx` or `nix`. |
 
@@ -76,6 +76,24 @@ The suite preloads build inputs, adds a unique nonce, and rejects substituted
 outputs. Build hooks verify the UID, routing domain, hidden host files and
 blocked host listeners. Installed consumers check C/C++ linkage, the Python
 C extension, shell formatting and SQLite migrations through cgo.
+
+Five small projects add explicit workflow coverage alongside the six packages:
+
+| Workflow | Exercised behavior |
+| --- | --- |
+| stdenv and Make | Shell pipes/process substitution, find/xargs, editing and patching, tar links, gzip/bzip2/xz, checksums, static archives, compiler response files and pkg-config linkage. |
+| Git and Perl | Offline clone through upload-pack, archive/fsck, Perl threads and native XS modules. |
+| Autotools | Autoconf/Automake/Libtool regeneration, shared-library build, `make check` and installed executable. |
+| CMake | Ninja build, CTest, C++ threads, shared-library installation and runtime linking. |
+| Meson | Ninja build, tests, shared-library installation and pkg-config metadata generation. |
+| Python | PEP 517 wheel and C extension; fork/spawn/forkserver process pools, threads, mmap/flock, Unix sockets and descriptor passing, private IPv4/IPv6 loopback and SQLite WAL. |
+
+The `sandbox-nix` suite runs this same coverage with the rebuilt Nix daemon.
+For a shorter run of the five workflow projects and their installed consumers:
+
+```sh
+nix run .#test -- --suite sandbox-packages --workflows-only --vm-state ./openbsd-native-vm --keep
+```
 
 To rebuild Nix and its internal libraries under isolation while reusing the
 compiler and external dependencies:

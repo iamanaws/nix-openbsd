@@ -58,6 +58,7 @@ def arguments(argv=None):
     parser.add_argument('--keep', action='store_true', help='also retain successful test disks')
     parser.add_argument('--vm-state', type=Path, help='copy a stopped native VM for faster fixture preparation')
     parser.add_argument('--live-only', action='store_true', help='skip reboots, GC and console recovery in selected generation suites')
+    parser.add_argument('--workflows-only', action='store_true', help='run only the five tool projects in --suite sandbox-packages')
     parser.add_argument('--baseline', default=BASELINE, help='published native VM used to build new test inputs')
     parser.add_argument('--timeout', type=int, help='seconds per suite; defaults to 1 hour, or 24 hours for native suites')
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1], help=argparse.SUPPRESS)
@@ -67,6 +68,8 @@ def arguments(argv=None):
         parser.error('--timeout must be positive')
     if args.live_only and (not args.suite or not set(args.suite) <= GENERATIONS):
         parser.error('--live-only requires --suite generations, dns, logging, doas, mail, maintenance or cron-fallback')
+    if args.workflows_only and set(args.suite or []) != {'sandbox-packages'}:
+        parser.error('--workflows-only requires --suite sandbox-packages')
     return args
 
 
@@ -277,6 +280,8 @@ class Runtime:
                        '--vm-state', self.work / 'native-preparation/state']
             if self.args.keep:
                 command.append('--keep')
+            if name == 'sandbox-packages' and self.args.workflows_only:
+                command.append('--workflows-only')
             self.command(command)
         elif name in ['vm', 'workflow']:
             self.ensure_prepared()

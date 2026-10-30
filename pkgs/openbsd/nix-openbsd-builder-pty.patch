@@ -2,6 +2,7 @@ Preserve terminal output on OpenBSD while avoiding premature PTY EOF.
 Open the slave before forking, then keep a supervisor in the builder's
 process group to wait for the builder and drain output before closing the
 slave. Preserve exit codes and terminating signals. Drain setup errors too.
+Restrict the external-builder launcher until exec; its supervisor drains errors.
 Rebased onto Nix 2.35's separate builder header.
 
 --- a/unix/build/derivation-builder.cc
@@ -54,7 +55,17 @@ Rebased onto Nix 2.35's separate builder header.
  
      // Put the pt into raw mode to prevent \n -> \r\n translation.
      struct termios term;
-@@ -991,6 +1007,36 @@
+@@ -936,6 +952,9 @@
+        calls! */
+
+     bool sendException = true;
++#ifdef __OpenBSD__
++    bool supervised = false;
++#endif
+
+     try { /* child */
+
+@@ -991,6 +1010,40 @@
  
          sendException = false;
  
@@ -66,6 +77,9 @@ Rebased onto Nix 2.35's separate builder header.
 +        if (child == -1)
 +            throw SysError("forking OpenBSD builder");
 +        if (child != 0) {
++            closefrom(STDERR_FILENO + 1);
++            if (unveil("/", "") == -1 || unveil(nullptr, nullptr) == -1)
++                throw SysError("restricting OpenBSD builder supervisor");
 +            int status;
 +            while (waitpid(child, &status, 0) == -1)
 +                if (errno != EINTR)
@@ -85,19 +99,33 @@ Rebased onto Nix 2.35's separate builder header.
 +            }
 +            _exit(WEXITSTATUS(status));
 +        }
++        supervised = true;
 +#endif
 +
 +
          /* If this is a builtin builder, call it now. This should not return. */
          if (drv.isBuiltin()) {
              try {
-@@ -1030,6 +1076,10 @@
+@@ -1014,6 +1067,11 @@
+
+         /* It's not a builtin builder, so execute the program. */
+
++#ifdef __OpenBSD__
++        if (pledge("stdio exec", nullptr) == -1)
++            throw SysError("restricting OpenBSD builder launcher");
++#endif
++
+         Strings args;
+         args.push_back(std::string(baseNameOf(drv.builder)));
+
+@@ -1030,6 +1088,11 @@
  
      } catch (...) {
          handleChildException(sendException);
 +#ifdef __OpenBSD__
-+        // Drain setup errors before closing the slave.
-+        while (tcdrain(STDERR_FILENO) == -1 && errno == EINTR) { }
++        // The supervisor drains errors after the builder fork.
++        if (!supervised)
++            while (tcdrain(STDERR_FILENO) == -1 && errno == EINTR) { }
 +#endif
          _exit(1);
      }

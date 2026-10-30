@@ -20,6 +20,8 @@ def main():
     parser.add_argument('--vm-state', required=True, type=Path)
     parser.add_argument('--timeout', type=int, default=3600)
     parser.add_argument('--keep', action='store_true')
+    parser.add_argument('--workflows-only', action='store_true',
+                        help='build only the five small tool/workflow projects')
     args = parser.parse_args()
     fixtures = args.fixtures.resolve(strict=True)
     work = Path(tempfile.mkdtemp(prefix='nixopenbsd-sandbox-packages.'))
@@ -29,7 +31,8 @@ def main():
     with Guest(args.launcher, state, log) as guest:
         guest.run(shlex.join([str(fixtures / 'python3/bin/python3'), '-B',
                               str(fixtures / 'source/tests/sandbox-packages/proof.py'),
-                              str(fixtures), str(args.timeout)]), args.timeout)
+                              str(fixtures), str(args.timeout),
+                              *(['--workflows-only'] if args.workflows_only else [])]), args.timeout)
     contents = log.read_text(errors='replace')
     assert 'SANDBOX_PACKAGES_RUNTIME_PASS' in contents
     results = json.loads(re.search(r'^SANDBOX_PACKAGES_RESULT (.+)$', contents, re.M).group(1))

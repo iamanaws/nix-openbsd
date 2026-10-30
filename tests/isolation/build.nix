@@ -25,15 +25,25 @@ derivation (
     builder =
       if kind == "builtin-fetch" then
         "builtin:fetchurl"
-      else if kind == "fd-audit" then
+      else if
+        builtins.elem kind [
+          "fd-audit"
+          "limits"
+        ]
+      then
         "${inputs}/probe/bin/exec-probe"
       else
         "${inputs}/bash/bin/bash";
     args =
       if kind == "builtin-fetch" then
         [ ]
-      else if kind == "fd-audit" then
-        [ "fd-audit" ]
+      else if
+        builtins.elem kind [
+          "fd-audit"
+          "limits"
+        ]
+      then
+        [ kind ]
       else
         [
           "-euc"
@@ -46,6 +56,10 @@ derivation (
               if kind == "consumers" then
                 ''
                   ${inputs}/bash/bin/bash ${inputs}/tests/consumers.sh ${inputs} "$out"
+                ''
+              else if kind == "exec-policies" then
+                ''
+                  ${inputs}/python3/bin/python3 -B ${inputs}/tests/pledge.py
                 ''
               else if kind == "control" then
                 ''

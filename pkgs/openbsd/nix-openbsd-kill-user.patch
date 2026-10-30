@@ -1,0 +1,23 @@
+Restrict the process-kill helper after switching to the target UID.
+It needs standard streams and process signalling, with no other descriptors.
+
+--- a/unix/processes.cc
++++ b/unix/processes.cc
+@@ -168,9 +168,17 @@
+        fork a process, switch to uid, and send a mass kill. */
+
+     Pid pid = startProcess([&] {
++#ifdef __OpenBSD__
++        closefrom(STDERR_FILENO + 1);
++#endif
+         if (setuid(uid) == -1)
+             throw SysError("setting uid");
+
++#ifdef __OpenBSD__
++        if (pledge("stdio proc", nullptr) == -1)
++            throw SysError("restricting process-kill helper");
++#endif
++
+         while (true) {
+ #ifdef __APPLE__
+             /* OSX's kill syscall takes a third parameter that, among
