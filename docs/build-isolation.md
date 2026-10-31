@@ -18,6 +18,9 @@ nix.settings = {
 };
 ```
 
+Apply Nix setting changes with `openbsd-rebuild boot` followed by a reboot.
+Live switching rejects changes to `/etc/nix/nix.conf`.
+
 Nix requires root and dedicated build users, normally through the daemon.
 The OpenBSD module gives each build user a private primary group, retaining
 membership in `nixbld` for user discovery. Sandboxed builds use that private
@@ -100,8 +103,16 @@ build UID inside the private root. Immutable and append-only flags therefore
 cannot prevent output processing, failed-build retention or cleanup. The walk
 uses directory descriptors without following symlinks and leaves other owners'
 inodes alone, including hard-linked store inputs. A cleanup error prevents the
-routing domain from being released. This does not repair flagged trees left by
-an older Nix or an abruptly killed worker.
+routing domain from being released.
+
+Retrying a derivation also clears flags left by an abruptly killed worker.
+Nix opens its previous root without following symlinks and checks the root-owned
+parent and root permissions. The root's private group identifies the original
+build UID. Nix holds that UID's lock, stops its processes and removes its IPC
+objects before clearing flags on its files, even when the retry uses another
+build user. A busy UID fails without changing the abandoned tree; retry once
+it is free. Recovery rejects unknown or shared owner groups and applies only
+to the derivation being retried.
 
 Before switching build users, Nix closes extra descriptors with native
 `closefrom()`. This includes descriptors opened before the daemon's descriptor
@@ -130,15 +141,19 @@ and other build users' group-only objects are protected. Deliberately public
 objects remain accessible. Cleanup removes leftovers without creating an IPC
 namespace.
 
+On the pinned kernel, message-queue lookups ignore the ID's sequence bits: an
+old ID can refer to a newly allocated queue in the same slot. Ownership and mode
+checks still apply. Cleanup therefore runs as the build UID; tests compare queue
+generations when checking that an old object was removed.
+
 TCP `TIME_WAIT` state can outlive a build; assigning its domain ID to another UID
 can delay reuse of the same port, even with `SO_REUSEADDR`.
 
 Unprivileged domain 0 processes can join other domains under OpenBSD's
-[setrtable rules](https://man.openbsd.org/OpenBSD-8.0/getrtable.2). Cooperating host
-processes or fixed-output builds can reach a build's private IPv4/IPv6 loopback
-and relay traffic; PF rules can also connect domains. The backend supports build
-purity and controlled native builds, with no complete boundary against
-cooperating hostile processes.
+[setrtable rules](https://man.openbsd.org/OpenBSD-8.0/getrtable.2) and connect to
+a build's private loopback. Deliberately public System V IPC can carry messages
+between cooperating builds and host processes. The backend supports controlled
+native builds, with no complete boundary against cooperating hostile processes.
 
 Recursive Nix, UID ranges and diverted stores fail explicitly.
 
@@ -185,7 +200,14 @@ nix run .#test -- --suite isolation
 nix run .#test -- --suite isolation --vm-state ./openbsd-native-vm --keep
 ```
 
-The temporary daemon enables sandboxing only inside its disposable VM.
+The temporary daemon enables sandboxing only inside its disposable VM. Checks
+cover operation with PF disabled and with unrelated firewall rules.
+
+Managed-daemon checks boot with sandboxing enabled and PF disabled. Fresh
+regular-user builds verify the policy after rc.d restart, live generation
+changes, failed activation, rollback and reboot. Untrusted clients cannot
+disable the sandbox; changing Nix configuration requires reboot.
+
 Local checks and isolation-fixture preparation also compile the patch's snapshot
 methods in a small C++ harness with adapters for Nix utilities. Nine probes cover
 source replacement, FIFO swaps, directory descriptors, symlinks, permissions and
@@ -213,12 +235,21 @@ retention and forced cleanup. Two controls check process-cleanup failure and
 retry without a private routing domain. Filesystem adapters use one filesystem
 and no pending outputs; full daemon checks also exercise replaced build directories.
 
-Fourteen native file-flag probes compile the patch's traversal and active-root
-guard. A chrooted build user sets flags before exiting; checks cover files,
-inaccessible directories, symlinks, FIFOs, hard links, protected host/input
-inodes and cleanup failures. Small utility adapters exercise native chmod,
-chown, rename and deletion after cleanup. Full daemon checks cover flagged
-outputs and failed builds with and without `--keep-failed`.
+Thirty native file-flag probes compile the patch's traversal, active-root guard
+and abandoned-root recovery. A chrooted build user sets flags before exiting;
+checks cover files, inaccessible directories, symlinks, FIFOs, hard links,
+protected host/input inodes and cleanup failures. Recovery probes cover the same
+or a different UID, a busy UID lock, unsafe owners and permissions, missing and
+incomplete roots, and process/file-flag cleanup failures. Small utility adapters
+exercise native chmod, chown, rename and deletion after cleanup. Full daemon
+checks cover flagged outputs and failed builds with and without `--keep-failed`,
+plus worker death and daemon restart for ordinary and strict fixed-output
+builds. Retry checks include another build UID, a busy original UID, detached
+descendants and IPC
+cleanup. The host runner also shuts down and boots the same test disk with
+four abandoned immutable/append-only roots. It checks that flags survive reboot
+and that retries with the same or another UID recover ordinary and fixed-output
+roots after the old processes and IPC objects have disappeared.
 
 Ten native process-kill probes compile Nix's patched `killUser` function with
 small process, logging and exception adapters. They cover empty UIDs, detached

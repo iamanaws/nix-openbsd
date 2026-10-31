@@ -60,7 +60,7 @@ def arguments(argv=None):
     parser.add_argument('--live-only', action='store_true', help='skip reboots, GC and console recovery in selected generation suites')
     parser.add_argument('--workflows-only', action='store_true', help='run only the five tool projects in --suite sandbox-packages')
     parser.add_argument('--baseline', default=BASELINE, help='published native VM used to build new test inputs')
-    parser.add_argument('--timeout', type=int, help='seconds per suite; defaults to 1 hour, or 24 hours for native suites')
+    parser.add_argument('--timeout', type=int, help='seconds per suite; defaults to 1 hour, 2 hours for isolation, or 24 hours for native suites')
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1], help=argparse.SUPPRESS)
     parser.add_argument('--host-system', default=platform.machine() + '-' + platform.system().lower(), help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -225,7 +225,8 @@ class Runtime:
         directory = self.work / name
         directory.mkdir()
         self.env['TMPDIR'] = str(directory)
-        self.timeout = self.args.timeout or (86400 if name in NATIVE or name == 'sandbox-nix' else 3600)
+        self.timeout = self.args.timeout or (86400 if name in NATIVE or name == 'sandbox-nix'
+                                             else 7200 if name == 'isolation' else 3600)
         self.deadline = time.monotonic() + self.timeout
         if name == 'local':
             self.build('local', [self.ref + '#checks.' + self.args.host_system + '.local'])

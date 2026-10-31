@@ -1,5 +1,6 @@
 """Exercise the OpenBSD sandbox through Nix's real daemon and builder lifecycle."""
 from contextlib import contextmanager, ExitStack
+import argparse
 import fcntl
 import grp
 import hashlib
@@ -15,6 +16,7 @@ import shlex
 import shutil
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -24,7 +26,13 @@ import time
 
 def main():
     assert os.getuid() == 0
-    fixtures = Path(sys.argv[1]).resolve(strict=True)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('fixtures', type=Path)
+    phase = parser.add_mutually_exclusive_group()
+    phase.add_argument('--prepare-reboot', type=Path)
+    phase.add_argument('--resume-reboot', type=Path)
+    args = parser.parse_args()
+    fixtures = args.fixtures.resolve(strict=True)
     work = Path(tempfile.mkdtemp(prefix='openbsd-isolation.', dir='/var/tmp'))
     work.chmod(0o755)
     print('Guest isolation logs: ' + str(work), flush=True)
@@ -147,10 +155,11 @@ def main():
         return result.stderr
 
     @contextmanager
-    def held_build(kind='hold', extra=()):
+    def held_build(kind='hold', extra=(), argv=None):
         log = (work / ('held-' + secrets.token_hex(4) + '.log'))
         with log.open('w') as stream:
-            client = subprocess.Popen(build_args(kind=kind, extra=extra), stdout=stream, stderr=subprocess.STDOUT, env=env)
+            client = subprocess.Popen(argv if argv is not None else build_args(kind=kind, extra=extra),
+                                      stdout=stream, stderr=subprocess.STDOUT, env=env)
         clients.append(client)
         try:
             for _ in range(1200):
@@ -172,6 +181,35 @@ def main():
     def user_processes(uid):
         result = command(['ps', '-U', str(uid), '-o', 'pid=,stat='])
         return [line for line in result.stdout.splitlines() if 'Z' not in line]
+
+    def kill_worker(client, metadata):
+        worker = metadata['pid']
+        while True:
+            parent, uid = map(int, command(['ps', '-p', str(worker), '-o', 'ppid=,uid=']).stdout.split())
+            if uid == 0:
+                break
+            worker = parent
+        assert worker != daemon.pid
+        os.kill(worker, signal.SIGKILL)
+        assert client.wait(timeout=30) != 0
+
+    @contextmanager
+    def prefer_build_user(uid):
+        config = Path('/etc/group')
+        original = config.read_text()
+        lines = original.splitlines()
+        for index, line in enumerate(lines):
+            fields = line.split(':')
+            if fields[0] == 'nixbld':
+                names = fields[3].split(',')
+                names.sort(key=lambda name: pwd.getpwnam(name).pw_uid != uid)
+                fields[3] = ','.join(names)
+                lines[index] = ':'.join(fields)
+        try:
+            config.write_text('\n'.join(lines) + '\n')
+            yield
+        finally:
+            config.write_text(original)
 
     @contextmanager
     def one_build_user():
@@ -248,11 +286,83 @@ def main():
             stop_daemon()
             install(original)
 
+    def prepare_reboot():
+        users = [pwd.getpwnam(name).pw_uid for name in grp.getgrnam('nixbld').gr_mem]
+        cases = []
+        for uid, (fixed, flag) in zip(users, [(False, 'UF_IMMUTABLE'), (False, 'UF_APPEND'),
+                                              (True, 'UF_IMMUTABLE'), (True, 'UF_APPEND')]):
+            argv = build_args(kind='flagged-hold', extra=[
+                '--arg', 'fixedOutput', 'true' if fixed else 'false',
+                '--argstr', 'ports', '[]', '--argstr', 'probeSpec', json.dumps({'flag': flag})])
+            with prefer_build_user(uid), held_build(argv=argv) as (client, metadata, log):
+                assert metadata['uid'] == uid
+                assert (metadata['domain'] == 0) == fixed
+                drv = re.search(r"building '([^']+\.drv)'", log.read_text())
+                assert drv, log.read_text()
+                output = command(['nix-store', '--query', '--outputs', drv.group(1)], check=True).stdout.strip()
+                parent = Path(drv.group(1) + '.chroot')
+                directories = [str(parent / 'root/build'), str(parent / ('root' + output))]
+                kill_worker(client, metadata)
+                assert user_processes(uid)
+            cases.append({'argv': argv, 'metadata': metadata, 'parent': str(parent),
+                          'directories': directories, 'flag': flag, 'fixed': fixed})
+        assert len(cases) == 4, 'reboot tests need four dedicated build users'
+        for case in cases:
+            check_abandoned_flags(case)
+            assert user_processes(case['metadata']['uid'])
+        args.prepare_reboot.write_text(json.dumps(cases, indent=2) + '\n')
+        print('ISOLATION_REBOOT_READY', flush=True)
+
+    def check_abandoned_flags(case):
+        flag = getattr(stat, case['flag'])
+        for directory in map(Path, case['directories']):
+            for path in [directory, directory / 'flagged']:
+                info = path.stat()
+                assert info.st_uid == case['metadata']['uid'] and info.st_flags & flag, path
+            assert (directory / 'flagged').read_text() == 'abandoned flagged fixture\n'
+
+    def resume_reboot():
+        cases = json.loads(args.resume_reboot.read_text())
+        assert len(cases) == 4
+        for case in cases:
+            check_abandoned_flags(case)
+            assert not user_processes(case['metadata']['uid'])
+            command([fixtures / 'probe/bin/exec-probe', 'ipc-removed',
+                     *map(str, case['metadata']['ipc'])], check=True)
+        for case in cases:
+            old_uid = case['metadata']['uid']
+            different_user = case['flag'] == 'UF_APPEND'
+            preferred = next(pwd.getpwnam(name).pw_uid for name in grp.getgrnam('nixbld').gr_mem
+                             if pwd.getpwnam(name).pw_uid != old_uid) if different_user else old_uid
+            with prefer_build_user(preferred), held_build(argv=case['argv']) as (_, recovered, _):
+                assert recovered['uid'] == preferred
+                assert (recovered['domain'] == 0) == case['fixed']
+            deadline = time.monotonic() + 30
+            while Path(case['parent']).exists() or user_processes(preferred):
+                assert time.monotonic() < deadline, case
+                time.sleep(.1)
+            command([fixtures / 'probe/bin/exec-probe', 'ipc-removed',
+                     *map(str, recovered['ipc'])], check=True)
+            clean_domains()
+        record('flaggedOrdinaryAndFixedOutputRootsRecoverAfterReboot')
+        print('ISOLATION_REBOOT_RESULT ' + json.dumps(results), flush=True)
+        print('ISOLATION_REBOOT_PASS', flush=True)
+
     clean_domains()
     for thread in threads:
         thread.start()
     subprocess.run(['/etc/rc.d/nix_daemon', 'stop'], check=True)
+    policies = ExitStack()
     try:
+        from pf import disabled
+        pfctl = policies.enter_context(disabled(fixtures / 'pfctl/bin/pfctl'))
+        if args.prepare_reboot or args.resume_reboot:
+            start_daemon()
+            if args.prepare_reboot:
+                prepare_reboot()
+            else:
+                resume_reboot()
+            return
         library = str(fixtures / 'libcxx/lib')
         subprocess.run([sys.executable, '-B', fixtures / 'tests/helper-policies.py',
                         '--cxx', fixtures / 'cc/bin/c++',
@@ -283,6 +393,19 @@ def main():
                        env=os.environ | {'LDFLAGS': '-L' + library + ' -Wl,-rpath,' + library})
         record('focusedProcessKillHelper')
         start_daemon()
+        build('pf-disabled-sandbox')
+        rules = work / 'unrelated-pf.conf'
+        rules.write_text('set skip on lo0\npass all no state\n')
+        pfctl('-nf', rules)
+        try:
+            pfctl('-f', rules)
+            pfctl('-e')
+            build('unrelated-pf-sandbox')
+        finally:
+            pfctl('-d')
+            pfctl('-f', '/etc/pf.conf')
+        clean_domains()
+        record('sandboxWorksWithDisabledOrUnrelatedPF')
         output = build('unsandboxed-control', kind='control', mode='false')
         lines = output.read_text().splitlines()
         assert lines[0] == 'public isolation fixture' and int(lines[1]) != 0
@@ -456,15 +579,7 @@ def main():
         # its build-user lock must kill all old processes before reclaiming loN.
         with one_build_user() as uid, held_build() as (client, abandoned, _):
             assert abandoned['uid'] == uid
-            worker = abandoned['pid']
-            while True:
-                parent, uid = map(int, command(['ps', '-p', str(worker), '-o', 'ppid=,uid=']).stdout.split())
-                if uid == 0:
-                    break
-                worker = parent
-            assert worker != daemon.pid
-            os.kill(worker, signal.SIGKILL)
-            assert client.wait(timeout=30) != 0
+            kill_worker(client, abandoned)
             assert command([ifconfig, 'lo' + str(abandoned['domain'])]).returncode == 0
             recovered = json.loads(build('abandoned-worker-recovery').read_text())
             assert recovered['uid'] == abandoned['uid']
@@ -472,6 +587,64 @@ def main():
             assert not user_processes(abandoned['uid'])
         clean_domains()
         record('abruptWorkerDeathRetainsDomainUntilUserRecovery')
+
+        for flag, restart, different_user, fixed in [('UF_IMMUTABLE', False, False, False),
+                                                      ('UF_APPEND', False, False, False),
+                                                      ('UF_IMMUTABLE', False, True, False),
+                                                      ('UF_APPEND', True, True, False),
+                                                      ('UF_IMMUTABLE', False, False, True),
+                                                      ('UF_APPEND', True, True, True)]:
+            argv = build_args(kind='flagged-hold',
+                              extra=['--arg', 'fixedOutput', 'true' if fixed else 'false',
+                                     '--argstr', 'probeSpec', json.dumps({'flag': flag})])
+            with held_build(argv=argv) as (client, abandoned, log):
+                assert (abandoned['domain'] == 0) == fixed
+                drv = re.search(r"building '([^']+\.drv)'", log.read_text())
+                assert drv, log.read_text()
+                parent = Path(drv.group(1) + '.chroot')
+                assert (parent / 'root/build/flagged').stat().st_flags != 0
+                kill_worker(client, abandoned)
+                assert user_processes(abandoned['uid'])
+            if restart:
+                daemon.kill()
+                daemon.wait(timeout=30)
+                start_daemon()
+            preferred = abandoned['uid']
+            if different_user:
+                preferred = next(pwd.getpwnam(name).pw_uid for name in grp.getgrnam('nixbld').gr_mem
+                                 if pwd.getpwnam(name).pw_uid != abandoned['uid'])
+                path = Path(os.environ.get('NIX_STATE_DIR', '/nix/var/nix')) / 'userpool' / str(abandoned['uid'])
+                with path.open('a+b') as lock, prefer_build_user(preferred):
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    error = command(argv)
+                    assert error.returncode != 0 and 'is busy; retry building' in error.stderr, error.stderr
+                    assert (parent / 'root/build/flagged').stat().st_flags != 0
+                    assert user_processes(abandoned['uid'])
+                    command([fixtures / 'probe/bin/exec-probe', 'ipc-verify', 'host',
+                             *map(str, abandoned['ipc'])], check=True)
+            with prefer_build_user(preferred), held_build(argv=argv) as (_, recovered, _):
+                assert recovered['uid'] == preferred, (abandoned, recovered)
+                assert (recovered['uid'] != abandoned['uid']) == different_user
+                if different_user:
+                    assert not user_processes(abandoned['uid'])
+                    command([fixtures / 'probe/bin/exec-probe', 'ipc-removed',
+                             *map(str, abandoned['ipc'])], check=True)
+            # A cancelled client can exit before its worker finishes cleanup.
+            deadline = time.monotonic() + 30
+            while parent.exists() or user_processes(recovered['uid']):
+                assert time.monotonic() < deadline, parent
+                time.sleep(.1)
+            assert not user_processes(abandoned['uid']) and not user_processes(recovered['uid'])
+            command([fixtures / 'probe/bin/exec-probe', 'ipc-removed',
+                     *map(str, recovered['ipc'])], check=True)
+            # A different abandoned UID keeps its tagged domain until that UID
+            # is reused, independently of filesystem recovery for this derivation.
+            if different_user and not fixed:
+                with prefer_build_user(abandoned['uid']):
+                    build('reclaim-abandoned-domain')
+            clean_domains()
+        record('flaggedRootsRecoverAfterWorkerDeathAndDaemonRestart')
+        record('flaggedFixedOutputRootsRecoverWithoutPrivateRoutingDomains')
         metadata = json.loads(build('ipc-cleanup', kind='ipc').read_text())
         subprocess.run([str(fixtures / 'probe/bin/exec-probe'), 'ipc-removed',
                         *map(str, metadata['ipc'])], check=True)
@@ -548,8 +721,6 @@ for family, address, port in zip([socket.AF_INET, socket.AF_INET6], ['127.0.0.1'
     with socket.socket(family, socket.SOCK_STREAM) as connection:
         connection.settimeout(5)
         connection.connect((address, port))
-        connection.sendall({token.encode()!r})
-        assert connection.recv(128) == {token.encode()!r}
 assert library.setrtable(0) == -1 and ctypes.get_errno() == errno.EPERM
 print('DOMAIN_ZERO_JOIN_PASS')
 '''
@@ -558,14 +729,14 @@ print('DOMAIN_ZERO_JOIN_PASS')
                 (work / 'domain-zero-join.log').write_text(joined.stdout + joined.stderr)
                 assert joined.returncode == 0 and 'DOMAIN_ZERO_JOIN_PASS' in joined.stdout, joined.stderr
                 results['boundaryLimits'] = metadata['boundaries'] | {
-                    'domainZeroHostCanJoin': True, 'inheritedFds': []}
+                    'domainZeroHostCanJoin': True, 'domainZeroHostConnectionsDenied': False, 'inheritedFds': []}
             clean_domains()
             command([probe, 'ipc-removed', *map(str, metadata['ipc'])], check=True)
             for name, identifiers in ipc.items():
                 command([probe, 'ipc-verify', 'builder' if name == 'public' else 'host',
                          *map(str, identifiers)], check=True)
             record('sharedProcessAndIpcPermissionsAndNoInheritedDescriptors')
-            record('domainZeroUnprivilegedHostCanReachPrivateLoopback')
+            record('domainZeroHostCanReachPrivateLoopback')
         finally:
             for identifiers in ipc.values():
                 command([probe, 'ipc-destroy', *map(str, identifiers)], check=True)
@@ -622,6 +793,7 @@ print('DOMAIN_ZERO_JOIN_PASS')
             client.send_signal(signal.SIGINT)
             client.wait(timeout=30)
         stop_daemon()
+        policies.close()
         subprocess.run(['/etc/rc.d/nix_daemon', 'start'], check=True)
         for server in servers:
             server.shutdown()

@@ -69,7 +69,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +            Nix creates private loopback interfaces in these domains and removes
 +            them after terminating the build's processes. Existing interfaces
 +            are not adopted. Reserve these IDs in the host network configuration
-+            and do not install PF rules that route traffic across these domains.
++            and keep the domains disconnected.
 +            Fixed-output builds retain the daemon's network access.
          )"};
  #endif
@@ -89,7 +89,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
  endif
 --- /dev/null
 +++ b/openbsd/build/chroot-openbsd-derivation-builder.hh
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,62 @@
 +#pragma once
 +
 +#include "chroot-derivation-builder.hh"
@@ -131,6 +131,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +    void prepareUser() override;
 +    void prepareResourceLimits();
 +    void setBuildTmpDir() override;
++    void recoverChroot();
 +    void makeParents(const std::filesystem::path & target);
 +    void materialise(const std::filesystem::path & source, const std::filesystem::path & target, bool immutable);
 +    void materialise(int sourceDir, const std::filesystem::path & source, const std::filesystem::path & target, bool immutable);
@@ -145,6 +146,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +    void enterChroot() override;
 +    void setUser() override;
 +    void clearBuildFileFlags();
++    static void stopBuildUser(uid_t uid, gid_t gid);
 +    void killSandbox(bool getStats) override;
 +    void cleanupBuild(bool force) override;
 +};
@@ -152,7 +154,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +} // namespace nix
 --- /dev/null
 +++ b/openbsd/build/openbsd-derivation-builder.cc
-@@ -0,0 +1,605 @@
+@@ -0,0 +1,667 @@
 +#include "chroot-openbsd-derivation-builder.hh"
 +#include "sysv-ipc.hh"
 +#include "nix/util/file-system.hh"
@@ -265,6 +267,7 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +        || isDirOrInDir(path, store.storeDir) || isDirOrInDir(store.storeDir, path))
 +        throw Error("unsafe OpenBSD sandbox-build-dir '%s'", PathFmt(path));
 +    /* OpenBSD has no bind mounts. Keep outputs on the store filesystem. */
++    recoverChroot();
 +    createChroot();
 +    tmpDir = chrootRootDir / path.relative_path();
 +    createDirs(tmpDir);
@@ -671,16 +674,14 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +    nix::clearBuildFileFlags(root.get(), ".", buildUser->getUID());
 +}
 +
-+void ChrootOpenBSDDerivationBuilder::killSandbox(bool getStats)
++void ChrootOpenBSDDerivationBuilder::stopBuildUser(uid_t uid, gid_t gid)
 +{
-+    DerivationBuilderImpl::killSandbox(getStats);
-+    if (!buildUser)
-+        return;
++    killUser(uid);
 +    /* Wait for live processes before domain removal: OpenBSD moves the
 +       table to domain 0. PS_ZOMBIE processes hold no files or sockets. */
 +    for (unsigned int attempt = 0; attempt < 1000; ++attempt) {
 +        int mib[] = {CTL_KERN, KERN_PROC, KERN_PROC_UID,
-+            static_cast<int>(buildUser->getUID()), sizeof(struct kinfo_proc), 0};
++            static_cast<int>(uid), sizeof(struct kinfo_proc), 0};
 +        size_t size = 0;
 +        if (sysctl(mib, 6, nullptr, &size, nullptr, 0) == -1)
 +            throw SysError("querying OpenBSD build processes");
@@ -703,25 +704,88 @@ Fixed-output builds retain networking; unsupported modes fail closed.
 +        if (!live) {
 +            Pid cleanup = startProcess([&] {
 +                closefrom(STDERR_FILENO + 1);
-+                if (setgroups(0, nullptr) == -1 || setgid(buildUser->getGID()) == -1
-+                    || setuid(buildUser->getUID()) == -1)
++                if (setgroups(0, nullptr) == -1 || setgid(gid) == -1 || setuid(uid) == -1)
 +                    throw SysError("dropping privileges for OpenBSD IPC cleanup");
-+                cleanupOpenBSDSysVIPC(buildUser->getUID());
++                cleanupOpenBSDSysVIPC(uid);
 +                _exit(0);
 +            });
 +            if (!statusOk(cleanup.wait()))
 +                throw Error("OpenBSD build IPC cleanup failed");
-+            /* Owners can set immutable/append flags even inside a chroot.
-+               Clear them after all build processes exit, before handling outputs. */
-+            clearBuildFileFlags();
-+            processesStopped = true;
 +            return;
 +        }
 +        // Signal as the build UID to protect other users after PID reuse.
-+        DerivationBuilderImpl::killSandbox(false);
++        killUser(uid);
 +        usleep(10000);
 +    }
 +    throw Error("OpenBSD build processes did not exit; retaining their isolated routing domain");
++}
++
++void ChrootOpenBSDDerivationBuilder::killSandbox(bool)
++{
++    if (!buildUser)
++        return;
++    stopBuildUser(buildUser->getUID(), buildUser->getGID());
++    /* Owners can set immutable/append flags even inside a chroot.
++       Clear them after all build processes exit, before handling outputs. */
++    clearBuildFileFlags();
++    processesStopped = true;
++}
++
++void ChrootOpenBSDDerivationBuilder::recoverChroot()
++{
++    auto parentPath = store.toRealPath(drvPath) + ".chroot";
++    AutoCloseFD parent = open(parentPath.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
++    if (!parent) {
++        if (errno == ENOENT)
++            return;
++        throw SysError("opening abandoned build directory '%s'", parentPath);
++    }
++    auto parentStat = nix::fstat(parent.get());
++    if (parentStat.st_uid != 0 || (parentStat.st_mode & 0077))
++        throw Error("unsafe abandoned build directory '%s'", parentPath);
++    AutoCloseFD root = openat(parent.get(), "root", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
++    if (!root) {
++        if (errno == ENOENT)
++            return;
++        throw SysError("opening abandoned build root '%s'", parentPath);
++    }
++    auto rootStat = nix::fstat(root.get());
++    if (rootStat.st_uid != 0 || (rootStat.st_mode & 0022))
++        throw Error("unsafe abandoned build root '%s'", parentPath);
++    /* A crash before chown left an unused root; normal deletion suffices. */
++    if (rootStat.st_gid == 0)
++        return;
++
++    /* The root's private group identifies its build user. Both enclosing
++       directories are root-owned and cannot be replaced by a builder. */
++    auto * group = getgrnam(localSettings.buildUsersGroup.get().c_str());
++    if (!group || rootStat.st_gid == group->gr_gid)
++        throw Error("cannot identify abandoned build user for '%s'", parentPath);
++    Strings users;
++    for (auto ** name = group->gr_mem; *name; ++name)
++        users.emplace_back(*name);
++    std::optional<uid_t> uid;
++    for (auto & name : users) {
++        auto * account = getpwnam(name.c_str());
++        if (!account)
++            throw Error("build user '%s' does not exist", name);
++        if (account->pw_gid == rootStat.st_gid) {
++            if (account->pw_uid == 0 || uid)
++                throw Error("ambiguous abandoned build user for '%s'", parentPath);
++            uid = account->pw_uid;
++        }
++    }
++    if (!uid)
++        throw Error("cannot identify abandoned build user for '%s'", parentPath);
++
++    AutoCloseFD lock;
++    if (*uid != buildUser->getUID()) {
++        lock = openLockFile(settings.nixStateDir / "userpool" / std::to_string(*uid), true);
++        if (!lockFile(lock.get(), ltWrite, false))
++            throw Error("abandoned build user %u is busy; retry building '%s'", *uid, parentPath);
++    }
++    stopBuildUser(*uid, rootStat.st_gid);
++    nix::clearBuildFileFlags(root.get(), ".", *uid);
 +}
 +
 +void ChrootOpenBSDDerivationBuilder::cleanupBuild(bool force)

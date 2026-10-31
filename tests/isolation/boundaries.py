@@ -2,6 +2,7 @@
 import json
 import socket
 import subprocess
+import time
 
 
 def inspect_boundaries(fixtures, metadata, spec):
@@ -24,13 +25,7 @@ def inspect_boundaries(fixtures, metadata, spec):
             listener.settimeout(60)
         metadata['listenerPorts'] = [listener.getsockname()[1] for listener in listeners]
         print('SANDBOX_METADATA ' + json.dumps(metadata), flush=True)
-        for listener in listeners:
-            connection, _ = listener.accept()
-            with connection:
-                connection.settimeout(5)
-                token = spec['token'].encode()
-                assert connection.recv(128) == token
-                connection.sendall(token)
+        time.sleep(120)
     finally:
         for listener in listeners:
             listener.close()

@@ -1,5 +1,6 @@
 """Build ordinary package recipes through an untrusted daemon client."""
 import argparse
+from contextlib import ExitStack
 import json
 import os
 from pathlib import Path
@@ -85,6 +86,8 @@ test "$(sqlite3 {quote(str(database))} "SELECT count(*) FROM sqlite_master WHERE
 def build_packages(fixtures, timeout, recipe='sandbox-packages', consumer=consumers, workflows_only=False):
     assert os.getuid() == 0
     source = (fixtures / 'source').resolve(strict=True)
+    sys.path.insert(0, str(source / 'tests/isolation'))
+    from pf import disabled
     work = Path(tempfile.mkdtemp(prefix='openbsd-' + recipe + '.', dir='/var/tmp'))
     work.chmod(0o755)
     print('Guest package logs: ' + str(work), flush=True)
@@ -121,7 +124,9 @@ def build_packages(fixtures, timeout, recipe='sandbox-packages', consumer=consum
     assert all(not Path(path).exists() for path in paths), 'fresh package output already exists'
     subprocess.run(['/etc/rc.d/nix_daemon', 'stop'], check=True)
     daemon = None
+    policies = ExitStack()
     try:
+        policies.enter_context(disabled(fixtures / 'pfctl/bin/pfctl'))
         with (work / 'daemon.log').open('w') as log:
             daemon = subprocess.Popen([nix.with_name('nix-daemon'),
                 '--option', 'sandbox', 'true', '--option', 'sandbox-fallback', 'false',
@@ -208,6 +213,7 @@ def build_packages(fixtures, timeout, recipe='sandbox-packages', consumer=consum
         if daemon is not None:
             daemon.terminate()
             daemon.wait(timeout=30)
+        policies.close()
         subprocess.run(['/etc/rc.d/nix_daemon', 'start'], check=True)
         for listener in listeners:
             listener.close()

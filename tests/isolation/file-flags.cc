@@ -1,6 +1,7 @@
 /* Compile the patch's traversal and lifecycle guard with small utility adapters. */
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/file.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -11,6 +12,8 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <optional>
+#include <vector>
 
 namespace fs = std::filesystem;
 static void require(bool condition, const char *message)
@@ -35,6 +38,8 @@ static void flags(const fs::path &path, unsigned value)
     require(chflagsat(AT_FDCWD, path.c_str(), value, AT_SYMLINK_NOFOLLOW) == 0, "set fixture flags");
 }
 static bool failClear = false;
+static bool failStop = false;
+static uid_t stoppedUID = 0;
 static int probeChflagsat(int fd, const char *name, unsigned value, int options)
 {
     if (failClear) { errno = EIO; return -1; }
@@ -52,7 +57,14 @@ struct FixturesCleanup {
 namespace nix {
 struct AutoCloseFD {
     int fd;
-    AutoCloseFD(int value) : fd(value) {}
+    AutoCloseFD(int value = -1) : fd(value) {}
+    AutoCloseFD(const AutoCloseFD &) = delete;
+    AutoCloseFD &operator=(AutoCloseFD &&other)
+    {
+        if (fd != -1) close(fd);
+        fd = other.release();
+        return *this;
+    }
     ~AutoCloseFD() { if (fd != -1) close(fd); }
     int get() const { return fd; }
     int release() { int value = fd; fd = -1; return value; }
@@ -80,20 +92,60 @@ struct BuildUser {
     uid_t uid;
     uid_t getUID() const { return uid; }
 };
+static AutoCloseFD openLockFile(const fs::path &path, bool)
+{
+    int fd = open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+    require(fd != -1, "open recovery lock");
+    return fd;
+}
+static constexpr int ltWrite = LOCK_EX;
+static bool lockFile(int fd, int operation, bool wait)
+{
+    return flock(fd, operation | (wait ? 0 : LOCK_NB)) == 0;
+}
+using Strings = std::vector<std::string>;
+struct Error : std::runtime_error {
+    template<class... A> Error(const char *message, A &&...) : std::runtime_error(message) {}
+};
+static struct stat fstat(int fd)
+{
+    struct stat st;
+    require(::fstat(fd, &st) == 0, "stat recovery descriptor");
+    return st;
+}
 struct ChrootOpenBSDDerivationBuilder {
     bool autoDelChroot = true;
     fs::path chrootRootDir;
     BuildUser *buildUser;
+    fs::path drvPath;
+    struct {
+        std::string toRealPath(const fs::path &path) { return path; }
+    } store;
+    struct {
+        struct {
+            const std::string &get() { static const std::string group = "nixbld"; return group; }
+        } buildUsersGroup;
+    } localSettings;
+    struct { fs::path nixStateDir; } settings;
     void clearBuildFileFlags();
+    void recoverChroot();
+    static void stopBuildUser(uid_t uid, gid_t)
+    {
+        if (failStop) throw Error("injected process cleanup failure");
+        stoppedUID = uid;
+    }
 };
 // FILE_FLAGS
+// RECOVERY
 }
 
 int main(int argc, char **argv)
 try {
     require(argc == 4 && geteuid() == 0, "usage: probe CASE DIRECTORY USER (as root)");
     std::string test = argv[1];
-    fs::path work = fs::canonical(argv[2]), root = work / "root", outside = work / "outside";
+    fs::path work = fs::canonical(argv[2]), outside = work / "outside";
+    bool recovery = test.starts_with("recover-");
+    fs::path parent = work / "derivation.chroot", root = recovery ? parent / "root" : work / "root";
     FixturesCleanup cleanup{work};
     auto *account = getpwnam(argv[3]);
     require(account && account->pw_uid != 0, "build user lookup");
@@ -108,7 +160,20 @@ try {
     fs::create_hard_link(outside / "input", root / "input");
     flags(outside / "input", UF_NODUMP);
     require(chown((root / "build").c_str(), user.uid, gid) == 0, "build directory owner");
-    nix::ChrootOpenBSDDerivationBuilder builder{true, root, &user};
+    nix::ChrootOpenBSDDerivationBuilder builder;
+    builder.chrootRootDir = root;
+    builder.buildUser = &user;
+    builder.drvPath = work / "derivation";
+    builder.settings.nixStateDir = work / "state";
+    auto *otherAccount = getpwnam("nixbld2");
+    require(otherAccount && otherAccount->pw_uid != user.uid, "other build user lookup");
+    nix::BuildUser other{otherAccount->pw_uid};
+    if (recovery) {
+        require(chmod(parent.c_str(), 0700) == 0, "private recovery parent");
+        require(chown(root.c_str(), 0, gid) == 0, "recovery root owner");
+        fs::create_directories(work / "state/userpool");
+        if (test == "recover-other-user" || test == "recover-busy") builder.buildUser = &other;
+    }
     bool inactive = test == "inactive", badRoot = test == "root-symlink";
     if (inactive) builder.autoDelChroot = false;
     if (inactive || badRoot) {
@@ -144,15 +209,50 @@ try {
     if (test == "foreign-input") flags(outside / "input", UF_IMMUTABLE);
     auto original = info(root / "build");
     auto input = info(outside / "input");
-    failClear = test == "clear-error";
+    failClear = test == "clear-error" || test == "recover-clear-error";
+    failStop = test == "recover-stop-error";
+    nix::AutoCloseFD held(-1);
+    if (test == "recover-busy") {
+        held.fd = nix::openLockFile(work / "state/userpool" / std::to_string(user.uid), true).release();
+        require(flock(held.fd, LOCK_EX | LOCK_NB) == 0, "hold old build user lock");
+    }
+    if (test == "recover-parent-owner") require(chown(parent.c_str(), user.uid, gid) == 0, "unsafe parent owner");
+    if (test == "recover-parent-mode") require(chmod(parent.c_str(), 0755) == 0, "unsafe parent mode");
+    if (test == "recover-root-owner") require(chown(root.c_str(), user.uid, gid) == 0, "unsafe root owner");
+    if (test == "recover-root-mode") require(chmod(root.c_str(), 0770) == 0, "unsafe root mode");
+    if (test == "recover-unknown-group") require(chown(root.c_str(), 0, 65534) == 0, "unknown root group");
+    if (test == "recover-shared-group") require(chown(root.c_str(), 0, getgrnam("nixbld")->gr_gid) == 0, "shared root group");
+    bool skipped = test == "recover-missing-parent" || test == "recover-missing-root" || test == "recover-incomplete";
+    if (test == "recover-incomplete") require(chown(root.c_str(), 0, 0) == 0, "incomplete root owner");
+    bool replaced = test == "recover-root-symlink" || test == "recover-parent-symlink";
+    bool missing = test == "recover-missing-parent" || test == "recover-missing-root";
+    fs::path replacedPath = test == "recover-parent-symlink" || test == "recover-missing-parent" ? parent : root;
+    if (replaced || missing) {
+        fs::rename(replacedPath, work / "original");
+        if (replaced) fs::create_directory_symlink(outside, replacedPath);
+    }
     bool failed = false;
-    try { builder.clearBuildFileFlags(); }
+    try {
+        if (recovery) builder.recoverChroot();
+        else builder.clearBuildFileFlags();
+    }
     catch (const nix::SysError &) { failed = true; }
-    require(failed == (badRoot || failClear), "missing or unexpected cleanup failure");
+    catch (const nix::Error &) { failed = true; }
+    bool rejected = recovery && !skipped && test != "recover-current-user" && test != "recover-other-user";
+    require(failed == (badRoot || failClear || rejected), "missing or unexpected cleanup failure");
+    if (replaced || missing) {
+        if (replaced) fs::remove(replacedPath);
+        fs::rename(work / "original", replacedPath);
+    }
+    if (recovery) {
+        bool stopped = (!rejected && !skipped) || failClear;
+        require(stoppedUID == (stopped ? user.uid : 0), "stopped the wrong build user or stopped before validation");
+        if (rejected || skipped) require(info(root / "build/entry").st_flags == UF_IMMUTABLE, "changed flags after rejected recovery");
+    }
     require(info(outside / "private").st_flags == UF_IMMUTABLE, "followed a symlink outside the root");
     require(info(outside / "input").st_flags == input.st_flags, "changed a shared input inode");
     require(info(root / "build").st_mode == original.st_mode, "changed directory permissions");
-    if (!failed && !inactive) {
+    if (!failed && !inactive && !skipped) {
         require(info(root / "build/entry").st_flags == 0 && info(root / "build").st_flags == 0,
                 "builder flags survived cleanup");
         if (test == "hardlinks") require(info(root / "build/alias").st_flags == 0, "hardlink flags survived");

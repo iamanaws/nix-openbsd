@@ -251,7 +251,10 @@ main(int argc, char **argv)
         union semun argument;
         argument.buf = &sem;
         assert(shmctl(atoi(argv[2]), IPC_STAT, &shm) == -1 && (errno == EINVAL || errno == EIDRM));
-        assert(msgctl(atoi(argv[3]), IPC_STAT, &msg) == -1 && (errno == EINVAL || errno == EIDRM));
+        /* Queue lookup can resolve a reused slot despite an old sequence. */
+        int result = msgctl(atoi(argv[3]), IPC_STAT, &msg);
+        assert((result == -1 && (errno == EINVAL || errno == EIDRM))
+               || (result == 0 && msg.msg_perm.seq != ((unsigned)atoi(argv[3]) >> 16)));
         assert(semctl(atoi(argv[4]), 0, IPC_STAT, argument) == -1 && (errno == EINVAL || errno == EIDRM));
         return 0;
     }

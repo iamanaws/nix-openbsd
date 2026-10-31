@@ -119,7 +119,7 @@ file when absent for libc lookup tests.
 | Native bootstrap guest | 8 CPUs, 16384 MiB RAM. |
 | Guest disk limits | 40 MiB/s reads, 20 MiB/s writes. |
 | Host Nix build | One job, two cores. |
-| Suite timeout | One hour; 24 hours for native bootstrap and `sandbox-nix` suites. |
+| Suite timeout | One hour; two hours for `isolation`; 24 hours for native bootstrap and `sandbox-nix` suites. |
 
 `NIX_VM_CORES` and `NIX_VM_MEMORY` override guest resources.
 `--timeout SECONDS` overrides the suite limit, including fixture preparation.

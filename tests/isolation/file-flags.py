@@ -22,13 +22,16 @@ def main():
     section = re.search(r'\+\+\+ b/openbsd/build/openbsd-derivation-builder.cc\n@@[^\n]*\n'
                         r'(.*?)(?=\n--- |\Z)', args.patch.read_text(), re.S).group(1)
     code = '\n'.join(line[1:] for line in section.splitlines() if line.startswith('+'))
+    start = code.index('void ChrootOpenBSDDerivationBuilder::recoverChroot()')
+    recovery = code[start:code.index('void ChrootOpenBSDDerivationBuilder::cleanupBuild(', start)]
     start = code.index('static void clearBuildFileFlags(')
-    code = code[start:code.index('void ChrootOpenBSDDerivationBuilder::killSandbox(', start)]
+    code = code[start:code.index('void ChrootOpenBSDDerivationBuilder::stopBuildUser(', start)]
     code = code.replace('chflagsat(', 'probeChflagsat(')
     with tempfile.TemporaryDirectory(prefix='file-flags-') as temporary:
         work = Path(temporary)
         source, executable = work / 'probe.cc', work / 'probe'
-        source.write_text(args.template.read_text().replace('// FILE_FLAGS', code))
+        source.write_text(args.template.read_text().replace('// FILE_FLAGS', code)
+                          .replace('// RECOVERY', recovery))
         subprocess.run([args.cxx, '-std=c++23', '-Wall', '-Wextra', '-Werror',
                         *shlex.split(os.environ.get('CXXFLAGS', '')),
                         str(source), '-o', str(executable),
@@ -36,7 +39,13 @@ def main():
         failed = []
         for case in ['immutable', 'append', 'nodump', 'directory-immutable', 'directory-append',
                      'symlink', 'symlink-directory', 'dangling', 'fifo', 'hardlinks',
-                     'foreign-input', 'inactive', 'root-symlink', 'clear-error']:
+                     'foreign-input', 'inactive', 'root-symlink', 'clear-error',
+                     'recover-current-user', 'recover-other-user', 'recover-busy',
+                     'recover-parent-owner', 'recover-parent-mode', 'recover-root-owner',
+                     'recover-root-mode', 'recover-unknown-group', 'recover-shared-group',
+                     'recover-root-symlink', 'recover-parent-symlink',
+                     'recover-stop-error', 'recover-clear-error',
+                     'recover-missing-parent', 'recover-missing-root', 'recover-incomplete']:
             directory = work / case
             directory.mkdir()
             try:

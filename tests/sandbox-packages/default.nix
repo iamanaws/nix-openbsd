@@ -21,7 +21,7 @@ assert builtins.all pkgs.lib.isDerivation (builtins.attrValues packages);
       inherit (pkgs) python3 sqlite;
       cc = pkgs.stdenv.cc;
       libcxx = pkgs.lib.getLib pkgs.stdenv.cc.libcxx;
-      inherit (pkgs.openbsd) ifconfig;
+      inherit (pkgs.openbsd) ifconfig pfctl;
       source = flake.outPath;
       build-inputs = pkgs.linkFarm "openbsd-sandbox-package-build-inputs" (
         pkgs.lib.mapAttrsToList (name: path: { inherit name path; }) inputs

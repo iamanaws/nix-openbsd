@@ -34,11 +34,19 @@ def main():
     builder = added_file(sandbox, 'openbsd/build/openbsd-derivation-builder.cc')
     start = builder.index('Pid cleanup = startProcess([&] {') + len('Pid cleanup = startProcess([&] {')
     caller = builder[start:builder.index('\n            });', start)]
+    caller = re.sub(r'\buid\b', 'buildUser->getUID()', caller)
+    caller = re.sub(r'\bgid\b', 'buildUser->getGID()', caller)
     caller = caller.replace('cleanupOpenBSDSysVIPC(buildUser->getUID());',
                             'createOwnedIPC();\ncleanupOpenBSDSysVIPC(buildUser->getUID());')
     caller = caller.replace('_exit(0);', 'checkCleanup();\n_exit(0);')
     start = builder.index('        if (!live) {')
     transaction = builder[start:builder.index('\n        // Signal as the build UID', start)]
+    transaction = re.sub(r'\buid\b', 'buildUser->getUID()', transaction)
+    transaction = re.sub(r'\bgid\b', 'buildUser->getGID()', transaction)
+    start = builder.index('void ChrootOpenBSDDerivationBuilder::killSandbox(bool)')
+    cleanup = builder[builder.index('{', start) + 1:builder.index('\n}', start)]
+    transaction = cleanup.replace('stopBuildUser(buildUser->getUID(), buildUser->getGID());',
+                                  '([&] {\n' + transaction + '\n})();')
     patch = args.pty_patch.read_text()
     pty = '\n'.join(line[1:] for line in patch.splitlines()
                     if line.startswith('+') and not line.startswith('+++'))

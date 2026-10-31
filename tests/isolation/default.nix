@@ -6,6 +6,7 @@ let
   base = flake.nixosConfigurations.openbsd-native;
   pkgs = base.pkgs;
   buildUsers = map (nr: "nixbld${toString nr}") (pkgs.lib.range 1 base.config.nix.nrBuildUsers);
+  managed = import ./managed-systems.nix { inherit base; };
   probe =
     pkgs.runCommandCC "openbsd-isolation-exec-probe" { nativeBuildInputs = [ pkgs.python3 ]; }
       ''
@@ -32,6 +33,7 @@ in
 assert pkgs.stdenv.buildPlatform.isOpenBSD;
 assert base.config.nix.settings.sandbox == false;
 assert base.config.nix.settings.sandbox-fallback == false;
+assert managed.passed;
 assert builtins.all (
   name:
   base.config.users.users.${name}.group == name
@@ -45,7 +47,8 @@ assert builtins.all (
     inputs
     // {
       builder = fixtures "openbsd-isolation-builder-inputs" inputs;
-      inherit (pkgs) go;
+      inherit (pkgs) go nix;
+      managedSystems = managed.all;
       cc = pkgs.stdenv.cc;
       libcxx = pkgs.lib.getLib pkgs.stdenv.cc.libcxx;
       sandboxPatch = ../../pkgs/openbsd/nix-openbsd-sandbox.patch;
@@ -70,6 +73,7 @@ assert builtins.all (
         route
         pwd_mkdb
         cap_mkdb
+        pfctl
         ;
     }
   );

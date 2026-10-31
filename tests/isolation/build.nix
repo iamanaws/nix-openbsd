@@ -7,16 +7,19 @@
   ports ? "[]",
   url ? "",
   hash ? "",
+  fixedOutput ? false,
   noChroot ? false,
   requiredFeatures ? [ ],
   probeSpec ? "{}",
 }:
 let
   inputs = builtins.storePath fixtures;
-  fixed = builtins.elem kind [
-    "fetch"
-    "builtin-fetch"
-  ];
+  fixed =
+    fixedOutput
+    || builtins.elem kind [
+      "fetch"
+      "builtin-fetch"
+    ];
 in
 derivation (
   {
@@ -84,6 +87,7 @@ derivation (
       probeSpec
       ;
     __noChroot = noChroot;
+    fixedOutput = fixed;
     requiredSystemFeatures = requiredFeatures;
   }
   // (
