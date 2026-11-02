@@ -2,7 +2,7 @@
 
 ## Create a configuration
 
-Inside the native VM:
+Inside the native VM or on a [supported image host](vm.md#hosts):
 
 ```sh
 mkdir my-openbsd
@@ -12,12 +12,12 @@ nix flake init -t github:iamanaws/nix-openbsd#native-system
 
 Edit `configuration.nix` to choose packages, [networking](networking.md) and
 [services](services.md). The template uses `lib.mkNativeSystem`, native packages,
-and the VM's existing disks and root/bestie accounts. It omits the web demo.
+and the reference disk layout and root/bestie accounts. It omits the web demo.
 
 Keep `flake.lock`. Run `nix flake update nix-openbsd` to update the project input.
 In a Git checkout, add new configuration files before building.
 
-Build as a regular user, then select and reboot as root:
+Inside OpenBSD, build as a regular user, then select and reboot as root:
 
 ```sh
 nix build .#nixosConfigurations.my-openbsd.config.system.build.toplevel -o result-system
@@ -27,6 +27,49 @@ nix build .#nixosConfigurations.my-openbsd.config.system.build.toplevel -o resul
 ./result-system/bin/switch-to-configuration boot
 shutdown -r now
 ```
+
+## Build images
+
+The template exports `native-system-image` (QCOW2) and `native-raw-image`
+(`disk.img`) on the supported hosts. Set `rootSize` in `flake.nix` to choose the
+root filesystem size; the template uses `"24g"`. This sets the size of a new
+image. Existing disks retain their size.
+
+Build `result-system` inside OpenBSD as above. On the image host, use the same
+configuration and lock file, and copy that system closure from the VM. For the
+default local SSH port:
+
+```sh
+system_path=$(nix eval --raw .#nixosConfigurations.my-openbsd.config.system.build.toplevel.outPath)
+nix copy --no-check-sigs \
+  --from 'ssh://bestie@127.0.0.1:2222?remote-program=/run/current-system/sw/bin/nix-store' \
+  "$system_path"
+nix build .#native-raw-image -o result-raw
+nix build .#native-system-image -o result-image
+```
+
+`--no-check-sigs` permits this copy of your own unsigned build. Image assembly
+uses the copied closure or a binary cache; it does not build OpenBSD packages on
+the host. macOS uses a matching Linux builder as described in the
+[host requirements](vm.md#hosts). Before booting a raw copy, follow the
+[random-seed instructions](vm.md#raw-disk-export).
+
+For an existing configuration, `lib.mkNativeImages` takes the result of
+`lib.mkNativeSystem`, a host `system` and an optional `rootSize` (default `"12g"`).
+It returns `image` and `rawImage`, as used in the
+[template](../templates/native-system/flake.nix).
+
+Images use the reference VM's serial console by default. For a keyboard and
+display, uncomment this setting in `configuration.nix`, then rebuild the system
+and images:
+
+```nix
+boot.loader.stand-openbsd.console = lib.mkForce "pc0";
+```
+
+This selects the boot console and enables OpenBSD's standard virtual terminals
+in [`/etc/ttys`](https://man.openbsd.org/OpenBSD-8.0/ttys.5). Use `"com0"` for
+serial boot output and login. Console changes require a reboot.
 
 ## Update
 

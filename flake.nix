@@ -96,29 +96,53 @@
         else
           nixbsd.inputs.nixpkgs.legacyPackages.${hostSystem}
       );
-      nativeImages = lib.genAttrs [ system "aarch64-linux" ] (
-        imageSystem:
-        (import ./vm/native.nix {
+      mkNativeImages =
+        {
+          configuration,
+          system ? "x86_64-linux",
+          rootSize ? "12g",
+        }:
+        let
+          # macOS uses its matching Linux builder for image assembly.
+          imageSystem = if system == "aarch64-darwin" then "aarch64-linux" else system;
+        in
+        assert lib.assertMsg (lib.elem system hostSystems) "Unsupported native image host: ${system}";
+        assert lib.assertMsg (
+          configuration.pkgs.stdenv.hostPlatform.system == "x86_64-openbsd"
+          && configuration.pkgs.stdenv.buildPlatform.system == "x86_64-openbsd"
+        ) "Native images require a native amd64 OpenBSD configuration.";
+        import ./vm/native.nix {
           cross = openbsdWebserver.pkgs;
           hostPkgs = hostPackages.${imageSystem};
           pkgs =
-            if imageSystem == system then openbsdWebserver.pkgs.buildPackages else hostPackages.${imageSystem};
+            if imageSystem == "x86_64-linux" then
+              openbsdWebserver.pkgs.buildPackages
+            else
+              hostPackages.${imageSystem};
           nixbsdSource = nixbsd.outPath;
-          nativeSystem = openbsdNative.config.system.build.toplevel;
-        }).image
+          nativeSystem = configuration.config.system.build.toplevel;
+          console = configuration.config.boot.loader.stand-openbsd.console;
+          inherit rootSize;
+        };
+      nativeImages = lib.genAttrs [ system "aarch64-linux" ] (
+        imageSystem:
+        mkNativeImages {
+          system = imageSystem;
+          configuration = openbsdNative;
+        }
       );
       nativeVMs = forAllHosts (
         hostSystem:
         let
           # macOS uses its matching Linux builder for image assembly.
           imageSystem = if hostSystem == "aarch64-darwin" then "aarch64-linux" else hostSystem;
-          image = nativeImages.${imageSystem};
+          inherit (nativeImages.${imageSystem}) image rawImage;
           # Firmware executes in the amd64 guest, regardless of the launcher's host.
           firmwarePath = builtins.unsafeDiscardStringContext openbsdWebserver.pkgs.buildPackages.OVMF.fd.outPath;
           firmware = builtins.appendContext firmwarePath { "${firmwarePath}".path = true; };
         in
         {
-          inherit image;
+          inherit image rawImage;
           launcher = import ./vm/launcher.nix {
             pkgs = hostPackages.${hostSystem};
             inherit image firmware;
@@ -285,9 +309,10 @@
           ]
           ++ modules;
         };
+      lib.mkNativeImages = mkNativeImages;
       templates.native-system = {
         path = ./templates/native-system;
-        description = "A native OpenBSD configuration for the existing VM";
+        description = "A native OpenBSD configuration with raw and QCOW2 image exports";
       };
 
       nixosConfigurations.openbsd-base = openbsdBase;
@@ -346,6 +371,7 @@
         forAllHosts (hostSystem: {
           native-vm = nativeVMs.${hostSystem}.launcher;
           native-system-image = nativeVMs.${hostSystem}.image;
+          native-raw-image = nativeVMs.${hostSystem}.rawImage;
           native-nix = nativeNix;
           native-system = openbsdNative.config.system.build.toplevel;
         })
@@ -379,6 +405,7 @@
           ${system} = {
             native-vm = nativeVM.launcher;
             native-system-image = nativeVM.image;
+            native-raw-image = nativeVM.rawImage;
             native-nix = nativeNix;
             native-system = openbsdNative.config.system.build.toplevel;
             inherit (openbsdWebserver.pkgs.openbsd)

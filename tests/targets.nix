@@ -53,4 +53,9 @@ in
     pkgs = host;
     firmware = builtins.appendContext firmwarePath { "${firmwarePath}".path = true; };
   };
+  rawLauncher = import ../vm/launcher.nix {
+    pkgs = host;
+    image = flake.packages.${system}.native-raw-image;
+    firmware = builtins.appendContext firmwarePath { "${firmwarePath}".path = true; };
+  };
 }

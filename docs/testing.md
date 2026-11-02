@@ -89,6 +89,10 @@ Five small projects add explicit workflow coverage alongside the six packages:
 | Python | PEP 517 wheel and C extension; fork/spawn/forkserver process pools, threads, mmap/flock, Unix sockets and descriptor passing, private IPv4/IPv6 loopback and SQLite WAL. |
 
 The `sandbox-nix` suite runs this same coverage with the rebuilt Nix daemon.
+Inside a native VM with sandboxing configured, the guest
+[`sandbox-packages/proof.py`](../tests/sandbox-packages/proof.py) accepts
+`--managed` to use the running system daemon.
+
 For a shorter run of the five workflow projects and their installed consumers:
 
 ```sh
@@ -146,7 +150,9 @@ nix run .#test-native-vm -- --public-ref github:iamanaws/nix-openbsd/REVISION
 ```
 
 On x86_64 Linux, use `NIX_VM_ACCEL=tcg nix run .#test -- --suite vm` to test
-emulation. Inspect cache metadata with:
+emulation. Use `nix run .#test-native-vm -- --raw-image` to run the fresh-boot and
+restart checks against the [raw disk export](vm.md#raw-disk-export).
+Inspect cache metadata with:
 
 ```sh
 python3 tests/cache/check.py path:"$PWD" --bootstrap --cross

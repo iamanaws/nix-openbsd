@@ -82,6 +82,41 @@ in
     # Without a ruleset, rc leaves its temporary outbound block rules active.
     openbsd.rc.conf.pf = lib.mkDefault false;
     system.switch.enable = lib.mkDefault false;
+    # The base configuration forces serial-only logins. Restore the standard
+    # amd64 terminals when the boot console is the keyboard and display.
+    environment.etc.ttys.text = lib.mkIf (config.boot.loader.stand-openbsd.console == "pc0") (
+      lib.mkOverride 40 (
+        lib.optionalString config.services.getty.enabled (
+          let
+            getty = lib.getExe config.services.getty.package;
+          in
+          ''
+            # name  getty                         type    status
+            console "${getty} std.9600" vt220   off secure
+            ttyC0   "${getty} std.9600" vt220   on  secure
+            ttyC1   "${getty} std.9600" vt220   on  secure
+            ttyC2   "${getty} std.9600" vt220   on  secure
+            ttyC3   "${getty} std.9600" vt220   on  secure
+            ttyC4   "${getty} std.9600" vt220   off secure
+            ttyC5   "${getty} std.9600" vt220   on  secure
+            ttyC6   "${getty} std.9600" vt220   off secure
+            ttyC7   "${getty} std.9600" vt220   off secure
+            ttyC8   "${getty} std.9600" vt220   off secure
+            ttyC9   "${getty} std.9600" vt220   off secure
+            ttyCa   "${getty} std.9600" vt220   off secure
+            ttyCb   "${getty} std.9600" vt220   off secure
+            tty00   "${getty} std.9600" unknown off
+            tty01   "${getty} std.9600" unknown off
+            tty02   "${getty} std.9600" unknown off
+            tty03   "${getty} std.9600" unknown off
+            tty04   "${getty} std.9600" unknown off
+            tty05   "${getty} std.9600" unknown off
+            tty06   "${getty} std.9600" unknown off
+            tty07   "${getty} std.9600" unknown off
+          ''
+        )
+      )
+    );
     # mount finds filesystem helpers through PATH before the login environment exists.
     environment.etc."rc".text = lib.mkBefore ''
       export PATH="${lib.makeBinPath config.system.fsPackages}:$PATH"

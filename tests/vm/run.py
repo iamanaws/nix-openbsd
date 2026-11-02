@@ -32,13 +32,17 @@ def main():
     parser.add_argument('--public-ref', help='test a published flake without preloading sources')
     parser.add_argument('--system-workflow', action='store_true',
                         help='also test native builds, switching and rollback from this checkout')
+    parser.add_argument('--raw-image', action='store_true', help='boot the raw disk export')
     parser.add_argument('--builders', help='host image builders; an empty string builds locally')
     args = parser.parse_args()
     work = Path(tempfile.mkdtemp(prefix='nixopenbsd-vm-test.'))
     print(f'Test files: {work}', flush=True)
     source = args.public_ref or f'path:{args.source}'
     build_options = [] if args.builders is None else ['--builders', args.builders]
-    subprocess.run(['nix', 'build', '--accept-flake-config', f'{source}#native-vm',
+    target = (['--impure', '--file', str(Path(args.source) / 'tests/targets.nix'),
+               '--argstr', 'flakeRef', source, 'rawLauncher'] if args.raw_image else
+              [f'{source}#native-vm'])
+    subprocess.run(['nix', 'build', '--accept-flake-config', *target,
                     '--cores', '2', '--max-jobs', '1', '-o', str(work / 'launcher'), *build_options], check=True)
     # Serve only test inputs, behind a random path on the loopback interface.
     public = work / 'public'
@@ -99,6 +103,7 @@ def main():
    exit 1
  fi
  mount | grep ' /boot/efi '
+ disklabel sd0
  # Service accounts must be locked, never silently given an empty password.
  awk -F: '$1 == "daemon" {{ if ($2 != "*") exit 1; found=1 }} END {{ if (!found) exit 1 }}' /etc/master.passwd
  test "$(wc -c < /etc/random.seed)" -ge 512
@@ -204,6 +209,9 @@ def main():
                         if process.returncode != 0:
                             raise RuntimeError('VM shutdown failed')
                         console = (work / f'{phase}.log').read_bytes()
+                        # The inherited pre-stop hook may report an already-exited daemon.
+                        warnings = re.sub(rb'/etc/rc.d/nix_daemon: kill: [0-9]+: No such process\r?\n',
+                                          b'', console)
                         for warning in (b'initial setsid() failed', b'Stack size hard limit',
                                         b"client-specified setting 'trusted-public-keys'",
                                         b"mkdir: cannot create directory '/var/run/dev.db'",
@@ -220,7 +228,7 @@ def main():
                                         b'No such process',
                                         b'less: command not found',
                                         b'WARNING: / was not properly unmounted'):
-                            if warning in console:
+                            if warning in warnings:
                                 raise RuntimeError(f'{phase}: unexpected warning {warning!r}')
                         print(f'PASS {phase}: guest checks and SSH', flush=True)
                 finally:

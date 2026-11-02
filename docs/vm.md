@@ -82,6 +82,39 @@ nix run --refresh github:iamanaws/nix-openbsd#native-vm
 
 Use your chosen directory if you set `NIX_VM_STATE_DIR`.
 
+## Raw disk export
+
+Build the native amd64 UEFI disk as a raw image:
+
+```sh
+nix build .#native-raw-image --out-link result-raw
+```
+
+The output contains `disk.img` with GPT, an OpenBSD root partition and an EFI
+system partition. It has the same system and fixed 12 GiB root filesystem as
+`native-system-image`. [Personal configurations](configuration.md#build-images)
+can export their own images and choose a root filesystem size. Physical hardware
+boot and disk expansion are untested.
+
+Before booting or writing a private copy to media, fill its reserved random-seed
+sector with fresh host entropy. On Linux:
+
+```sh
+cp result-raw/disk.img disk.img
+chmod 600 disk.img
+dd if=/dev/urandom of=disk.img bs=512 count=1 \
+  seek="$(( $(cat result-raw/random-seed-offset) / 512 ))" conv=notrunc status=none
+```
+
+Test the export through QEMU with the existing fresh-boot and restart checks:
+
+```sh
+nix run .#test-native-vm -- --raw-image
+```
+
+The test boots a private overlay backed by `disk.img` and supplies a fresh seed
+before first boot.
+
 ## Binary cache
 
 The guest daemon configures the standard Nix cache and `nix-openbsd.cachix.org`.

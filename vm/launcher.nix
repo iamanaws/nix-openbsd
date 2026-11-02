@@ -65,7 +65,7 @@ pkgs.writeShellApplication {
             seed=$(mktemp "$state/.random-seed.XXXXXX")
             trap 'rm -f "$seed" "$state/disk.qcow2.tmp"' EXIT
             dd if=/dev/urandom of="$seed" bs=512 count=1 status=none
-            qemu-img create -f qcow2 -F qcow2 -b ${image}/${image.filename} "$state/disk.qcow2.tmp"
+            qemu-img create -f qcow2 -F ${image.format or "qcow2"} -b ${image}/${image.filename} "$state/disk.qcow2.tmp"
             (cd "$state"; qemu-io -f qcow2 \
               -c "write -q -s ''${seed##*/} $(cat ${image}/random-seed-offset) 512" disk.qcow2.tmp)
             mv "$state/disk.qcow2.tmp" "$state/disk.qcow2"

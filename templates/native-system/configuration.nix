@@ -1,6 +1,8 @@
-{ pkgs, ... }:
+{ lib, pkgs, ... }:
 {
   networking.hostName = "my-openbsd";
+  # Use a keyboard and display instead of the reference VM's serial console.
+  # boot.loader.stand-openbsd.console = lib.mkForce "pc0";
   environment.systemPackages = [
     pkgs.hello
     pkgs.jq
@@ -12,6 +14,6 @@
     config = "nameserver 10.0.2.3";
   };
 
-  # This example keeps the existing VM's root/bestie logins and disk layout.
+  # This example uses the reference VM's root/bestie logins and disk layout.
   # Set your own account credentials before using it beyond the local VM.
 }

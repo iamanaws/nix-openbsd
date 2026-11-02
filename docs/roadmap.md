@@ -38,8 +38,7 @@ The [local generation manager](../modules/system/generations.nix) handles suppor
 live changes. The inherited `system.switch.enable` stays disabled until OpenBSD
 service ordering and checks have separate validation.
 
-## Raw disk export
+## Physical hardware
 
-Add a raw `disk.img` alongside `system-image`, using build-host `qemu-img` as in
-the [NixBSD follow-up](https://github.com/nix-community/nixbsd/compare/openbsd-phase6...obsidiansystems:nixbsd:openbsd-phase6).
-Validate partition layout and boot before writing it to physical media.
+Validate physical UEFI boot and disk expansion using the native
+[`disk.img` export](vm.md#raw-disk-export).

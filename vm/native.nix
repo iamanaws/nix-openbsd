@@ -4,6 +4,8 @@
   nativeSystem,
   hostPkgs,
   pkgs ? cross.buildPackages,
+  rootSize ? "12g",
+  console ? "com0",
 }:
 let
   inherit (pkgs) lib;
@@ -51,7 +53,7 @@ let
   boot = pkgs.runCommand "native-system-boot" { } ''
     mkdir -p $out/nixos
     cat > $out/nixos/default.conf <<CONF
-    set tty com0
+    set tty ${console}
     set image ${system}/kernel
     set init ${system}/bin/activate-init-native
     CONF
@@ -66,7 +68,7 @@ let
     label = "nixos";
     filesystem = "ufs";
     ufsVersion = "1";
-    totalSize = "12g";
+    totalSize = rootSize;
     makeRootDirs = true;
     nixStorePath = "/nix/store";
     nixStoreClosure = [ system ];
@@ -89,7 +91,7 @@ let
     extraMtreeContentsDest = "/";
   };
   root = rootPartition.overrideAttrs (old: {
-    # Avoid writing zeros across the unused space in the 12 GiB filesystem.
+    # Avoid writing zeros across the unused filesystem space.
     buildCommand = builtins.replaceStrings [ "/bin/makefs " ] [ "/bin/makefs -Z " ] old.buildCommand;
   });
   data = import (source + "/lib/make-disk-image.nix") {
@@ -136,7 +138,22 @@ let
       filename = "openbsd-native.qcow2";
     };
   });
+  rawImage =
+    pkgs.runCommand "openbsd-native-raw-image"
+      {
+        nativeBuildInputs = [ hostPkgs.qemu_kvm ];
+        passthru = {
+          filename = "disk.img";
+          format = "raw";
+        };
+      }
+      ''
+        mkdir -p $out/nix-support
+        qemu-img convert -f qcow2 -O raw ${image}/${image.filename} $out/disk.img
+        cp ${image}/random-seed-offset $out/random-seed-offset
+        echo "file raw-image $out/disk.img" > $out/nix-support/hydra-build-products
+      '';
 in
 {
-  inherit image;
+  inherit image rawImage;
 }

@@ -83,7 +83,7 @@ test "$(sqlite3 {quote(str(database))} "SELECT count(*) FROM sqlite_master WHERE
 '''
 
 
-def build_packages(fixtures, timeout, recipe='sandbox-packages', consumer=consumers, workflows_only=False):
+def build_packages(fixtures, timeout, recipe='sandbox-packages', consumer=consumers, workflows_only=False, managed=False):
     assert os.getuid() == 0
     source = (fixtures / 'source').resolve(strict=True)
     sys.path.insert(0, str(source / 'tests/isolation'))
@@ -103,7 +103,8 @@ def build_packages(fixtures, timeout, recipe='sandbox-packages', consumer=consum
         listeners.append(listener)
     ports = json.dumps([listener.getsockname()[1] for listener in listeners])
     nix = Path(shutil.which('nix')).resolve()
-    env = os.environ | {'NIX_REMOTE': 'daemon', 'NIX_DAEMON_SOCKET_PATH': str(work / 'socket'),
+    env = os.environ | {'NIX_REMOTE': 'daemon', 'NIX_DAEMON_SOCKET_PATH':
+                       '/nix/var/nix/daemon-socket/socket' if managed else str(work / 'socket'),
                        'NIX_LOG_NO_COLORS': '1'}
 
     def command(argv, **kwargs):
@@ -122,28 +123,30 @@ def build_packages(fixtures, timeout, recipe='sandbox-packages', consumer=consum
         assert packages, 'no workflow projects selected'
     paths = [path for package in packages.values() for path in package['outputs'].values()]
     assert all(not Path(path).exists() for path in paths), 'fresh package output already exists'
-    subprocess.run(['/etc/rc.d/nix_daemon', 'stop'], check=True)
+    subprocess.run(['/etc/rc.d/nix_daemon', 'check' if managed else 'stop'], check=True)
     daemon = None
     policies = ExitStack()
     try:
-        policies.enter_context(disabled(fixtures / 'pfctl/bin/pfctl'))
+        if not managed:
+            policies.enter_context(disabled(fixtures / 'pfctl/bin/pfctl'))
         with (work / 'daemon.log').open('w') as log:
-            daemon = subprocess.Popen([nix.with_name('nix-daemon'),
-                '--option', 'sandbox', 'true', '--option', 'sandbox-fallback', 'false',
-                '--option', 'sandbox-rdomains', '201 202 203 204',
-                '--option', 'trusted-users', 'root', '--option', 'max-jobs', '2',
-                '--option', 'cores', '1', '--option', 'keep-failed', 'true'],
-                env=env | {'NIX_REMOTE': 'local'}, stdin=subprocess.DEVNULL,
-                stdout=log, stderr=subprocess.STDOUT)
-            for _ in range(100):
-                assert daemon.poll() is None, 'test daemon exited'
-                if Path(env['NIX_DAEMON_SOCKET_PATH']).is_socket():
-                    break
-                time.sleep(.1)
-            else:
-                raise AssertionError('test daemon did not create its socket')
+            if not managed:
+                daemon = subprocess.Popen([nix.with_name('nix-daemon'),
+                    '--option', 'sandbox', 'true', '--option', 'sandbox-fallback', 'false',
+                    '--option', 'sandbox-rdomains', '201 202 203 204',
+                    '--option', 'trusted-users', 'root', '--option', 'max-jobs', '2',
+                    '--option', 'cores', '1', '--option', 'keep-failed', 'true'],
+                    env=env | {'NIX_REMOTE': 'local'}, stdin=subprocess.DEVNULL,
+                    stdout=log, stderr=subprocess.STDOUT)
+                for _ in range(100):
+                    assert daemon.poll() is None, 'test daemon exited'
+                    if Path(env['NIX_DAEMON_SOCKET_PATH']).is_socket():
+                        break
+                    time.sleep(.1)
+                else:
+                    raise AssertionError('test daemon did not create its socket')
             argv = [str(nix.with_name('nix-build')), *arguments,
-                    '--no-substitute', '--no-out-link', '--max-jobs', '2', '--cores', '1']
+                    '--no-substitute', '--no-out-link', '--max-jobs', '4' if managed else '2', '--cores', '1']
             for name in packages:
                 argv += ['-A', 'packages.' + name]
             client = ['su', '-l', 'bestie', '-c', shlex.join([
@@ -201,7 +204,7 @@ def build_packages(fixtures, timeout, recipe='sandbox-packages', consumer=consum
                        'binary': str(nix), 'logs': str(work),
                        'packages': packages, 'parallelBuilds': overlaps,
                        'freshBuilds': 'passed',
-                       'processAndDomainCleanup': 'passed', 'defaultSandbox': False}
+                       'processAndDomainCleanup': 'passed', 'managedDaemon': managed}
             if consumer is not None:
                 results['regularUserConsumers'] = 'passed'
             if 'workflow-tools' in packages:
@@ -214,7 +217,8 @@ def build_packages(fixtures, timeout, recipe='sandbox-packages', consumer=consum
             daemon.terminate()
             daemon.wait(timeout=30)
         policies.close()
-        subprocess.run(['/etc/rc.d/nix_daemon', 'start'], check=True)
+        if not managed:
+            subprocess.run(['/etc/rc.d/nix_daemon', 'start'], check=True)
         for listener in listeners:
             listener.close()
 
@@ -224,11 +228,12 @@ def main():
     parser.add_argument('fixtures', type=Path)
     parser.add_argument('timeout', type=int)
     parser.add_argument('--workflows-only', action='store_true')
+    parser.add_argument('--managed', action='store_true', help='use the running system daemon and its sandbox configuration')
     args = parser.parse_args()
     fixtures = args.fixtures.resolve(strict=True)
     results = build_packages(fixtures, args.timeout,
                              consumer=workflow_consumers if args.workflows_only else consumers,
-                             workflows_only=args.workflows_only)
+                             workflows_only=args.workflows_only, managed=args.managed)
     print('SANDBOX_PACKAGES_RESULT ' + json.dumps(results), flush=True)
     print('SANDBOX_PACKAGES_RUNTIME_PASS', flush=True)
 

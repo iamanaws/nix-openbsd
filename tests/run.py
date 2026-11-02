@@ -243,6 +243,8 @@ class Runtime:
             self.command(['nix', 'eval', '--impure', '--json', '--file',
                           self.source / 'tests/slaac/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
             self.command(['nix', 'eval', '--impure', '--json', '--file',
+                          self.source / 'tests/vm/images.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
+            self.command(['nix', 'eval', '--impure', '--json', '--file',
                           self.source / 'tests/network/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])
             self.command(['nix', 'eval', '--impure', '--json', '--file',
                           self.source / 'tests/isolation/default.nix', '--argstr', 'flakeRef', str(self.source), 'passed'])

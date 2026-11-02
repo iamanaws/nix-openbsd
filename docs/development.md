@@ -59,13 +59,16 @@ These run on Linux:
 | --- | --- |
 | `native-vm` | Native launcher and image; experimental launchers also exist on [other hosts](vm.md#hosts). |
 | `native-system-image` | Native QCOW2 image. |
+| `native-raw-image` | Native raw `disk.img`; see [disk export](vm.md#raw-disk-export). |
 | `vm` | Cross-built reference demo with native Nix. |
 | `minimal-vm` | Bootstrap VM. |
 | `system-image`, `toplevel` | Cross-built reference image and system closure. |
 | `libagentx` | Example cross-built OpenBSD package. |
 
 Image assembly needs the native closure locally or in the cache. EFI remains
-cross-built. To run the cross-built reference demo:
+cross-built. The [configuration template](configuration.md#build-images) also
+exports images for a personal system with a configurable root size.
+To run the cross-built reference demo:
 
 ```sh
 nix build .#vm
