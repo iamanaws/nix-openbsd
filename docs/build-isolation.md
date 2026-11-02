@@ -10,12 +10,14 @@ Reserve unused routing-domain IDs exclusively for Nix, at least one per
 concurrent ordinary build. For example, after reserving IDs 201–204:
 
 ```nix
-nix.settings = {
-  sandbox = true;
-  sandbox-fallback = false;
-  sandbox-rdomains = [ "201" "202" "203" "204" ];
-  max-jobs = 4;
-};
+{
+  nix.settings = {
+    sandbox = true;
+    sandbox-fallback = false;
+    sandbox-rdomains = [ "201" "202" "203" "204" ];
+    max-jobs = 4;
+  };
+}
 ```
 
 Apply Nix setting changes with `openbsd-rebuild boot` followed by a reboot.
@@ -48,11 +50,13 @@ the `default` class; the module adds no memory cap. Adjust these through the
 existing login-class options, for example:
 
 ```nix
-users.classes.nixbld.settings = {
-  maxproc = { cur = 256; max = 512; };
-  openfiles = { cur = 512; max = 1024; };
-  datasize = "4G";
-};
+{
+  users.classes.nixbld.settings = {
+    maxproc = { cur = 256; max = 512; };
+    openfiles = { cur = 512; max = 1024; };
+    datasize = "4G";
+  };
+}
 ```
 
 Activate the account and login-class configuration before enabling the sandbox.

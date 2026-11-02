@@ -11,7 +11,9 @@ live_prepare() {
     test -f "$old_meta" && test -f "$new_meta" || die "boot into a generation with live-switch support first"
     test "$(readlink -f "$old/kernel")" = "$(readlink -f "$target/kernel")" || die "kernel changes require boot and reboot"
     test "$(readlink -f "$old/init")" = "$(readlink -f "$target/init")" || die "init changes require boot and reboot"
-    jq -e -s '.[0].version == 1 and .[1].version == 1 and .[0].boot == .[1].boot' "$old_meta" "$new_meta" >/dev/null ||
+    # Older generations did not record the default serial console.
+    jq -e -s 'map(.boot.console //= "com0") |
+      .[0].version == 1 and .[1].version == 1 and .[0].boot == .[1].boot' "$old_meta" "$new_meta" >/dev/null ||
         die "boot or network settings changed; use boot and reboot"
     # Compare configuration dependencies as well as the generated rc scripts.
     mapfile -t live_changed < <(jq -r -s '

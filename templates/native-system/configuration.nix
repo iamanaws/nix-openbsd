@@ -3,6 +3,9 @@
   networking.hostName = "my-openbsd";
   # Use a keyboard and display instead of the reference VM's serial console.
   # boot.loader.stand-openbsd.console = lib.mkForce "pc0";
+  # For a new image, choose a DUID and use it for both filesystems.
+  # fileSystems."/".device = lib.mkForce "0123456789abcdef.a";
+  # fileSystems."/boot/efi".device = lib.mkForce "0123456789abcdef.i";
   environment.systemPackages = [
     pkgs.hello
     pkgs.jq

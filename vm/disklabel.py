@@ -1,12 +1,17 @@
-"""Expose the GPT EFI partition as sd0i in OpenBSD's nested disklabel."""
+"""Set the EFI partition and optional DUID in OpenBSD's nested disklabel."""
 
+import argparse
+import re
 import struct
-import sys
 import uuid
 from pathlib import Path
 
 
-def patch(path):
+def patch(path, disk_id=None):
+    if disk_id is not None and (
+        re.fullmatch(r"[0-9a-fA-F]{16}", disk_id) is None or int(disk_id, 16) == 0
+    ):
+        raise ValueError("disk ID must be 16 hexadecimal digits and nonzero")
     with path.open("r+b") as disk:
         disk.seek(512)
         header = disk.read(512)
@@ -41,12 +46,14 @@ def patch(path):
         if any(label[slot:slot + 16]):
             raise ValueError("partition i is already occupied")
         # mkimg's nested label covers only the root partition. OpenBSD also
-        # needs the outer EFI partition in this label to mount /dev/sd0i.
+        # needs the outer EFI partition in slot i to mount it.
         struct.pack_into("<I", label, 60, sectors & 0xFFFFFFFF)
         struct.pack_into("<H", label, 112, sectors >> 32)
         size = end - start + 1
         struct.pack_into("<IIHHBBH", label, slot, size & 0xFFFFFFFF,
                          start & 0xFFFFFFFF, start >> 32, size >> 32, 8, 0, 0)
+        if disk_id is not None:
+            label[64:72] = bytes.fromhex(disk_id)
         struct.pack_into("<HH", label, 136, 0, 16)
         checksum = 0
         for word in struct.unpack("<202H", label[:404]):
@@ -57,4 +64,8 @@ def patch(path):
 
 
 if __name__ == "__main__":
-    patch(Path(sys.argv[1]))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("path", type=Path)
+    parser.add_argument("--disk-id", metavar="DUID")
+    args = parser.parse_args()
+    patch(args.path, args.disk_id)

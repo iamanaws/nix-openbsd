@@ -15,6 +15,38 @@ let
   noGetty = display.extendModules {
     modules = [ { services.getty.enabled = false; } ];
   };
+  diskId = "0123456789abcdef";
+  duidSystem = configuration.extendModules {
+    modules = [
+      {
+        fileSystems."/".device = lib.mkForce "${diskId}.a";
+        fileSystems."/boot/efi".device = lib.mkForce "${diskId}.i";
+      }
+    ];
+  };
+  duidImages = flake.lib.mkNativeImages {
+    configuration = duidSystem;
+    inherit system;
+  };
+  noAutoFsck = duidSystem.extendModules {
+    modules = [ { system.boot.autoFsck = false; } ];
+  };
+  rejects =
+    root: efi:
+    !(builtins.tryEval (
+      (flake.lib.mkNativeImages {
+        inherit system;
+        configuration = configuration.extendModules {
+          modules = [
+            {
+              fileSystems."/".device = lib.mkForce root;
+              fileSystems."/boot/efi".device = lib.mkForce efi;
+            }
+          ];
+        };
+      }).rawImage.name
+    )).success;
+  rootArgument = lib.escapeShellArg "${diskId}.a";
   ttys = display.config.environment.etc.ttys.text;
   inherit (flake.inputs.nixbsd.inputs.nixpkgs) lib;
   enabled =
@@ -42,6 +74,18 @@ assert noGetty.config.environment.etc.ttys.text == "";
 assert images.native-raw-image.format == "raw";
 assert images.native-raw-image.filename == "disk.img";
 assert images.native-system-image.filename == "openbsd-native.qcow2";
+assert duidImages.rawImage.format == "raw";
+assert lib.hasInfix "fsck -y ${rootArgument}" duidSystem.config.system.activationScripts.script;
+assert lib.hasInfix "mount -u -w ${rootArgument} /"
+  duidSystem.config.system.activationScripts.script;
+assert lib.hasInfix "mount -u -w ${rootArgument} /" duidSystem.config.system.dryActivationScript;
+assert !(lib.hasInfix "/dev/sd0a" duidSystem.config.system.activationScripts.script);
+assert lib.hasInfix "fsck  ${rootArgument}" noAutoFsck.config.system.activationScripts.script;
+assert rejects "0000000000000000.a" "0000000000000000.i";
+assert rejects "${diskId}.a" "fedcba9876543210.i";
+assert rejects "${diskId}.b" "${diskId}.i";
+assert rejects "/dev/sd1a" "/dev/sd1i";
+assert rejects "${diskId}.a" "/dev/sd0i";
 {
   passed = true;
   personalSystem = configuration.config.system.build.toplevel;

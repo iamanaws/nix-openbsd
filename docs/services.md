@@ -11,11 +11,13 @@ store copy. [Networking](networking.md) covers DHCP, SLAAC, routing and VPNs.
 ## Service directories
 
 ```nix
-services.tempfiles.directories."/var/lib/my-service" = {
-  mode = "0750";
-  user = "my-service";
-  group = "my-service";
-};
+{
+  services.tempfiles.directories."/var/lib/my-service" = {
+    mode = "0750";
+    user = "my-service";
+    group = "my-service";
+  };
+}
 ```
 
 Define accounts through `users.users` and `users.groups`.
@@ -29,14 +31,16 @@ Native systems enable `security.doas` through the NixOS module and OpenBSD
 authentication. Wheel members authenticate with their own password by default.
 
 ```nix
-security.doas.extraRules = [
-  {
-    users = [ "alice" ];
-    cmd = "/run/current-system/sw/bin/openbsd-rebuild";
-    args = [ "list-generations" ];
-    noPass = true;
-  }
-];
+{
+  security.doas.extraRules = [
+    {
+      users = [ "alice" ];
+      cmd = "/run/current-system/sw/bin/openbsd-rebuild";
+      args = [ "list-generations" ];
+      noPass = true;
+    }
+  ];
+}
 ```
 
 Rules validate at build and activation. Rule updates support live rollback;
@@ -66,11 +70,13 @@ to select a recipient.
 Route administrative mail to an existing account:
 
 ```nix
-services.smtpd.aliases = ''
-  root: alice
-  postmaster: root
-  MAILER-DAEMON: postmaster
-'';
+{
+  services.smtpd.aliases = ''
+    root: alice
+    postmaster: root
+    MAILER-DAEMON: postmaster
+  '';
+}
 ```
 
 Submit with `sendmail alice` or `sendmail -t`, read `/var/mail/alice`, and inspect
@@ -92,17 +98,19 @@ Privileged wrapper changes require reboot.
 It is disabled by default.
 
 ```nix
-services.maintenance = {
-  enable = true;
-  daily.config = ''
-    CALENDAR=0
-    SUIDSKIP="/nix"
-  '';
-  monthly.schedule = "30 5 1 * *";
-  monthly.config = ''
-    echo 'Local monthly maintenance'
-  '';
-};
+{
+  services.maintenance = {
+    enable = true;
+    daily.config = ''
+      CALENDAR=0
+      SUIDSKIP="/nix"
+    '';
+    monthly.schedule = "30 5 1 * *";
+    monthly.config = ''
+      echo 'Local monthly maintenance'
+    '';
+  };
+}
 ```
 
 The example disables calendar notifications and skips `/nix` in the daily

@@ -135,6 +135,24 @@ test ! -f {system}/fail-activate
         self.run_manager('switch', self.b, success=False)
         self.assertEqual(self.events.read_text(), '')
 
+    def test_console_change_requires_reboot(self):
+        meta = self.b / 'openbsd-system.json'
+        content = json.loads(meta.read_text())
+        content['boot']['console'] = 'pc0'
+        meta.write_text(json.dumps(content))
+        self.run_manager('switch', self.b, success=False)
+        self.assertEqual(self.events.read_text(), '')
+        self.assertEqual(self.profile.resolve(), self.a)
+
+    def test_live_upgrade_from_legacy_serial_metadata(self):
+        meta = self.b / 'openbsd-system.json'
+        content = json.loads(meta.read_text())
+        content['boot']['console'] = 'com0'
+        meta.write_text(json.dumps(content))
+        self.run_manager('test', self.b)
+        self.assertEqual((self.root / 'run/current-system').resolve(), self.b)
+        self.assertEqual(self.profile.resolve(), self.a)
+
     def enable_reload(self):
         for system in (self.a, self.b):
             meta = system / 'openbsd-system.json'

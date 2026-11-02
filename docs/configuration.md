@@ -35,6 +35,29 @@ The template exports `native-system-image` (QCOW2) and `native-raw-image`
 root filesystem size; the template uses `"24g"`. This sets the size of a new
 image. Existing disks retain their size.
 
+For a new image, generate a disk ID (DUID) once:
+
+```sh
+od -An -N8 -tx1 /dev/urandom | tr -d ' \n'
+```
+
+Use that 16-digit value in both filesystem devices, replacing this example ID:
+
+```nix
+{ lib, ... }:
+{
+  fileSystems."/".device = lib.mkForce "0123456789abcdef.a";
+  fileSystems."/boot/efi".device = lib.mkForce "0123456789abcdef.i";
+}
+```
+
+`lib.mkNativeImages` writes the same DUID into the image's disklabel. Root and
+EFI mounts then follow that disk when device numbering changes. Keep the ID
+when rebuilding images for that disk; disks attached together need distinct
+IDs. When updating an installed system, use its existing DUID from `disklabel`.
+The template keeps the reference VM's device paths until these settings are
+uncommented.
+
 Build `result-system` inside OpenBSD as above. On the image host, use the same
 configuration and lock file, and copy that system closure from the VM. For the
 default local SSH port:
@@ -64,12 +87,16 @@ display, uncomment this setting in `configuration.nix`, then rebuild the system
 and images:
 
 ```nix
-boot.loader.stand-openbsd.console = lib.mkForce "pc0";
+{ lib, ... }:
+{
+  boot.loader.stand-openbsd.console = lib.mkForce "pc0";
+}
 ```
 
 This selects the boot console and enables OpenBSD's standard virtual terminals
 in [`/etc/ttys`](https://man.openbsd.org/OpenBSD-8.0/ttys.5). Use `"com0"` for
-serial boot output and login. Console changes require a reboot.
+serial boot output and login. Console changes require a reboot. Boot selection
+and rollback use each generation's console setting.
 
 ## Update
 

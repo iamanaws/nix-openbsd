@@ -10,12 +10,14 @@ The default `networking.useDHCP = true` selects Ethernet interfaces without
 static IPv4 addresses. To mix DHCP and static configuration:
 
 ```nix
-networking.useDHCP = false;
-networking.interfaces.vio0.useDHCP = true;
-networking.interfaces.vio1 = {
-  useDHCP = false;
-  ipv4.addresses = [ { address = "192.0.2.1"; prefixLength = 24; } ];
-};
+{
+  networking.useDHCP = false;
+  networking.interfaces.vio0.useDHCP = true;
+  networking.interfaces.vio1 = {
+    useDHCP = false;
+    ipv4.addresses = [ { address = "192.0.2.1"; prefixLength = 24; } ];
+  };
+}
 ```
 
 The module sets `inet autoconf`. Leases persist in `/var/db/dhcpleased`.
@@ -38,12 +40,14 @@ resolver proposal on lease reacquisition, such as after a link change.
 without static IPv6 addresses, independently of IPv4 settings:
 
 ```nix
-networking.useSLAAC = false;
-networking.interfaces.vio0.useSLAAC = true;
-networking.interfaces.vio1 = {
-  useSLAAC = false;
-  ipv6.addresses = [ { address = "2001:db8::1"; prefixLength = 64; } ];
-};
+{
+  networking.useSLAAC = false;
+  networking.interfaces.vio0.useSLAAC = true;
+  networking.interfaces.vio1 = {
+    useSLAAC = false;
+    ipv6.addresses = [ { address = "2001:db8::1"; prefixLength = 64; } ];
+  };
+}
 ```
 
 The module sets `inet6 autoconf`. `slaacd` manages addresses, routers,

@@ -125,7 +125,12 @@ while read -r command setting value; do
 done < "$boot/default.conf"
 
 write_entry() {
-    printf '# system: %s\nset tty com0\nset image %s/kernel\nset init %s/bin/activate-init-native\n' "$1" "$1" "$1"
+    local console=com0
+    if test -f "$1/openbsd-system.json"; then
+        console=$(jq -r '.boot.console // "com0"' "$1/openbsd-system.json")
+    fi
+    case "$console" in pc0|com0) ;; *) die "invalid boot console for $1" ;; esac
+    printf '# system: %s\nset tty %s\nset image %s/kernel\nset init %s/bin/activate-init-native\n' "$1" "$console" "$1" "$1"
 }
 # Stage boot files on the same filesystem so replacing the default is atomic.
 temporary=$(mktemp "$boot/.default.XXXXXXXX")

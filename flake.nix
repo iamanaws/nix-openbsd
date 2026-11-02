@@ -105,12 +105,20 @@
         let
           # macOS uses its matching Linux builder for image assembly.
           imageSystem = if system == "aarch64-darwin" then "aarch64-linux" else system;
+          rootDevice = configuration.config.fileSystems."/".device;
+          efiDevice = configuration.config.fileSystems."/boot/efi".device;
+          duid = builtins.match "([0-9a-f]{16})[.]a" rootDevice;
+          diskId = if duid == null then null else builtins.head duid;
         in
         assert lib.assertMsg (lib.elem system hostSystems) "Unsupported native image host: ${system}";
         assert lib.assertMsg (
           configuration.pkgs.stdenv.hostPlatform.system == "x86_64-openbsd"
           && configuration.pkgs.stdenv.buildPlatform.system == "x86_64-openbsd"
         ) "Native images require a native amd64 OpenBSD configuration.";
+        assert lib.assertMsg (
+          (rootDevice == "/dev/sd0a" && efiDevice == "/dev/sd0i")
+          || (diskId != null && diskId != "0000000000000000" && efiDevice == "${diskId}.i")
+        ) "Native images require /dev/sd0a and /dev/sd0i, or matching nonzero DUID.a and DUID.i devices.";
         import ./vm/native.nix {
           cross = openbsdWebserver.pkgs;
           hostPkgs = hostPackages.${imageSystem};
@@ -122,7 +130,7 @@
           nixbsdSource = nixbsd.outPath;
           nativeSystem = configuration.config.system.build.toplevel;
           console = configuration.config.boot.loader.stand-openbsd.console;
-          inherit rootSize;
+          inherit rootSize diskId;
         };
       nativeImages = lib.genAttrs [ system "aarch64-linux" ] (
         imageSystem:

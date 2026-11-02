@@ -6,6 +6,7 @@
   pkgs ? cross.buildPackages,
   rootSize ? "12g",
   console ? "com0",
+  diskId ? null,
 }:
 let
   inherit (pkgs) lib;
@@ -128,7 +129,9 @@ let
       hostPkgs.qemu_kvm
     ];
     buildCommand = old.buildCommand + ''
-      python3 ${./disklabel.py} "$out/${raw.filename}"
+      python3 ${./disklabel.py} "$out/${raw.filename}" ${
+        lib.optionalString (diskId != null) "--disk-id ${lib.escapeShellArg diskId}"
+      }
       python3 ${./seed.py} locate "$out/${raw.filename}" > "$out/random-seed-offset"
       qemu-img convert -f raw -O qcow2 "$out/${raw.filename}" "$out/openbsd-native.qcow2"
       rm "$out/${raw.filename}"

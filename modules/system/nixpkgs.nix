@@ -4,15 +4,70 @@ let
   nixosModules = "${nixbsd.inputs.nixpkgs}/nixos/modules";
   daemon = "${nixbsd}/modules/services/system/nix-daemon.nix";
   installerTools = "${nixbsd}/modules/installer/tools/tools.nix";
+  activation = "${nixbsd}/modules/system/activation/activation-script.nix";
 in
 {
   disabledModules = [
     "${nixosModules}/system/boot/loader/efi.nix"
     daemon
     installerTools
+    activation
   ];
   imports = [
     (import ../security/doas.nix { nixpkgs = nixbsd.inputs.nixpkgs; })
+    # Early root checks must use the configured device, including DUIDs.
+    (
+      {
+        config,
+        lib,
+        pkgs,
+        ...
+      }@args:
+      let
+        original = import activation args;
+        options = original.options.system;
+        fsckFlags = lib.optionalString config.system.boot.autoFsck "-y";
+        root = lib.escapeShellArg config.fileSystems."/".device;
+        rewrite =
+          script:
+          if pkgs.stdenv.hostPlatform.isOpenBSD && config.fileSystems."/".device != "/dev/sd0a" then
+            lib.replaceStrings
+              [
+                ''
+                  # TODO: Support other root paths
+                  fsck ${fsckFlags} /dev/sd0a
+                  mount -u -w /dev/sd0a /
+                ''
+              ]
+              [
+                ''
+                  fsck ${fsckFlags} ${root}
+                  mount -u -w ${root} /
+                ''
+              ]
+              script
+          else
+            script;
+      in
+      original
+      // {
+        options = original.options // {
+          system = options // {
+            activationScripts = options.activationScripts // {
+              apply =
+                value:
+                let
+                  result = options.activationScripts.apply value;
+                in
+                result // { script = rewrite result.script; };
+            };
+            dryActivationScript = options.dryActivationScript // {
+              default = rewrite options.dryActivationScript.default;
+            };
+          };
+        };
+      }
+    )
     # NixBSD omits the shell-script revision substitution. Fix only nixos-version.
     (
       {

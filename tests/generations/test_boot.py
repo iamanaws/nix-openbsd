@@ -1,4 +1,5 @@
 """Test boot transaction failures without touching the host's profiles or boot files."""
+import json
 import os
 from pathlib import Path
 import re
@@ -92,6 +93,47 @@ ln -sfn "system-$number-link" "$profile"
             self.assertIn(str(expected), self.default.read_text())
             self.assertEqual((self.root / 'run/current-system').resolve(), self.a)
         self.assertFalse((self.root / 'run/openbsd-system.lock').exists())
+
+    def test_generation_entries_keep_their_own_consoles(self):
+        for system, console in [(self.a, 'com0'), (self.b, 'pc0')]:
+            (system / 'openbsd-system.json').write_text(json.dumps({
+                'version': 1, 'boot': {'console': console},
+            }))
+        self.run_manager('boot', self.b)
+        self.assertIn('set tty pc0\n', self.default.read_text())
+        self.assertIn('set tty com0\n', self.default.with_name('1.conf').read_text())
+        self.assertIn('set tty pc0\n', self.default.with_name('2.conf').read_text())
+        self.run_manager('rollback')
+        self.assertIn('set tty com0\n', self.default.read_text())
+        self.assertIn('set tty pc0\n', self.default.with_name('2.conf').read_text())
+
+    def test_pc_console_survives_update_and_rollback(self):
+        for system in [self.a, self.b]:
+            (system / 'openbsd-system.json').write_text(json.dumps({
+                'version': 1, 'boot': {'console': 'pc0'},
+            }))
+        self.run_manager('boot', self.b)
+        self.run_manager('rollback')
+        for name in ['default.conf', '1.conf', '2.conf']:
+            self.assertIn('set tty pc0\n', self.default.with_name(name).read_text())
+
+    def test_legacy_generation_defaults_to_serial(self):
+        (self.a / 'openbsd-system.json').write_text(json.dumps({'version': 1, 'boot': {}}))
+        self.run_manager('boot', self.b)
+        self.run_manager('rollback')
+        self.assertIn('set tty com0\n', self.default.read_text())
+
+    def test_invalid_console_does_not_change_selection(self):
+        old = self.default.read_text()
+        for console in ['invalid', 'pc0\nboot /bad/kernel']:
+            with self.subTest(console=console):
+                (self.b / 'openbsd-system.json').write_text(json.dumps({
+                    'version': 1, 'boot': {'console': console},
+                }))
+                result = self.run_manager('boot', self.b, success=False)
+                self.assertIn('invalid boot console', result.stderr)
+                self.assertEqual(self.profile.resolve(), self.a)
+                self.assertEqual(self.default.read_text(), old)
 
     def test_failed_boot_file_commit_restores_profile(self):
         old = self.default.read_text()

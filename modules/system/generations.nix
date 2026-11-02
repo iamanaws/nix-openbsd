@@ -118,6 +118,7 @@ let
       ) services;
       # These settings affect boot or connectivity and are not live-switchable yet.
       boot = {
+        console = config.boot.loader.stand-openbsd.console;
         fileSystems = lib.mapAttrs (_: fs: { inherit (fs) device fsType options; }) config.fileSystems;
         rc = builtins.removeAttrs config.openbsd.rc.conf (
           map (s: "${s.name}_flags") (builtins.attrValues services)
